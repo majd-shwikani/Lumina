@@ -5,6 +5,7 @@
 #include <Wire.h>
 #include <Adafruit_VEML7700.h>
 #include "effects.h"
+#include <esp_task_wdt.h>  // Add this line for watchdog functions
 
 // Include configuration file
 #include "config.h"
@@ -24,7 +25,7 @@ FirebaseData fbdoUpload; // used for setFloat, setBool and all write ops
 // Timer variables
 char timerOnTime[6] = "09:00";  // HH:MM format
 char timerOffTime[6] = "17:00"; // HH:MM format
-bool timerEnabled = false;
+bool timerEnabled = true;  // Timer enabled by default
 
 FirebaseAuth auth;
 FirebaseConfig config;
@@ -52,6 +53,7 @@ void firebaseTask(void *parameter);
 void ledTask(void *parameter);
 void automationtask(void *parameter);
 void sensorDataTask(void *parameter);
+void timerTask(void *parameter);
 void handleFirebaseData();
 void updateLEDs();
 void streamCallback(FirebaseStream data);
@@ -59,11 +61,10 @@ void streamTimeoutCallback(bool timeout);
 void createDefaultFirebaseData();
 void updateSensorData();
 bool shouldTurnOffDueToDarkness();
-void timerTask(void *parameter);
 bool checkTimeMatch(const char* scheduledTime);
 void updateTimerState(bool state);
-void readInitialFirebaseData();  // ADD THIS LINE
-
+void readInitialFirebaseData();
+void setupTime();
 
 void setup() {
   Serial.begin(115200);
@@ -72,12 +73,15 @@ void setup() {
   strip.begin();
   strip.show();
   strip.setBrightness(100);
-  
+  esp_task_wdt_init(30, true); // 30 seconds timeout, panic on trigger
   // Initialize I2C for VEML7700
   Wire.begin();
   
   // Connect to WiFi
   connectToWiFi();
+  
+  // Setup time
+  setupTime();
   
   // Setup OTA
   setupOTA();
@@ -88,49 +92,56 @@ void setup() {
   // Setup Firebase
   setupFirebase();
   
-xTaskCreatePinnedToCore(
-  firebaseTask,
-  "FirebaseTask",
-  15000,  // Increased from 10000
-  NULL,
-  1,
-  NULL,
-  0
-);
-
-xTaskCreatePinnedToCore(
-  ledTask,
-  "LEDTask",
-  15000,  // Increased from 10000
-  NULL,
-  1,
-  NULL,
-  1
-);
-
-xTaskCreatePinnedToCore(
-  sensorDataTask,
-  "SensorDataTask",
-  15000,   // Increased from 4000
-  NULL,
-  1,
-  NULL,
-  0
-);
+  xTaskCreatePinnedToCore(
+    firebaseTask,
+    "FirebaseTask",
+    15000,  // Increased from 10000
+    NULL,
+    1,
+    NULL,
+    0
+  );
 
   xTaskCreatePinnedToCore(
-  automationtask,           // Task function
-  "AutomationTask",         // Task name
-  4000,                     // Stack size
-  NULL,                     // Parameters
-  0,                        // Priority (low)
-  NULL,    // Task handle (NEW - this was missing)
-  0                         //
-);
+    ledTask,
+    "LEDTask",
+    15000,  // Increased from 10000
+    NULL,
+    1,
+    NULL,
+    1
+  );
 
+  xTaskCreatePinnedToCore(
+    sensorDataTask,
+    "SensorDataTask",
+    15000,   // Increased from 4000
+    NULL,
+    1,
+    NULL,
+    0
+  );
+
+  xTaskCreatePinnedToCore(
+    automationtask,
+    "AutomationTask",
+    4000,
+    NULL,
+    0,
+    NULL,
+    0
+  );
+
+  xTaskCreatePinnedToCore(
+    timerTask,
+    "TimerTask",
+    8000,
+    NULL,
+    1,
+    NULL,
+    0
+  );
 }
-
-
 
 void loop() {
   // Empty - everything is handled by FreeRTOS tasks
@@ -149,6 +160,21 @@ void connectToWiFi() {
   Serial.println();
   Serial.print("Connected with IP: ");
   Serial.println(WiFi.localIP());
+}
+
+void setupTime() {
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+  
+  Serial.print("Waiting for time synchronization");
+  struct tm timeinfo;
+  while (!getLocalTime(&timeinfo)) {
+    Serial.print(".");
+    delay(1000);
+  }
+  Serial.println();
+  
+  Serial.println("Time synchronized:");
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 void setupOTA() {
@@ -217,6 +243,8 @@ void setupFirebase() {
   
   // Read initial values from Firebase instead of creating defaults
   readInitialFirebaseData();
+
+  //createDefaultFirebaseData();
   
   // Start stream listener for real-time updates
   if (!Firebase.RTDB.beginStream(&fbdoStream, "/")) {
@@ -292,6 +320,38 @@ void readInitialFirebaseData() {
     Serial.printf("Failed to read lux threshold, using default: %s\n", fbdoUpload.errorReason().c_str());
     luxThreshold = 1.0;
   }
+  
+  // Read timer on time
+  if (Firebase.RTDB.getString(&fbdoUpload, "/timer_on")) {
+    String timeStr = fbdoUpload.stringData();
+    if (timeStr.length() == 5) {
+      strncpy(timerOnTime, timeStr.c_str(), sizeof(timerOnTime));
+      Serial.printf("Initial timer on time: %s\n", timerOnTime);
+    }
+  } else {
+    Serial.printf("Failed to read timer on time, using default: %s\n", fbdoUpload.errorReason().c_str());
+    strcpy(timerOnTime, "09:00");
+  }
+  
+  // Read timer off time
+  if (Firebase.RTDB.getString(&fbdoUpload, "/timer_off")) {
+    String timeStr = fbdoUpload.stringData();
+    if (timeStr.length() == 5) {
+      strncpy(timerOffTime, timeStr.c_str(), sizeof(timerOffTime));
+      Serial.printf("Initial timer off time: %s\n", timerOffTime);
+    }
+  } else {
+    Serial.printf("Failed to read timer off time, using default: %s\n", fbdoUpload.errorReason().c_str());
+    strcpy(timerOffTime, "17:00");
+  }
+  // Read timer enabled state
+if (Firebase.RTDB.getBool(&fbdoUpload, "/timer_enabled")) {
+  timerEnabled = fbdoUpload.boolData();
+  Serial.printf("Initial timer enabled: %s\n", timerEnabled ? "true" : "false");
+} else {
+  Serial.printf("Failed to read timer enabled, using default: %s\n", fbdoUpload.errorReason().c_str());
+  timerEnabled = true;
+}
 }
 
 void firebaseTask(void *parameter) {
@@ -351,7 +411,6 @@ void automationtask(void *parameter) {
   }
 }
 
-
 void sensorDataTask(void *parameter) {
   const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // 2 second delay
   
@@ -377,12 +436,75 @@ void sensorDataTask(void *parameter) {
   }
 }
 
+void timerTask(void *parameter) {
+  const TickType_t xDelay = 1000 / portTICK_PERIOD_MS; // Check every second
+  bool lastOnTriggered = false;
+  bool lastOffTriggered = false;
+  
+  for(;;) {
+    if (firebaseConnected && timerEnabled) {
+      // Check if it's time to turn on
+      if (checkTimeMatch(timerOnTime)) {
+        if (!stripEnabled && !lastOnTriggered) {
+          Serial.println("Timer ON triggered");
+          updateTimerState(true);
+          lastOnTriggered = true;
+        }
+      } else {
+        lastOnTriggered = false;
+      }
+      
+      // Check if it's time to turn off
+      if (checkTimeMatch(timerOffTime)) {
+        if (stripEnabled && !lastOffTriggered) {
+          Serial.println("Timer OFF triggered");
+          updateTimerState(false);
+          lastOffTriggered = true;
+        }
+      } else {
+        lastOffTriggered = false;
+      }
+    }
+    
+    vTaskDelay(xDelay);
+  }
+}
+
+void updateTimerState(bool state) {
+  esp_task_wdt_reset();
+  if (Firebase.RTDB.setBool(&fbdoUpload, "/enabled", state)) {
+    stripEnabled = state;
+    Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
+    
+    if (!state) {
+      strip.clear();
+      strip.show();
+    }
+  } else {
+    Serial.printf("Failed to update enabled state: %s\n", fbdoUpload.errorReason().c_str());
+  }
+   esp_task_wdt_reset();
+}
+
+bool checkTimeMatch(const char* scheduledTime) {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return false;
+  }
+  
+  char currentTime[6];
+  strftime(currentTime, sizeof(currentTime), "%H:%M", &timeinfo);
+  
+  return strcmp(currentTime, scheduledTime) == 0;
+}
+
 void updateSensorData() {
   currentLux = veml.readLux();
 }
 
 bool shouldTurnOffDueToDarkness() {
-  return currentLux < luxThreshold;  // Use the variable instead of the hardcoded value
+  return currentLux < luxThreshold;
 }
 
 void streamCallback(FirebaseStream data) {
@@ -411,18 +533,12 @@ void streamCallback(FirebaseStream data) {
     }
   }
   else if (data.dataPath() == "/lux_threshold") {
-  luxThreshold = data.floatData();
-  Serial.printf("Lux threshold changed to: %.2f\n", luxThreshold);
-}
-else if (data.dataPath() == "/enabled") {
-  bool newState = data.boolData();
-  
-  // Only allow turning on if not in darkness (when auto control is enabled)
-  if (newState && autoDarknessControl && shouldTurnOffDueToDarkness()) {
-    Serial.println("Cannot turn on LEDs - darkness detected");
-    // Revert to false in Firebase to reflect actual state
-    Firebase.RTDB.setBool(&fbdoUpload, "/enabled", false);
-  } else {
+    luxThreshold = data.floatData();
+    Serial.printf("Lux threshold changed to: %.2f\n", luxThreshold);
+  }
+  else if (data.dataPath() == "/enabled") {
+    bool newState = data.boolData();
+    
     stripEnabled = newState;
     turnedOffByDarkness = false;  // Reset when user manually toggles
     Serial.printf("Strip %s\n", stripEnabled ? "enabled" : "disabled");
@@ -431,11 +547,31 @@ else if (data.dataPath() == "/enabled") {
       strip.show();
     }
   }
-}
+  // Handle timer enabled changes
+  else if (data.dataPath() == "/timer_enabled") {
+    timerEnabled = data.boolData();
+    Serial.printf("Timer %s\n", timerEnabled ? "enabled" : "disabled");
+  }
   // Handle auto darkness control
   else if (data.dataPath() == "/auto_darkness_control") {
     autoDarknessControl = data.boolData();
     Serial.printf("Auto darkness control %s\n", autoDarknessControl ? "enabled" : "disabled");
+  }
+  // Handle timer on time changes
+  else if (data.dataPath() == "/timer_on") {
+    String timeStr = data.stringData();
+    if (timeStr.length() == 5) {
+      strncpy(timerOnTime, timeStr.c_str(), sizeof(timerOnTime));
+      Serial.printf("Timer ON time changed to: %s\n", timerOnTime);
+    }
+  }
+  // Handle timer off time changes
+  else if (data.dataPath() == "/timer_off") {
+    String timeStr = data.stringData();
+    if (timeStr.length() == 5) {
+      strncpy(timerOffTime, timeStr.c_str(), sizeof(timerOffTime));
+      Serial.printf("Timer OFF time changed to: %s\n", timerOffTime);
+    }
   }
 }
 
@@ -486,12 +622,11 @@ void updateLEDs() {
     case 18: effectCyberCity(); break;
     case 19: effectSolarFlare(); break;
     case 20: effectFireSimulation(); break;
-    case 21: effectSolidColor(); break;  // NEW: Solid Color effect
+    case 21: effectSolidColor(); break;
     default: effectRainbow(); break;
   }
   strip.show();
 }
-
 
 void createDefaultFirebaseData() {
   Serial.println("Creating default Firebase data structure...");
@@ -530,9 +665,30 @@ void createDefaultFirebaseData() {
   } else {
     Serial.printf("Failed to set auto darkness control: %s\n", fbdoUpload.errorReason().c_str());
   }
+  
   if (Firebase.RTDB.setFloat(&fbdoUpload, "/lux_threshold", 1.0)) {
-  Serial.println("Lux threshold set to default: 1.0");
-} else {
-  Serial.printf("Failed to set lux threshold: %s\n", fbdoUpload.errorReason().c_str());
-}
+    Serial.println("Lux threshold set to default: 1.0");
+  } else {
+    Serial.printf("Failed to set lux threshold: %s\n", fbdoUpload.errorReason().c_str());
+  }
+  
+  // Set default timer on time
+  if (Firebase.RTDB.setString(&fbdoUpload, "/timer_on", "09:00")) {
+    Serial.println("Timer ON set to default: 09:00");
+  } else {
+    Serial.printf("Failed to set timer ON: %s\n", fbdoUpload.errorReason().c_str());
+  }
+  
+  // Set default timer off time
+  if (Firebase.RTDB.setString(&fbdoUpload, "/timer_off", "17:00")) {
+    Serial.println("Timer OFF set to default: 17:00");
+  } else {
+    Serial.printf("Failed to set timer OFF: %s\n", fbdoUpload.errorReason().c_str());
+  }
+  // Set default timer enabled
+  if (Firebase.RTDB.setBool(&fbdoUpload, "/timer_enabled", true)) {
+  Serial.println("Timer enabled set to default: true");
+  } else {
+  Serial.printf("Failed to set timer enabled: %s\n", fbdoUpload.errorReason().c_str());
+  }
 }
