@@ -78,6 +78,7 @@ void effectCyberCity();            // 18: Cyberpunk cityscape
 void effectSolarFlare();           // 19: Solar flare activity
 void effectFireSimulation();       // 20: Realistic fire simulation
 void effectSolidColor();
+void readInitialFirebaseData();  // Add this line
 
 // Helper function declarations
 uint32_t Wheel(byte WheelPos);
@@ -240,8 +241,8 @@ void setupFirebase() {
   Serial.println("Connecting to Firebase...");
   delay(1000);
   
-  // Create default data structure
-  //createDefaultFirebaseData();
+  // Read initial values from Firebase instead of creating defaults
+  readInitialFirebaseData();
   
   // Start stream listener for real-time updates
   if (!Firebase.RTDB.beginStream(&fbdoStream, "/")) {
@@ -249,7 +250,74 @@ void setupFirebase() {
   }
   
   Firebase.RTDB.setStreamCallback(&fbdoStream, streamCallback, streamTimeoutCallback);
-  Serial.println("Firebase initialized with stream and default data");
+  Serial.println("Firebase initialized with stream and initial data reading");
+}
+
+void readInitialFirebaseData() {
+  Serial.println("Reading initial Firebase data...");
+  
+  // Read effect
+  if (Firebase.RTDB.getInt(&fbdoUpload, "/effect")) {
+    currentEffect = fbdoUpload.intData();
+    Serial.printf("Initial effect: %d\n", currentEffect);
+  } else {
+    Serial.printf("Failed to read effect, using default: %s\n", fbdoUpload.errorReason().c_str());
+    currentEffect = 0;
+  }
+  
+  // Read speed
+  if (Firebase.RTDB.getInt(&fbdoUpload, "/speed")) {
+    effectSpeed = fbdoUpload.intData();
+    Serial.printf("Initial speed: %d\n", effectSpeed);
+  } else {
+    Serial.printf("Failed to read speed, using default: %s\n", fbdoUpload.errorReason().c_str());
+    effectSpeed = 50;
+  }
+  
+  // Read color
+  if (Firebase.RTDB.getString(&fbdoUpload, "/color")) {
+    String colorStr = fbdoUpload.stringData();
+    if (colorStr.length() == 6) {
+      effectColor = strtoul(colorStr.c_str(), NULL, 16);
+      Serial.printf("Initial color: %s\n", colorStr.c_str());
+    }
+  } else {
+    Serial.printf("Failed to read color, using default: %s\n", fbdoUpload.errorReason().c_str());
+    effectColor = 0xFF0000;
+  }
+  
+  // Read enabled state
+  if (Firebase.RTDB.getBool(&fbdoUpload, "/enabled")) {
+    stripEnabled = fbdoUpload.boolData();
+    Serial.printf("Initial enabled state: %s\n", stripEnabled ? "true" : "false");
+    
+    // If disabled, turn off LEDs immediately
+    if (!stripEnabled) {
+      strip.clear();
+      strip.show();
+    }
+  } else {
+    Serial.printf("Failed to read enabled state, using default: %s\n", fbdoUpload.errorReason().c_str());
+    stripEnabled = true;
+  }
+  
+  // Read auto darkness control
+  if (Firebase.RTDB.getBool(&fbdoUpload, "/auto_darkness_control")) {
+    autoDarknessControl = fbdoUpload.boolData();
+    Serial.printf("Initial auto darkness control: %s\n", autoDarknessControl ? "true" : "false");
+  } else {
+    Serial.printf("Failed to read auto darkness control, using default: %s\n", fbdoUpload.errorReason().c_str());
+    autoDarknessControl = true;
+  }
+  
+  // Read lux threshold
+  if (Firebase.RTDB.getFloat(&fbdoUpload, "/lux_threshold")) {
+    luxThreshold = fbdoUpload.floatData();
+    Serial.printf("Initial lux threshold: %.2f\n", luxThreshold);
+  } else {
+    Serial.printf("Failed to read lux threshold, using default: %s\n", fbdoUpload.errorReason().c_str());
+    luxThreshold = 1.0;
+  }
 }
 
 void firebaseTask(void *parameter) {
