@@ -2,12 +2,12 @@
 #define CONFIG_H
 
 // WiFi credentials
-#define WIFI_SSID "Espressif"
-#define WIFI_PASSWORD "Centrino2121"
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
 
 // Firebase configuration
-#define FIREBASE_HOST "test-dbd7a-default-rtdb.firebaseio.com"
-#define FIREBASE_SECRET "jBVd9wZ6n1dYTv4CSVmB96l66M8HspblZSmCN161"
+#define FIREBASE_HOST ""
+#define FIREBASE_SECRET ""
 
 // Time configuration - Madrid
 #define NTP_SERVER "pool.ntp.org"
