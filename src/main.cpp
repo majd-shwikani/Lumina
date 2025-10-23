@@ -5,40 +5,41 @@
 #include <Wire.h>
 #include <Adafruit_VEML7700.h>
 #include "effects.h"
-#include <esp_task_wdt.h>  // Add this line for watchdog functions
+#include <esp_task_wdt.h>  // Watchdog timer for system stability
 
-// Include configuration file
+// Project configuration (WiFi, Firebase, etc.)
 #include "config.h"
 
-// Provide the token generation process info.
+// Firebase token helper for authentication
 #include <addons/TokenHelper.h>
 
-// VEML7700 configuration
-volatile float luxThreshold = 1.0;  // Default value, will be controlled via Firebase
+// Light sensor threshold (controlled via Firebase)
+volatile float luxThreshold = 1.0;
 
-// Global variables
+// Global objects
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
-FirebaseData fbdoStream; // used only for stream and callbacks
-FirebaseData fbdoUpload; // used for setFloat, setBool and all write ops
+FirebaseData fbdoStream;  // For Firebase real-time stream
+FirebaseData fbdoUpload;  // For Firebase write operations
 
-// Timer variables
-char timerOnTime[6] = "09:00";  // HH:MM format
-char timerOffTime[6] = "17:00"; // HH:MM format
-bool timerEnabled = true;  // Timer enabled by default
+// Timer settings (HH:MM format)
+char timerOnTime[6] = "09:00";
+char timerOffTime[6] = "17:00";
+bool timerEnabled = true;
 
+// Firebase authentication and configuration
 FirebaseAuth auth;
 FirebaseConfig config;
 
-// Animation control variables
+// LED animation control variables
 volatile int currentEffect = 0;
 volatile uint32_t effectSpeed = 50;
 volatile uint32_t effectColor = 0xFF0000;
 volatile bool updateEffect = false;
 volatile bool firebaseConnected = false;
-volatile bool stripEnabled = true;  // Manual on/off control
-volatile bool autoDarknessControl = true;  // Auto turn off in darkness
-volatile bool turnedOffByDarkness = false;
+volatile bool stripEnabled = true;           // Manual on/off toggle
+volatile bool autoDarknessControl = true;    // Auto-off in low light
+volatile bool turnedOffByDarkness = false;   // Track auto-off state
 
 // Sensor data
 volatile float currentLux = 0;
@@ -73,55 +74,56 @@ void setup() {
   strip.begin();
   strip.show();
   strip.setBrightness(100);
-  esp_task_wdt_init(30, true); // 30 seconds timeout, panic on trigger
-  // Initialize I2C for VEML7700
+  
+  // Initialize watchdog timer (30s timeout)
+  esp_task_wdt_init(30, true);
+  
+  // Initialize I2C for light sensor
   Wire.begin();
   
-  // Connect to WiFi
+  // Setup sequences
   connectToWiFi();
-  
-  // Setup time
   setupTime();
-  
-  // Setup OTA
   setupOTA();
-  
-  // Setup VEML7700 sensor
   setupVEML7700();
-  
-  // Setup Firebase
   setupFirebase();
   
+  // Create FreeRTOS tasks for parallel processing
+  
+  // Firebase management task (core 0)
   xTaskCreatePinnedToCore(
     firebaseTask,
     "FirebaseTask",
-    15000,  // Increased from 10000
+    15000,
     NULL,
     1,
     NULL,
     0
   );
 
+  // LED animation task (core 1)
   xTaskCreatePinnedToCore(
     ledTask,
     "LEDTask",
-    15000,  // Increased from 10000
+    15000,
     NULL,
     1,
     NULL,
     1
   );
 
+  // Sensor data reporting task (core 0)
   xTaskCreatePinnedToCore(
     sensorDataTask,
     "SensorDataTask",
-    15000,   // Increased from 4000
+    15000,
     NULL,
     1,
     NULL,
     0
   );
 
+  // Light-based automation task (core 0)
   xTaskCreatePinnedToCore(
     automationtask,
     "AutomationTask",
@@ -132,6 +134,7 @@ void setup() {
     0
   );
 
+  // Timer-based control task (core 0)
   xTaskCreatePinnedToCore(
     timerTask,
     "TimerTask",
@@ -144,10 +147,11 @@ void setup() {
 }
 
 void loop() {
-  // Empty - everything is handled by FreeRTOS tasks
+  // Empty - all functionality handled by FreeRTOS tasks
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
 
+// Connect to WiFi network
 void connectToWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi");
@@ -162,6 +166,7 @@ void connectToWiFi() {
   Serial.println(WiFi.localIP());
 }
 
+// Synchronize with NTP server for accurate time
 void setupTime() {
   configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
   
@@ -177,6 +182,7 @@ void setupTime() {
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
+// Setup Over-The-Air updates
 void setupOTA() {
   ArduinoOTA.setHostname("esp32-neopixel-controller");
   
@@ -189,6 +195,7 @@ void setupOTA() {
         type = "filesystem";
       }
       Serial.println("Start updating " + type);
+      // Turn off LEDs during update
       strip.clear();
       strip.show();
     })
@@ -211,6 +218,7 @@ void setupOTA() {
   Serial.println("OTA Ready");
 }
 
+// Initialize VEML7700 light sensor
 void setupVEML7700() {
   if (!veml.begin()) {
     Serial.println("VEML7700 sensor not found, continuing without light sensor");
@@ -224,29 +232,27 @@ void setupVEML7700() {
   Serial.println("VEML7700 initialized");
 }
 
+// Configure Firebase connection and stream
 void setupFirebase() {
   config.host = FIREBASE_HOST;
   config.signer.tokens.legacy_token = FIREBASE_SECRET;
   
-  // Optional, set AP reconnection
+  // Firebase timeout configuration
   config.timeout.serverResponse = 10 * 1000;
   
   fbdoStream.setResponseSize(2048);
   
-  // Connect to Firebase
+  // Initialize Firebase connection
   Firebase.begin(&config, &auth);
   Firebase.reconnectNetwork(true);
   
-  // Wait for Firebase connection
   Serial.println("Connecting to Firebase...");
   delay(1000);
   
-  // Read initial values from Firebase instead of creating defaults
+  // Read initial values from Firebase
   readInitialFirebaseData();
-
-  //createDefaultFirebaseData();
   
-  // Start stream listener for real-time updates
+  // Start real-time stream listener
   if (!Firebase.RTDB.beginStream(&fbdoStream, "/")) {
     Serial.printf("Stream begin error: %s\n", fbdoStream.errorReason().c_str());
   }
@@ -255,10 +261,11 @@ void setupFirebase() {
   Serial.println("Firebase initialized with stream and initial data reading");
 }
 
+// Read initial values from Firebase on startup
 void readInitialFirebaseData() {
   Serial.println("Reading initial Firebase data...");
   
-  // Read effect
+  // Read current effect
   if (Firebase.RTDB.getInt(&fbdoUpload, "/effect")) {
     currentEffect = fbdoUpload.intData();
     Serial.printf("Initial effect: %d\n", currentEffect);
@@ -267,7 +274,7 @@ void readInitialFirebaseData() {
     currentEffect = 0;
   }
   
-  // Read speed
+  // Read animation speed
   if (Firebase.RTDB.getInt(&fbdoUpload, "/speed")) {
     effectSpeed = fbdoUpload.intData();
     Serial.printf("Initial speed: %d\n", effectSpeed);
@@ -276,7 +283,7 @@ void readInitialFirebaseData() {
     effectSpeed = 50;
   }
   
-  // Read color
+  // Read LED color
   if (Firebase.RTDB.getString(&fbdoUpload, "/color")) {
     String colorStr = fbdoUpload.stringData();
     if (colorStr.length() == 6) {
@@ -293,7 +300,7 @@ void readInitialFirebaseData() {
     stripEnabled = fbdoUpload.boolData();
     Serial.printf("Initial enabled state: %s\n", stripEnabled ? "true" : "false");
     
-    // If disabled, turn off LEDs immediately
+    // Turn off LEDs if disabled
     if (!stripEnabled) {
       strip.clear();
       strip.show();
@@ -303,7 +310,7 @@ void readInitialFirebaseData() {
     stripEnabled = true;
   }
   
-  // Read auto darkness control
+  // Read auto darkness control setting
   if (Firebase.RTDB.getBool(&fbdoUpload, "/auto_darkness_control")) {
     autoDarknessControl = fbdoUpload.boolData();
     Serial.printf("Initial auto darkness control: %s\n", autoDarknessControl ? "true" : "false");
@@ -312,7 +319,7 @@ void readInitialFirebaseData() {
     autoDarknessControl = true;
   }
   
-  // Read lux threshold
+  // Read lux threshold for auto-off
   if (Firebase.RTDB.getFloat(&fbdoUpload, "/lux_threshold")) {
     luxThreshold = fbdoUpload.floatData();
     Serial.printf("Initial lux threshold: %.2f\n", luxThreshold);
@@ -344,22 +351,24 @@ void readInitialFirebaseData() {
     Serial.printf("Failed to read timer off time, using default: %s\n", fbdoUpload.errorReason().c_str());
     strcpy(timerOffTime, "17:00");
   }
+  
   // Read timer enabled state
-if (Firebase.RTDB.getBool(&fbdoUpload, "/timer_enabled")) {
-  timerEnabled = fbdoUpload.boolData();
-  Serial.printf("Initial timer enabled: %s\n", timerEnabled ? "true" : "false");
-} else {
-  Serial.printf("Failed to read timer enabled, using default: %s\n", fbdoUpload.errorReason().c_str());
-  timerEnabled = true;
-}
+  if (Firebase.RTDB.getBool(&fbdoUpload, "/timer_enabled")) {
+    timerEnabled = fbdoUpload.boolData();
+    Serial.printf("Initial timer enabled: %s\n", timerEnabled ? "true" : "false");
+  } else {
+    Serial.printf("Failed to read timer enabled, using default: %s\n", fbdoUpload.errorReason().c_str());
+    timerEnabled = true;
+  }
 }
 
+// Firebase management task - handles OTA and connection monitoring
 void firebaseTask(void *parameter) {
   for(;;) {
     if (WiFi.status() == WL_CONNECTED) {
       ArduinoOTA.handle();
       
-      // Keep Firebase connection alive
+      // Maintain Firebase connection
       if (!Firebase.ready()) {
         Serial.println("Firebase not ready, reconnecting...");
         firebaseConnected = false;
@@ -377,6 +386,7 @@ void firebaseTask(void *parameter) {
   }
 }
 
+// LED animation task - runs selected effect
 void ledTask(void *parameter) {
   for(;;) {
     updateLEDs();
@@ -384,6 +394,7 @@ void ledTask(void *parameter) {
   }
 }
 
+// Automation task - handles light-based auto on/off
 void automationtask(void *parameter) {
   const TickType_t xDelay = 100 / portTICK_PERIOD_MS;
 
@@ -391,6 +402,7 @@ void automationtask(void *parameter) {
     if (sensorAvailable) {
       updateSensorData();
 
+      // Auto-off when too dark
       if (autoDarknessControl && shouldTurnOffDueToDarkness()) {
         if (stripEnabled) {
           stripEnabled = false;
@@ -400,6 +412,7 @@ void automationtask(void *parameter) {
           Serial.println("Darkness detected - turning LEDs off automatically");
         }
       } 
+      // Auto-on when light returns
       else if (autoDarknessControl && turnedOffByDarkness && !shouldTurnOffDueToDarkness()) {
         stripEnabled = true;
         turnedOffByDarkness = false;
@@ -411,12 +424,13 @@ void automationtask(void *parameter) {
   }
 }
 
+// Sensor data task - reads and reports light levels to Firebase
 void sensorDataTask(void *parameter) {
-  const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // 2 second delay
+  const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // 2 second interval
   
   for(;;) {
     if (firebaseConnected) {
-      // Update all sensor data first
+      // Update sensor reading
       if (sensorAvailable) {
         updateSensorData();
         
@@ -436,6 +450,7 @@ void sensorDataTask(void *parameter) {
   }
 }
 
+// Timer task - handles scheduled on/off times
 void timerTask(void *parameter) {
   const TickType_t xDelay = 1000 / portTICK_PERIOD_MS; // Check every second
   bool lastOnTriggered = false;
@@ -443,7 +458,7 @@ void timerTask(void *parameter) {
   
   for(;;) {
     if (firebaseConnected && timerEnabled) {
-      // Check if it's time to turn on - trigger unconditionally
+      // Check timer on time
       if (checkTimeMatch(timerOnTime)) {
         if (!lastOnTriggered) {
           Serial.println("Timer ON triggered - forcing enabled to true");
@@ -454,7 +469,7 @@ void timerTask(void *parameter) {
         lastOnTriggered = false;
       }
       
-      // Check if it's time to turn off - trigger unconditionally
+      // Check timer off time
       if (checkTimeMatch(timerOffTime)) {
         if (!lastOffTriggered) {
           Serial.println("Timer OFF triggered - forcing enabled to false");
@@ -470,12 +485,14 @@ void timerTask(void *parameter) {
   }
 }
 
+// Update timer state in Firebase and locally
 void updateTimerState(bool state) {
   esp_task_wdt_reset();
   if (Firebase.RTDB.setBool(&fbdoUpload, "/enabled", state)) {
     stripEnabled = state;
     Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
     
+    // Turn off LEDs immediately if disabled
     if (!state) {
       strip.clear();
       strip.show();
@@ -483,9 +500,10 @@ void updateTimerState(bool state) {
   } else {
     Serial.printf("Failed to update enabled state: %s\n", fbdoUpload.errorReason().c_str());
   }
-   esp_task_wdt_reset();
+  esp_task_wdt_reset();
 }
 
+// Check if current time matches scheduled time
 bool checkTimeMatch(const char* scheduledTime) {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
@@ -499,14 +517,17 @@ bool checkTimeMatch(const char* scheduledTime) {
   return strcmp(currentTime, scheduledTime) == 0;
 }
 
+// Read current light level from sensor
 void updateSensorData() {
   currentLux = veml.readLux();
 }
 
+// Check if light level is below threshold
 bool shouldTurnOffDueToDarkness() {
   return currentLux < luxThreshold;
 }
 
+// Handle real-time Firebase data changes
 void streamCallback(FirebaseStream data) {
   Serial.printf("Stream data path: %s, event: %s, type: %s, value: %s\n",
                 data.streamPath().c_str(),
@@ -514,17 +535,17 @@ void streamCallback(FirebaseStream data) {
                 data.eventType().c_str(),
                 data.stringData().c_str());
 
-  // Handle effect changes
+  // Effect change
   if (data.dataPath() == "/effect") {
     currentEffect = data.intData();
     Serial.printf("Effect changed to: %d\n", currentEffect);
   }
-  // Handle speed changes
+  // Speed change
   else if (data.dataPath() == "/speed") {
     effectSpeed = data.intData();
     Serial.printf("Speed changed to: %d\n", effectSpeed);
   }
-  // Handle color changes
+  // Color change
   else if (data.dataPath() == "/color") {
     String colorStr = data.stringData();
     if (colorStr.length() == 6) {
@@ -532,32 +553,34 @@ void streamCallback(FirebaseStream data) {
       Serial.printf("Color changed to: %s\n", colorStr.c_str());
     }
   }
+  // Lux threshold change
   else if (data.dataPath() == "/lux_threshold") {
     luxThreshold = data.floatData();
     Serial.printf("Lux threshold changed to: %.2f\n", luxThreshold);
   }
+  // Enabled state change
   else if (data.dataPath() == "/enabled") {
     bool newState = data.boolData();
     
     stripEnabled = newState;
-    turnedOffByDarkness = false;  // Reset when user manually toggles
+    turnedOffByDarkness = false;  // Reset auto-off flag on manual toggle
     Serial.printf("Strip %s\n", stripEnabled ? "enabled" : "disabled");
     if (!stripEnabled) {
       strip.clear();
       strip.show();
     }
   }
-  // Handle timer enabled changes
+  // Timer enabled change
   else if (data.dataPath() == "/timer_enabled") {
     timerEnabled = data.boolData();
     Serial.printf("Timer %s\n", timerEnabled ? "enabled" : "disabled");
   }
-  // Handle auto darkness control
+  // Auto darkness control change
   else if (data.dataPath() == "/auto_darkness_control") {
     autoDarknessControl = data.boolData();
     Serial.printf("Auto darkness control %s\n", autoDarknessControl ? "enabled" : "disabled");
   }
-  // Handle timer on time changes
+  // Timer on time change
   else if (data.dataPath() == "/timer_on") {
     String timeStr = data.stringData();
     if (timeStr.length() == 5) {
@@ -565,7 +588,7 @@ void streamCallback(FirebaseStream data) {
       Serial.printf("Timer ON time changed to: %s\n", timerOnTime);
     }
   }
-  // Handle timer off time changes
+  // Timer off time change
   else if (data.dataPath() == "/timer_off") {
     String timeStr = data.stringData();
     if (timeStr.length() == 5) {
@@ -575,6 +598,7 @@ void streamCallback(FirebaseStream data) {
   }
 }
 
+// Handle Firebase stream timeout
 void streamTimeoutCallback(bool timeout) {
   if (timeout) {
     Serial.println("Stream timeout, resuming...");
@@ -584,22 +608,23 @@ void streamTimeoutCallback(bool timeout) {
   }
 }
 
+// Update LED strip with current effect
 void updateLEDs() {
-  // Check if we should turn off due to darkness (auto control)
+  // Auto-off due to darkness
   if (autoDarknessControl && sensorAvailable && shouldTurnOffDueToDarkness()) {
     strip.clear();
     strip.show();
     return;
   }
   
-  // Manual control check
+  // Manual off state
   if (!stripEnabled) {
     strip.clear();
     strip.show();
     return;
   }
   
-  // Run the selected animation effect
+  // Run selected animation effect
   switch(currentEffect) {
     case 0: effectRainbow(); break;
     case 1: effectMeteorShower(); break;
@@ -628,6 +653,7 @@ void updateLEDs() {
   strip.show();
 }
 
+// Create default data structure in Firebase (backup function)
 void createDefaultFirebaseData() {
   Serial.println("Creating default Firebase data structure...");
   
@@ -666,6 +692,7 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set auto darkness control: %s\n", fbdoUpload.errorReason().c_str());
   }
   
+  // Set default lux threshold
   if (Firebase.RTDB.setFloat(&fbdoUpload, "/lux_threshold", 1.0)) {
     Serial.println("Lux threshold set to default: 1.0");
   } else {
@@ -685,10 +712,11 @@ void createDefaultFirebaseData() {
   } else {
     Serial.printf("Failed to set timer OFF: %s\n", fbdoUpload.errorReason().c_str());
   }
-  // Set default timer enabled
+  
+  // Set default timer enabled state
   if (Firebase.RTDB.setBool(&fbdoUpload, "/timer_enabled", true)) {
-  Serial.println("Timer enabled set to default: true");
+    Serial.println("Timer enabled set to default: true");
   } else {
-  Serial.printf("Failed to set timer enabled: %s\n", fbdoUpload.errorReason().c_str());
+    Serial.printf("Failed to set timer enabled: %s\n", fbdoUpload.errorReason().c_str());
   }
 }
