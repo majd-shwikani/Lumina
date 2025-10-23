@@ -692,5 +692,3 @@ void createDefaultFirebaseData() {
   Serial.printf("Failed to set timer enabled: %s\n", fbdoUpload.errorReason().c_str());
   }
 }
-
-//test merge
