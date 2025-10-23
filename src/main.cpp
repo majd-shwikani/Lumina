@@ -443,10 +443,10 @@ void timerTask(void *parameter) {
   
   for(;;) {
     if (firebaseConnected && timerEnabled) {
-      // Check if it's time to turn on
+      // Check if it's time to turn on - trigger unconditionally
       if (checkTimeMatch(timerOnTime)) {
-        if (!stripEnabled && !lastOnTriggered) {
-          Serial.println("Timer ON triggered");
+        if (!lastOnTriggered) {
+          Serial.println("Timer ON triggered - forcing enabled to true");
           updateTimerState(true);
           lastOnTriggered = true;
         }
@@ -454,10 +454,10 @@ void timerTask(void *parameter) {
         lastOnTriggered = false;
       }
       
-      // Check if it's time to turn off
+      // Check if it's time to turn off - trigger unconditionally
       if (checkTimeMatch(timerOffTime)) {
-        if (stripEnabled && !lastOffTriggered) {
-          Serial.println("Timer OFF triggered");
+        if (!lastOffTriggered) {
+          Serial.println("Timer OFF triggered - forcing enabled to false");
           updateTimerState(false);
           lastOffTriggered = true;
         }
