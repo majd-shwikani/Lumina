@@ -45,6 +45,9 @@ volatile bool turnedOffByDarkness = false;   // Track auto-off state
 volatile float currentLux = 0;
 volatile bool sensorAvailable = false;
 
+// Device-specific base path (FIXED: removed trailing slash)
+String basePath = "/devices/" + String(DEVICE_ID);
+
 // Function declarations
 void connectToWiFi();
 void setupFirebase();
@@ -69,6 +72,10 @@ void setupTime();
 
 void setup() {
   Serial.begin(115200);
+  
+  // Print device ID for verification
+  Serial.println("Device ID: " + String(DEVICE_ID));
+  Serial.println("Base path: " + basePath);
   
   // Initialize NeoPixel strip
   strip.begin();
@@ -184,7 +191,8 @@ void setupTime() {
 
 // Setup Over-The-Air updates
 void setupOTA() {
-  ArduinoOTA.setHostname("esp32-neopixel-controller");
+  String hostname = "esp32-neopixel-" + String(DEVICE_ID);
+  ArduinoOTA.setHostname(hostname.c_str());
   
   ArduinoOTA
     .onStart([]() {
@@ -215,7 +223,7 @@ void setupOTA() {
     });
 
   ArduinoOTA.begin();
-  Serial.println("OTA Ready");
+  Serial.println("OTA Ready - Hostname: " + hostname);
 }
 
 // Initialize VEML7700 light sensor
@@ -251,9 +259,14 @@ void setupFirebase() {
   
   // Read initial values from Firebase
   readInitialFirebaseData();
+
+  createDefaultFirebaseData();
   
-  // Start real-time stream listener
-  if (!Firebase.RTDB.beginStream(&fbdoStream, "/")) {
+  // FIX: Stream from the parent devices path, not the specific device
+  String streamPath = "/devices/" + String(DEVICE_ID);
+  Serial.println("Stream path: " + streamPath);
+  
+  if (!Firebase.RTDB.beginStream(&fbdoStream, streamPath.c_str())) {
     Serial.printf("Stream begin error: %s\n", fbdoStream.errorReason().c_str());
   }
   
@@ -263,28 +276,34 @@ void setupFirebase() {
 
 // Read initial values from Firebase on startup
 void readInitialFirebaseData() {
-  Serial.println("Reading initial Firebase data...");
+  Serial.println("Reading initial Firebase data for device: " + String(DEVICE_ID));
   
-  // Read current effect
-  if (Firebase.RTDB.getInt(&fbdoUpload, "/effect")) {
+  // Read current effect (FIXED: added leading slash)
+  String effectPath = basePath + "/effect";
+  if (Firebase.RTDB.getInt(&fbdoUpload, effectPath.c_str())) {
     currentEffect = fbdoUpload.intData();
     Serial.printf("Initial effect: %d\n", currentEffect);
   } else {
     Serial.printf("Failed to read effect, using default: %s\n", fbdoUpload.errorReason().c_str());
     currentEffect = 0;
+    // Create default value if it doesn't exist
+    Firebase.RTDB.setInt(&fbdoUpload, effectPath.c_str(), currentEffect);
   }
   
-  // Read animation speed
-  if (Firebase.RTDB.getInt(&fbdoUpload, "/speed")) {
+  // Read animation speed (FIXED: added leading slash)
+  String speedPath = basePath + "/speed";
+  if (Firebase.RTDB.getInt(&fbdoUpload, speedPath.c_str())) {
     effectSpeed = fbdoUpload.intData();
     Serial.printf("Initial speed: %d\n", effectSpeed);
   } else {
     Serial.printf("Failed to read speed, using default: %s\n", fbdoUpload.errorReason().c_str());
     effectSpeed = 50;
+    Firebase.RTDB.setInt(&fbdoUpload, speedPath.c_str(), effectSpeed);
   }
   
-  // Read LED color
-  if (Firebase.RTDB.getString(&fbdoUpload, "/color")) {
+  // Read LED color (FIXED: added leading slash)
+  String colorPath = basePath + "/color";
+  if (Firebase.RTDB.getString(&fbdoUpload, colorPath.c_str())) {
     String colorStr = fbdoUpload.stringData();
     if (colorStr.length() == 6) {
       effectColor = strtoul(colorStr.c_str(), NULL, 16);
@@ -293,10 +312,12 @@ void readInitialFirebaseData() {
   } else {
     Serial.printf("Failed to read color, using default: %s\n", fbdoUpload.errorReason().c_str());
     effectColor = 0xFF0000;
+    Firebase.RTDB.setString(&fbdoUpload, colorPath.c_str(), "FF0000");
   }
   
-  // Read enabled state
-  if (Firebase.RTDB.getBool(&fbdoUpload, "/enabled")) {
+  // Read enabled state (FIXED: added leading slash)
+  String enabledPath = basePath + "/enabled";
+  if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
     stripEnabled = fbdoUpload.boolData();
     Serial.printf("Initial enabled state: %s\n", stripEnabled ? "true" : "false");
     
@@ -308,28 +329,34 @@ void readInitialFirebaseData() {
   } else {
     Serial.printf("Failed to read enabled state, using default: %s\n", fbdoUpload.errorReason().c_str());
     stripEnabled = true;
+    Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), stripEnabled);
   }
   
-  // Read auto darkness control setting
-  if (Firebase.RTDB.getBool(&fbdoUpload, "/auto_darkness_control")) {
+  // Read auto darkness control setting (FIXED: added leading slash)
+  String autoDarknessPath = basePath + "/auto_darkness_control";
+  if (Firebase.RTDB.getBool(&fbdoUpload, autoDarknessPath.c_str())) {
     autoDarknessControl = fbdoUpload.boolData();
     Serial.printf("Initial auto darkness control: %s\n", autoDarknessControl ? "true" : "false");
   } else {
     Serial.printf("Failed to read auto darkness control, using default: %s\n", fbdoUpload.errorReason().c_str());
     autoDarknessControl = true;
+    Firebase.RTDB.setBool(&fbdoUpload, autoDarknessPath.c_str(), autoDarknessControl);
   }
   
-  // Read lux threshold for auto-off
-  if (Firebase.RTDB.getFloat(&fbdoUpload, "/lux_threshold")) {
+  // Read lux threshold for auto-off (FIXED: added leading slash)
+  String luxThresholdPath = basePath + "/lux_threshold";
+  if (Firebase.RTDB.getFloat(&fbdoUpload, luxThresholdPath.c_str())) {
     luxThreshold = fbdoUpload.floatData();
     Serial.printf("Initial lux threshold: %.2f\n", luxThreshold);
   } else {
     Serial.printf("Failed to read lux threshold, using default: %s\n", fbdoUpload.errorReason().c_str());
     luxThreshold = 1.0;
+    Firebase.RTDB.setFloat(&fbdoUpload, luxThresholdPath.c_str(), luxThreshold);
   }
   
-  // Read timer on time
-  if (Firebase.RTDB.getString(&fbdoUpload, "/timer_on")) {
+  // Read timer on time (FIXED: added leading slash)
+  String timerOnPath = basePath + "/timer_on";
+  if (Firebase.RTDB.getString(&fbdoUpload, timerOnPath.c_str())) {
     String timeStr = fbdoUpload.stringData();
     if (timeStr.length() == 5) {
       strncpy(timerOnTime, timeStr.c_str(), sizeof(timerOnTime));
@@ -338,10 +365,12 @@ void readInitialFirebaseData() {
   } else {
     Serial.printf("Failed to read timer on time, using default: %s\n", fbdoUpload.errorReason().c_str());
     strcpy(timerOnTime, "09:00");
+    Firebase.RTDB.setString(&fbdoUpload, timerOnPath.c_str(), timerOnTime);
   }
   
-  // Read timer off time
-  if (Firebase.RTDB.getString(&fbdoUpload, "/timer_off")) {
+  // Read timer off time (FIXED: added leading slash)
+  String timerOffPath = basePath + "/timer_off";
+  if (Firebase.RTDB.getString(&fbdoUpload, timerOffPath.c_str())) {
     String timeStr = fbdoUpload.stringData();
     if (timeStr.length() == 5) {
       strncpy(timerOffTime, timeStr.c_str(), sizeof(timerOffTime));
@@ -350,15 +379,18 @@ void readInitialFirebaseData() {
   } else {
     Serial.printf("Failed to read timer off time, using default: %s\n", fbdoUpload.errorReason().c_str());
     strcpy(timerOffTime, "17:00");
+    Firebase.RTDB.setString(&fbdoUpload, timerOffPath.c_str(), timerOffTime);
   }
   
-  // Read timer enabled state
-  if (Firebase.RTDB.getBool(&fbdoUpload, "/timer_enabled")) {
+  // Read timer enabled state (FIXED: added leading slash)
+  String timerEnabledPath = basePath + "/timer_enabled";
+  if (Firebase.RTDB.getBool(&fbdoUpload, timerEnabledPath.c_str())) {
     timerEnabled = fbdoUpload.boolData();
     Serial.printf("Initial timer enabled: %s\n", timerEnabled ? "true" : "false");
   } else {
     Serial.printf("Failed to read timer enabled, using default: %s\n", fbdoUpload.errorReason().c_str());
     timerEnabled = true;
+    Firebase.RTDB.setBool(&fbdoUpload, timerEnabledPath.c_str(), timerEnabled);
   }
 }
 
@@ -424,7 +456,7 @@ void automationtask(void *parameter) {
   }
 }
 
-// Sensor data task - reads and reports light levels to Firebase
+// Sensor data task - reads and reports light levels to Firebase (FIXED: corrected path)
 void sensorDataTask(void *parameter) {
   const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // 2 second interval
   
@@ -434,9 +466,13 @@ void sensorDataTask(void *parameter) {
       if (sensorAvailable) {
         updateSensorData();
         
-        // Send lux data to Firebase
-        if (Firebase.RTDB.setFloat(&fbdoUpload, "/lux", currentLux)) {
-          Serial.printf("Lux data sent: %.2f\n", currentLux);
+        // Send lux data to Firebase (FIXED: added leading slash)
+        String luxPath = basePath + "/lux";
+        Serial.println("Attempting to send lux data to path: " + luxPath);
+        Serial.printf("Lux value: %.2f\n", currentLux);
+        
+        if (Firebase.RTDB.setFloat(&fbdoUpload, luxPath.c_str(), currentLux)) {
+          Serial.printf("Lux data sent successfully: %.2f\n", currentLux);
         } else {
           Serial.printf("Failed to send lux data: %s\n", fbdoUpload.errorReason().c_str());
         }
@@ -485,10 +521,11 @@ void timerTask(void *parameter) {
   }
 }
 
-// Update timer state in Firebase and locally
+// Update timer state in Firebase and locally (FIXED: corrected path)
 void updateTimerState(bool state) {
   esp_task_wdt_reset();
-  if (Firebase.RTDB.setBool(&fbdoUpload, "/enabled", state)) {
+  String enabledPath = basePath + "/enabled";
+  if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), state)) {
     stripEnabled = state;
     Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
     
@@ -535,18 +572,22 @@ void streamCallback(FirebaseStream data) {
                 data.eventType().c_str(),
                 data.stringData().c_str());
 
+  // FIX: Get the actual data path from the stream
+  String dataPath = data.dataPath().c_str();
+  Serial.println("Data path: " + dataPath);
+
   // Effect change
-  if (data.dataPath() == "/effect") {
+  if (dataPath == "/effect") {
     currentEffect = data.intData();
     Serial.printf("Effect changed to: %d\n", currentEffect);
   }
   // Speed change
-  else if (data.dataPath() == "/speed") {
+  else if (dataPath == "/speed") {
     effectSpeed = data.intData();
     Serial.printf("Speed changed to: %d\n", effectSpeed);
   }
   // Color change
-  else if (data.dataPath() == "/color") {
+  else if (dataPath == "/color") {
     String colorStr = data.stringData();
     if (colorStr.length() == 6) {
       effectColor = strtoul(colorStr.c_str(), NULL, 16);
@@ -554,12 +595,12 @@ void streamCallback(FirebaseStream data) {
     }
   }
   // Lux threshold change
-  else if (data.dataPath() == "/lux_threshold") {
+  else if (dataPath == "/lux_threshold") {
     luxThreshold = data.floatData();
     Serial.printf("Lux threshold changed to: %.2f\n", luxThreshold);
   }
   // Enabled state change
-  else if (data.dataPath() == "/enabled") {
+  else if (dataPath == "/enabled") {
     bool newState = data.boolData();
     
     stripEnabled = newState;
@@ -571,17 +612,17 @@ void streamCallback(FirebaseStream data) {
     }
   }
   // Timer enabled change
-  else if (data.dataPath() == "/timer_enabled") {
+  else if (dataPath == "/timer_enabled") {
     timerEnabled = data.boolData();
     Serial.printf("Timer %s\n", timerEnabled ? "enabled" : "disabled");
   }
   // Auto darkness control change
-  else if (data.dataPath() == "/auto_darkness_control") {
+  else if (dataPath == "/auto_darkness_control") {
     autoDarknessControl = data.boolData();
     Serial.printf("Auto darkness control %s\n", autoDarknessControl ? "enabled" : "disabled");
   }
   // Timer on time change
-  else if (data.dataPath() == "/timer_on") {
+  else if (dataPath == "/timer_on") {
     String timeStr = data.stringData();
     if (timeStr.length() == 5) {
       strncpy(timerOnTime, timeStr.c_str(), sizeof(timerOnTime));
@@ -589,7 +630,7 @@ void streamCallback(FirebaseStream data) {
     }
   }
   // Timer off time change
-  else if (data.dataPath() == "/timer_off") {
+  else if (dataPath == "/timer_off") {
     String timeStr = data.stringData();
     if (timeStr.length() == 5) {
       strncpy(timerOffTime, timeStr.c_str(), sizeof(timerOffTime));
@@ -653,68 +694,77 @@ void updateLEDs() {
   strip.show();
 }
 
-// Create default data structure in Firebase (backup function)
+// Create default data structure in Firebase (backup function) - FIXED: all paths corrected
 void createDefaultFirebaseData() {
-  Serial.println("Creating default Firebase data structure...");
+  Serial.println("Creating default Firebase data structure for device: " + String(DEVICE_ID));
   
-  // Set default effect
-  if (Firebase.RTDB.setInt(&fbdoUpload, "/effect", 0)) {
+  // Set default effect (FIXED: added leading slash)
+  String effectPath = basePath + "/effect";
+  if (Firebase.RTDB.setInt(&fbdoUpload, effectPath.c_str(), 0)) {
     Serial.println("Effect set to default: 0");
   } else {
     Serial.printf("Failed to set effect: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default speed
-  if (Firebase.RTDB.setInt(&fbdoUpload, "/speed", 50)) {
+  // Set default speed (FIXED: added leading slash)
+  String speedPath = basePath + "/speed";
+  if (Firebase.RTDB.setInt(&fbdoUpload, speedPath.c_str(), 50)) {
     Serial.println("Speed set to default: 50");
   } else {
     Serial.printf("Failed to set speed: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default color
-  if (Firebase.RTDB.setString(&fbdoUpload, "/color", "FF0000")) {
+  // Set default color (FIXED: added leading slash)
+  String colorPath = basePath + "/color";
+  if (Firebase.RTDB.setString(&fbdoUpload, colorPath.c_str(), "FF0000")) {
     Serial.println("Color set to default: FF0000");
   } else {
     Serial.printf("Failed to set color: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default enabled state
-  if (Firebase.RTDB.setBool(&fbdoUpload, "/enabled", true)) {
+  // Set default enabled state (FIXED: added leading slash)
+  String enabledPath = basePath + "/enabled";
+  if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), true)) {
     Serial.println("Enabled set to default: true");
   } else {
     Serial.printf("Failed to set enabled: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default auto darkness control
-  if (Firebase.RTDB.setBool(&fbdoUpload, "/auto_darkness_control", true)) {
+  // Set default auto darkness control (FIXED: added leading slash)
+  String autoDarknessPath = basePath + "/auto_darkness_control";
+  if (Firebase.RTDB.setBool(&fbdoUpload, autoDarknessPath.c_str(), true)) {
     Serial.println("Auto darkness control set to default: true");
   } else {
     Serial.printf("Failed to set auto darkness control: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default lux threshold
-  if (Firebase.RTDB.setFloat(&fbdoUpload, "/lux_threshold", 1.0)) {
+  // Set default lux threshold (FIXED: added leading slash)
+  String luxThresholdPath = basePath + "/lux_threshold";
+  if (Firebase.RTDB.setFloat(&fbdoUpload, luxThresholdPath.c_str(), 1.0)) {
     Serial.println("Lux threshold set to default: 1.0");
   } else {
     Serial.printf("Failed to set lux threshold: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default timer on time
-  if (Firebase.RTDB.setString(&fbdoUpload, "/timer_on", "09:00")) {
+  // Set default timer on time (FIXED: added leading slash)
+  String timerOnPath = basePath + "/timer_on";
+  if (Firebase.RTDB.setString(&fbdoUpload, timerOnPath.c_str(), "09:00")) {
     Serial.println("Timer ON set to default: 09:00");
   } else {
     Serial.printf("Failed to set timer ON: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default timer off time
-  if (Firebase.RTDB.setString(&fbdoUpload, "/timer_off", "17:00")) {
+  // Set default timer off time (FIXED: added leading slash)
+  String timerOffPath = basePath + "/timer_off";
+  if (Firebase.RTDB.setString(&fbdoUpload, timerOffPath.c_str(), "17:00")) {
     Serial.println("Timer OFF set to default: 17:00");
   } else {
     Serial.printf("Failed to set timer OFF: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default timer enabled state
-  if (Firebase.RTDB.setBool(&fbdoUpload, "/timer_enabled", true)) {
+  // Set default timer enabled state (FIXED: added leading slash)
+  String timerEnabledPath = basePath + "/timer_enabled";
+  if (Firebase.RTDB.setBool(&fbdoUpload, timerEnabledPath.c_str(), true)) {
     Serial.println("Timer enabled set to default: true");
   } else {
     Serial.printf("Failed to set timer enabled: %s\n", fbdoUpload.errorReason().c_str());
