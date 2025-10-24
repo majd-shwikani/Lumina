@@ -5,30 +5,28 @@
 #include <Wire.h>
 #include <Adafruit_VEML7700.h>
 #include "effects.h"
-#include <esp_task_wdt.h>  // Watchdog timer for system stability
+#include <esp_task_wdt.h>
 #include <SPIFFS.h>
-#include <WebServer.h>
 #include <ArduinoJson.h>
 
-// Project configuration (WiFi, Firebase, etc.)
+// Project configuration (Firebase, time settings)
 #include "config.h"
+
+// Configuration portal
+#include "web_config_portal.h"
 
 // Firebase token helper for authentication
 #include <addons/TokenHelper.h>
-
-// Web server for configuration
-WebServer server(80);
 
 // Light sensor threshold (controlled via Firebase)
 volatile float luxThreshold = 1.0;
 
 // Global objects
-Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip(1, LED_PIN, NEO_GRB + NEO_KHZ800); // Temporary initial value
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
-FirebaseData fbdoStream;  // For Firebase real-time stream
-FirebaseData fbdoUpload;  // For Firebase write operations
-// Global configuration data
-ConfigData configData;
+FirebaseData fbdoStream;
+FirebaseData fbdoUpload;
+
 // Timer settings (HH:MM format)
 char timerOnTime[6] = "09:00";
 char timerOffTime[6] = "17:00";
@@ -37,6 +35,7 @@ bool timerEnabled = true;
 // Firebase authentication and configuration
 FirebaseAuth auth;
 FirebaseConfig config;
+bool defaultDataCreated = false;
 
 // LED animation control variables
 volatile int currentEffect = 0;
@@ -44,31 +43,25 @@ volatile uint32_t effectSpeed = 50;
 volatile uint32_t effectColor = 0xFF0000;
 volatile bool updateEffect = false;
 volatile bool firebaseConnected = false;
-volatile bool stripEnabled = true;           // Manual on/off toggle
-volatile bool autoDarknessControl = true;    // Auto-off in low light
-volatile bool turnedOffByDarkness = false;   // Track auto-off state
+volatile bool stripEnabled = true;
+volatile bool autoDarknessControl = true;
+volatile bool turnedOffByDarkness = false;
 
 // Sensor data
 volatile float currentLux = 0;
 volatile bool sensorAvailable = false;
 
-// Device-specific base path (FIXED: removed trailing slash)
+// Device configuration from SPIFFS
+String deviceID;
+String wifiSSID;
+String wifiPassword;
+int ledCount;
 String basePath;
 
-// Configuration data structure
-
-
-
-// Configuration state
-bool configMode = false;
-
 // Function declarations
-void setupSPIFFS();
-void loadConfig();
-void saveConfig();
-void startConfigMode();
-void handleRoot();
-void handleSaveConfig();
+void initSPIFFS();
+bool loadConfig();
+bool shouldStartConfigPortal();
 void connectToWiFi();
 void setupFirebase();
 void setupOTA();
@@ -93,26 +86,31 @@ void setupTime();
 void setup() {
   Serial.begin(115200);
   
-  // Initialize SPIFFS and load configuration
-  setupSPIFFS();
+  // Initialize SPIFFS
+  initSPIFFS();
   
-  // If configuration is not complete, start config mode
-  if (strlen(configData.wifiSSID) == 0 || strlen(configData.wifiPassword) == 0 || 
-      strlen(configData.deviceID) == 0 || configData.numLeds == 0) {
-    startConfigMode();
-    return; // Don't continue with normal setup
+  // Check if we need to start config portal
+  if (shouldStartConfigPortal()) {
+    Serial.println("No configuration found. Starting config portal...");
+    startConfigPortal();
+    // This will restart after config is saved
+    return;
   }
   
-  // Set base path with loaded device ID
-  basePath = "/devices/" + String(configData.deviceID);
+  // Load configuration from SPIFFS
+  if (!loadConfig()) {
+    Serial.println("Failed to load config, restarting...");
+    ESP.restart();
+    return;
+  }
   
   // Print device ID for verification
-  Serial.println("Device ID: " + String(configData.deviceID));
+  Serial.println("Device ID: " + deviceID);
   Serial.println("Base path: " + basePath);
-  Serial.println("Number of LEDs: " + String(configData.numLeds));
+  Serial.println("LED Count: " + String(ledCount));
   
-  // Initialize NeoPixel strip with configured number of LEDs
-  strip.updateLength(configData.numLeds);
+  // Initialize NeoPixel strip with configured count
+  strip.updateLength(ledCount);
   strip.begin();
   strip.show();
   strip.setBrightness(100);
@@ -189,31 +187,25 @@ void setup() {
 }
 
 void loop() {
-  if (configMode) {
-    server.handleClient();
-  } else {
-    // Empty - all functionality handled by FreeRTOS tasks
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-  }
+  // Empty - all functionality handled by FreeRTOS tasks
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
 
-// Initialize SPIFFS and load configuration
-void setupSPIFFS() {
+// Initialize SPIFFS
+void initSPIFFS() {
   if (!SPIFFS.begin(true)) {
-    Serial.println("An error occurred while mounting SPIFFS");
+    Serial.println("SPIFFS mount failed");
     return;
   }
   Serial.println("SPIFFS mounted successfully");
-  loadConfig();
 }
 
 // Load configuration from SPIFFS
-void loadConfig() {
+bool loadConfig() {
   File configFile = SPIFFS.open("/config.json", "r");
   if (!configFile) {
-    Serial.println("No configuration file found, using defaults");
-    memset(&configData, 0, sizeof(configData));
-    return;
+    Serial.println("Failed to open config file");
+    return false;
   }
   
   size_t size = configFile.size();
@@ -223,165 +215,41 @@ void loadConfig() {
   
   DynamicJsonDocument doc(1024);
   DeserializationError error = deserializeJson(doc, buf.get());
-  
   if (error) {
     Serial.println("Failed to parse config file");
-    return;
+    return false;
   }
   
-  strlcpy(configData.wifiSSID, doc["wifiSSID"] | "", sizeof(configData.wifiSSID));
-  strlcpy(configData.wifiPassword, doc["wifiPassword"] | "", sizeof(configData.wifiPassword));
-  strlcpy(configData.deviceID, doc["deviceID"] | "", sizeof(configData.deviceID));
-  configData.numLeds = doc["numLeds"] | NUM_LEDS;
+  wifiSSID = doc["wifi_ssid"].as<String>();
+  wifiPassword = doc["wifi_password"].as<String>();
+  deviceID = doc["device_id"].as<String>();
+  ledCount = doc["num_leds"];
   
-  Serial.println("Configuration loaded from SPIFFS");
+  // Set base path
+  basePath = "/devices/" + deviceID;
+  
+  Serial.println("Configuration loaded:");
+  Serial.println("SSID: " + wifiSSID);
+  Serial.println("Device ID: " + deviceID);
+  Serial.println("LED Count: " + String(ledCount));
+  
+  return true;
 }
 
-// Save configuration to SPIFFS
-void saveConfig() {
-  DynamicJsonDocument doc(1024);
-  doc["wifiSSID"] = configData.wifiSSID;
-  doc["wifiPassword"] = configData.wifiPassword;
-  doc["deviceID"] = configData.deviceID;
-  doc["numLeds"] = configData.numLeds;
-  
-  File configFile = SPIFFS.open("/config.json", "w");
-  if (!configFile) {
-    Serial.println("Failed to open config file for writing");
-    return;
-  }
-  
-  serializeJson(doc, configFile);
-  configFile.close();
-  Serial.println("Configuration saved to SPIFFS");
-}
-
-// Start configuration mode with AP and web server
-void startConfigMode() {
-  configMode = true;
-  Serial.println("Starting configuration mode...");
-  
-  // Set up Access Point
-  WiFi.softAP("Lumina", "");
-  IPAddress IP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(IP);
-  
-  // Set up web server routes
-  server.on("/", handleRoot);
-  server.on("/save", HTTP_POST, handleSaveConfig);
-  server.begin();
-  
-  Serial.println("Web server started. Connect to WiFi 'Lumina' and visit http://192.168.4.1");
-}
-
-// Handle root page
-void handleRoot() {
-  String html = R"rawliteral(
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <title>Lumina Configuration</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-      body { font-family: Arial; margin: 40px; background: #f0f0f0; }
-      .container { background: white; padding: 20px; border-radius: 10px; max-width: 400px; margin: 0 auto; }
-      h1 { color: #333; text-align: center; }
-      .form-group { margin-bottom: 15px; }
-      label { display: block; margin-bottom: 5px; font-weight: bold; }
-      input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-      button { background: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; width: 100%; }
-      button:hover { background: #45a049; }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>Lumina Configuration</h1>
-      <form action="/save" method="post">
-        <div class="form-group">
-          <label for="ssid">WiFi SSID:</label>
-          <input type="text" id="ssid" name="ssid" required>
-        </div>
-        <div class="form-group">
-          <label for="password">WiFi Password:</label>
-          <input type="password" id="password" name="password">
-        </div>
-        <div class="form-group">
-          <label for="deviceid">Device ID:</label>
-          <input type="text" id="deviceid" name="deviceid" required>
-        </div>
-        <div class="form-group">
-          <label for="numleds">Number of LEDs:</label>
-          <input type="number" id="numleds" name="numleds" value="180" min="1" max="1000" required>
-        </div>
-        <button type="submit">Save Configuration</button>
-      </form>
-    </div>
-  </body>
-  </html>
-  )rawliteral";
-  
-  server.send(200, "text/html", html);
-}
-
-// Handle configuration save
-void handleSaveConfig() {
-  if (server.hasArg("ssid") && server.hasArg("deviceid") && server.hasArg("numleds")) {
-    strlcpy(configData.wifiSSID, server.arg("ssid").c_str(), sizeof(configData.wifiSSID));
-    strlcpy(configData.wifiPassword, server.arg("password").c_str(), sizeof(configData.wifiPassword));
-    strlcpy(configData.deviceID, server.arg("deviceid").c_str(), sizeof(configData.deviceID));
-    configData.numLeds = server.arg("numleds").toInt();
-    
-    saveConfig();
-    
-    String html = R"rawliteral(
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Configuration Saved</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <style>
-        body { font-family: Arial; margin: 40px; background: #f0f0f0; }
-        .container { background: white; padding: 20px; border-radius: 10px; max-width: 400px; margin: 0 auto; text-align: center; }
-        h1 { color: #4CAF50; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>Configuration Saved!</h1>
-        <p>Device will restart and connect to your network.</p>
-        <p>Device ID: )rawliteral" + String(configData.deviceID) + R"rawliteral(</p>
-        <p>LEDs: )rawliteral" + String(configData.numLeds) + R"rawliteral(</p>
-      </div>
-      <script>
-        setTimeout(function() {
-          window.location.href = "/";
-        }, 5000);
-      </script>
-    </body>
-    </html>
-    )rawliteral";
-    
-    server.send(200, "text/html", html);
-    
-    delay(3000);
-    ESP.restart();
-  } else {
-    server.send(400, "text/plain", "Missing required fields");
-  }
+// Check if config portal should start
+bool shouldStartConfigPortal() {
+  return !SPIFFS.exists("/config.json");
 }
 
 // Connect to WiFi network using configured credentials
 void connectToWiFi() {
-  WiFi.begin(configData.wifiSSID, configData.wifiPassword);
-  Serial.print("Connecting to WiFi: ");
-  Serial.println(configData.wifiSSID);
+  WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
+  Serial.print("Connecting to WiFi: " + wifiSSID);
   
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 30000) {
     delay(500);
     Serial.print(".");
-    attempts++;
   }
   
   if (WiFi.status() == WL_CONNECTED) {
@@ -389,8 +257,8 @@ void connectToWiFi() {
     Serial.print("Connected with IP: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\nFailed to connect to WiFi. Starting configuration mode...");
-    startConfigMode();
+    Serial.println("\nFailed to connect to WiFi");
+    // Continue anyway, might reconnect in task
   }
 }
 
@@ -400,19 +268,24 @@ void setupTime() {
   
   Serial.print("Waiting for time synchronization");
   struct tm timeinfo;
-  while (!getLocalTime(&timeinfo)) {
+  unsigned long startTime = millis();
+  while (!getLocalTime(&timeinfo) && millis() - startTime < 10000) {
     Serial.print(".");
     delay(1000);
   }
-  Serial.println();
   
-  Serial.println("Time synchronized:");
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+  if (getLocalTime(&timeinfo)) {
+    Serial.println();
+    Serial.println("Time synchronized:");
+    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+  } else {
+    Serial.println("\nFailed to synchronize time");
+  }
 }
 
 // Setup Over-The-Air updates
 void setupOTA() {
-  String hostname = "esp32-neopixel-" + String(configData.deviceID);
+  String hostname = "esp32-neopixel-" + deviceID;
   ArduinoOTA.setHostname(hostname.c_str());
   
   ArduinoOTA
@@ -483,8 +356,8 @@ void setupFirebase() {
 
   createDefaultFirebaseData();
   
-  // FIX: Stream from the parent devices path, not the specific device
-  String streamPath = "/devices/" + String(configData.deviceID);
+  // Stream from the device path
+  String streamPath = "/devices/" + deviceID;
   Serial.println("Stream path: " + streamPath);
   
   if (!Firebase.RTDB.beginStream(&fbdoStream, streamPath.c_str())) {
@@ -497,9 +370,9 @@ void setupFirebase() {
 
 // Read initial values from Firebase on startup
 void readInitialFirebaseData() {
-  Serial.println("Reading initial Firebase data for device: " + String(configData.deviceID));
+  Serial.println("Reading initial Firebase data for device: " + deviceID);
   
-  // Read current effect (FIXED: added leading slash)
+  // Read current effect
   String effectPath = basePath + "/effect";
   if (Firebase.RTDB.getInt(&fbdoUpload, effectPath.c_str())) {
     currentEffect = fbdoUpload.intData();
@@ -511,7 +384,7 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setInt(&fbdoUpload, effectPath.c_str(), currentEffect);
   }
   
-  // Read animation speed (FIXED: added leading slash)
+  // Read animation speed
   String speedPath = basePath + "/speed";
   if (Firebase.RTDB.getInt(&fbdoUpload, speedPath.c_str())) {
     effectSpeed = fbdoUpload.intData();
@@ -522,7 +395,7 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setInt(&fbdoUpload, speedPath.c_str(), effectSpeed);
   }
   
-  // Read LED color (FIXED: added leading slash)
+  // Read LED color
   String colorPath = basePath + "/color";
   if (Firebase.RTDB.getString(&fbdoUpload, colorPath.c_str())) {
     String colorStr = fbdoUpload.stringData();
@@ -536,7 +409,7 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setString(&fbdoUpload, colorPath.c_str(), "FF0000");
   }
   
-  // Read enabled state (FIXED: added leading slash)
+  // Read enabled state
   String enabledPath = basePath + "/enabled";
   if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
     stripEnabled = fbdoUpload.boolData();
@@ -553,7 +426,7 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), stripEnabled);
   }
   
-  // Read auto darkness control setting (FIXED: added leading slash)
+  // Read auto darkness control setting
   String autoDarknessPath = basePath + "/auto_darkness_control";
   if (Firebase.RTDB.getBool(&fbdoUpload, autoDarknessPath.c_str())) {
     autoDarknessControl = fbdoUpload.boolData();
@@ -564,7 +437,7 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setBool(&fbdoUpload, autoDarknessPath.c_str(), autoDarknessControl);
   }
   
-  // Read lux threshold for auto-off (FIXED: added leading slash)
+  // Read lux threshold for auto-off
   String luxThresholdPath = basePath + "/lux_threshold";
   if (Firebase.RTDB.getFloat(&fbdoUpload, luxThresholdPath.c_str())) {
     luxThreshold = fbdoUpload.floatData();
@@ -575,7 +448,7 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setFloat(&fbdoUpload, luxThresholdPath.c_str(), luxThreshold);
   }
   
-  // Read timer on time (FIXED: added leading slash)
+  // Read timer on time
   String timerOnPath = basePath + "/timer_on";
   if (Firebase.RTDB.getString(&fbdoUpload, timerOnPath.c_str())) {
     String timeStr = fbdoUpload.stringData();
@@ -589,7 +462,7 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setString(&fbdoUpload, timerOnPath.c_str(), timerOnTime);
   }
   
-  // Read timer off time (FIXED: added leading slash)
+  // Read timer off time
   String timerOffPath = basePath + "/timer_off";
   if (Firebase.RTDB.getString(&fbdoUpload, timerOffPath.c_str())) {
     String timeStr = fbdoUpload.stringData();
@@ -603,7 +476,7 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setString(&fbdoUpload, timerOffPath.c_str(), timerOffTime);
   }
   
-  // Read timer enabled state (FIXED: added leading slash)
+  // Read timer enabled state
   String timerEnabledPath = basePath + "/timer_enabled";
   if (Firebase.RTDB.getBool(&fbdoUpload, timerEnabledPath.c_str())) {
     timerEnabled = fbdoUpload.boolData();
@@ -677,7 +550,7 @@ void automationtask(void *parameter) {
   }
 }
 
-// Sensor data task - reads and reports light levels to Firebase (FIXED: corrected path)
+// Sensor data task - reads and reports light levels to Firebase
 void sensorDataTask(void *parameter) {
   const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // 2 second interval
   
@@ -687,7 +560,7 @@ void sensorDataTask(void *parameter) {
       if (sensorAvailable) {
         updateSensorData();
         
-        // Send lux data to Firebase (FIXED: added leading slash)
+        // Send lux data to Firebase
         String luxPath = basePath + "/lux";
         Serial.println("Attempting to send lux data to path: " + luxPath);
         Serial.printf("Lux value: %.2f\n", currentLux);
@@ -742,7 +615,7 @@ void timerTask(void *parameter) {
   }
 }
 
-// Update timer state in Firebase and locally (FIXED: corrected path)
+// Update timer state in Firebase and locally
 void updateTimerState(bool state) {
   esp_task_wdt_reset();
   String enabledPath = basePath + "/enabled";
@@ -793,7 +666,6 @@ void streamCallback(FirebaseStream data) {
                 data.eventType().c_str(),
                 data.stringData().c_str());
 
-  // FIX: Get the actual data path from the stream
   String dataPath = data.dataPath().c_str();
   Serial.println("Data path: " + dataPath);
 
@@ -825,7 +697,7 @@ void streamCallback(FirebaseStream data) {
     bool newState = data.boolData();
     
     stripEnabled = newState;
-    turnedOffByDarkness = false;  // Reset auto-off flag on manual toggle
+    turnedOffByDarkness = false;
     Serial.printf("Strip %s\n", stripEnabled ? "enabled" : "disabled");
     if (!stripEnabled) {
       strip.clear();
@@ -915,11 +787,20 @@ void updateLEDs() {
   strip.show();
 }
 
-// Create default data structure in Firebase (backup function) - FIXED: all paths corrected
+// Create default data structure in Firebase only for new devices
 void createDefaultFirebaseData() {
-  Serial.println("Creating default Firebase data structure for device: " + String(configData.deviceID));
+  // Check if device data already exists in Firebase
+  String testPath = basePath + "/effect";
   
-  // Set default effect (FIXED: added leading slash)
+  if (Firebase.RTDB.getInt(&fbdoUpload, testPath.c_str())) {
+    Serial.println("Firebase data already exists, skipping default data creation");
+    defaultDataCreated = true;
+    return;
+  }
+  
+  Serial.println("No existing Firebase data found. Creating default structure for new device: " + deviceID);
+  
+  // Set default effect
   String effectPath = basePath + "/effect";
   if (Firebase.RTDB.setInt(&fbdoUpload, effectPath.c_str(), 0)) {
     Serial.println("Effect set to default: 0");
@@ -927,7 +808,7 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set effect: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default speed (FIXED: added leading slash)
+  // Set default speed
   String speedPath = basePath + "/speed";
   if (Firebase.RTDB.setInt(&fbdoUpload, speedPath.c_str(), 50)) {
     Serial.println("Speed set to default: 50");
@@ -935,7 +816,7 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set speed: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default color (FIXED: added leading slash)
+  // Set default color
   String colorPath = basePath + "/color";
   if (Firebase.RTDB.setString(&fbdoUpload, colorPath.c_str(), "FF0000")) {
     Serial.println("Color set to default: FF0000");
@@ -943,7 +824,7 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set color: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default enabled state (FIXED: added leading slash)
+  // Set default enabled state
   String enabledPath = basePath + "/enabled";
   if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), true)) {
     Serial.println("Enabled set to default: true");
@@ -951,7 +832,7 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set enabled: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default auto darkness control (FIXED: added leading slash)
+  // Set default auto darkness control
   String autoDarknessPath = basePath + "/auto_darkness_control";
   if (Firebase.RTDB.setBool(&fbdoUpload, autoDarknessPath.c_str(), true)) {
     Serial.println("Auto darkness control set to default: true");
@@ -959,7 +840,7 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set auto darkness control: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default lux threshold (FIXED: added leading slash)
+  // Set default lux threshold
   String luxThresholdPath = basePath + "/lux_threshold";
   if (Firebase.RTDB.setFloat(&fbdoUpload, luxThresholdPath.c_str(), 1.0)) {
     Serial.println("Lux threshold set to default: 1.0");
@@ -967,7 +848,7 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set lux threshold: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default timer on time (FIXED: added leading slash)
+  // Set default timer on time
   String timerOnPath = basePath + "/timer_on";
   if (Firebase.RTDB.setString(&fbdoUpload, timerOnPath.c_str(), "09:00")) {
     Serial.println("Timer ON set to default: 09:00");
@@ -975,7 +856,7 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set timer ON: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default timer off time (FIXED: added leading slash)
+  // Set default timer off time
   String timerOffPath = basePath + "/timer_off";
   if (Firebase.RTDB.setString(&fbdoUpload, timerOffPath.c_str(), "17:00")) {
     Serial.println("Timer OFF set to default: 17:00");
@@ -983,7 +864,7 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set timer OFF: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  // Set default timer enabled state (FIXED: added leading slash)
+  // Set default timer enabled state
   String timerEnabledPath = basePath + "/timer_enabled";
   if (Firebase.RTDB.setBool(&fbdoUpload, timerEnabledPath.c_str(), true)) {
     Serial.println("Timer enabled set to default: true");
@@ -991,5 +872,6 @@ void createDefaultFirebaseData() {
     Serial.printf("Failed to set timer enabled: %s\n", fbdoUpload.errorReason().c_str());
   }
   
-  Serial.println("Default Firebase data structure created");
+  defaultDataCreated = true;
+  Serial.println("Default Firebase data structure created successfully for new device");
 }
