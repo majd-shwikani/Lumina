@@ -354,7 +354,7 @@ void setupFirebase() {
   // Read initial values from Firebase
   readInitialFirebaseData();
 
-  createDefaultFirebaseData();
+  //createDefaultFirebaseData();
   
   // Stream from the device path
   String streamPath = "/devices/" + deviceID;
@@ -486,6 +486,9 @@ void readInitialFirebaseData() {
     timerEnabled = true;
     Firebase.RTDB.setBool(&fbdoUpload, timerEnabledPath.c_str(), timerEnabled);
   }
+  // Read reset flag (create if doesn't exist)
+  String resetPath = basePath + "/reset";
+  Firebase.RTDB.setBool(&fbdoUpload, resetPath.c_str(), false);
 }
 
 // Firebase management task - handles OTA and connection monitoring
@@ -730,6 +733,19 @@ void streamCallback(FirebaseStream data) {
       Serial.printf("Timer OFF time changed to: %s\n", timerOffTime);
     }
   }
+   //reset handler
+  if (dataPath == "/reset" && data.boolData() == true) {
+    Serial.println("Reset command received - deleting config and restarting...");
+    
+    // Delete config file
+    if (SPIFFS.exists("/config.json")) {
+      SPIFFS.remove("/config.json");
+    }
+    
+    // Restart to enter config portal
+    ESP.restart();
+    return;
+  }
 }
 
 // Handle Firebase stream timeout
@@ -800,12 +816,15 @@ void createDefaultFirebaseData() {
   
   Serial.println("No existing Firebase data found. Creating default structure for new device: " + deviceID);
   
+  bool allSuccess = true;
+  
   // Set default effect
   String effectPath = basePath + "/effect";
   if (Firebase.RTDB.setInt(&fbdoUpload, effectPath.c_str(), 0)) {
     Serial.println("Effect set to default: 0");
   } else {
     Serial.printf("Failed to set effect: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
   }
   
   // Set default speed
@@ -814,6 +833,7 @@ void createDefaultFirebaseData() {
     Serial.println("Speed set to default: 50");
   } else {
     Serial.printf("Failed to set speed: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
   }
   
   // Set default color
@@ -822,6 +842,7 @@ void createDefaultFirebaseData() {
     Serial.println("Color set to default: FF0000");
   } else {
     Serial.printf("Failed to set color: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
   }
   
   // Set default enabled state
@@ -830,6 +851,7 @@ void createDefaultFirebaseData() {
     Serial.println("Enabled set to default: true");
   } else {
     Serial.printf("Failed to set enabled: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
   }
   
   // Set default auto darkness control
@@ -838,6 +860,7 @@ void createDefaultFirebaseData() {
     Serial.println("Auto darkness control set to default: true");
   } else {
     Serial.printf("Failed to set auto darkness control: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
   }
   
   // Set default lux threshold
@@ -846,6 +869,7 @@ void createDefaultFirebaseData() {
     Serial.println("Lux threshold set to default: 1.0");
   } else {
     Serial.printf("Failed to set lux threshold: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
   }
   
   // Set default timer on time
@@ -854,6 +878,7 @@ void createDefaultFirebaseData() {
     Serial.println("Timer ON set to default: 09:00");
   } else {
     Serial.printf("Failed to set timer ON: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
   }
   
   // Set default timer off time
@@ -862,6 +887,7 @@ void createDefaultFirebaseData() {
     Serial.println("Timer OFF set to default: 17:00");
   } else {
     Serial.printf("Failed to set timer OFF: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
   }
   
   // Set default timer enabled state
@@ -870,8 +896,24 @@ void createDefaultFirebaseData() {
     Serial.println("Timer enabled set to default: true");
   } else {
     Serial.printf("Failed to set timer enabled: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
   }
   
-  defaultDataCreated = true;
-  Serial.println("Default Firebase data structure created successfully for new device");
+  // Set default reset flag - this is the problematic one
+  String resetPath = basePath + "/reset";
+  if (Firebase.RTDB.setBool(&fbdoUpload, resetPath.c_str(), false)) {
+    Serial.println("Reset flag set to default: false");
+  } else {
+    Serial.printf("Failed to set reset flag: %s\n", fbdoUpload.errorReason().c_str());
+    Serial.printf("Full reset path: %s\n", resetPath.c_str());
+    allSuccess = false;
+  }
+  
+  defaultDataCreated = allSuccess;
+  
+  if (allSuccess) {
+    Serial.println("Default Firebase data structure created successfully for new device");
+  } else {
+    Serial.println("Some default values failed to set. Check Firebase rules and connection.");
+  }
 }

@@ -395,7 +395,7 @@ void handleSave() {
 
     // Give time for response to be sent
     delay(1000);
-    
+    digitalWrite(2, LOW);
     Serial.println("Configuration saved. Restarting...");
     ESP.restart();
   } else {
