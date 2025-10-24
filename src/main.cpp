@@ -6,12 +6,18 @@
 #include <Adafruit_VEML7700.h>
 #include "effects.h"
 #include <esp_task_wdt.h>  // Watchdog timer for system stability
+#include <SPIFFS.h>
+#include <WebServer.h>
+#include <ArduinoJson.h>
 
 // Project configuration (WiFi, Firebase, etc.)
 #include "config.h"
 
 // Firebase token helper for authentication
 #include <addons/TokenHelper.h>
+
+// Web server for configuration
+WebServer server(80);
 
 // Light sensor threshold (controlled via Firebase)
 volatile float luxThreshold = 1.0;
@@ -21,7 +27,8 @@ Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
 FirebaseData fbdoStream;  // For Firebase real-time stream
 FirebaseData fbdoUpload;  // For Firebase write operations
-
+// Global configuration data
+ConfigData configData;
 // Timer settings (HH:MM format)
 char timerOnTime[6] = "09:00";
 char timerOffTime[6] = "17:00";
@@ -46,9 +53,22 @@ volatile float currentLux = 0;
 volatile bool sensorAvailable = false;
 
 // Device-specific base path (FIXED: removed trailing slash)
-String basePath = "/devices/" + String(DEVICE_ID);
+String basePath;
+
+// Configuration data structure
+
+
+
+// Configuration state
+bool configMode = false;
 
 // Function declarations
+void setupSPIFFS();
+void loadConfig();
+void saveConfig();
+void startConfigMode();
+void handleRoot();
+void handleSaveConfig();
 void connectToWiFi();
 void setupFirebase();
 void setupOTA();
@@ -73,11 +93,26 @@ void setupTime();
 void setup() {
   Serial.begin(115200);
   
-  // Print device ID for verification
-  Serial.println("Device ID: " + String(DEVICE_ID));
-  Serial.println("Base path: " + basePath);
+  // Initialize SPIFFS and load configuration
+  setupSPIFFS();
   
-  // Initialize NeoPixel strip
+  // If configuration is not complete, start config mode
+  if (strlen(configData.wifiSSID) == 0 || strlen(configData.wifiPassword) == 0 || 
+      strlen(configData.deviceID) == 0 || configData.numLeds == 0) {
+    startConfigMode();
+    return; // Don't continue with normal setup
+  }
+  
+  // Set base path with loaded device ID
+  basePath = "/devices/" + String(configData.deviceID);
+  
+  // Print device ID for verification
+  Serial.println("Device ID: " + String(configData.deviceID));
+  Serial.println("Base path: " + basePath);
+  Serial.println("Number of LEDs: " + String(configData.numLeds));
+  
+  // Initialize NeoPixel strip with configured number of LEDs
+  strip.updateLength(configData.numLeds);
   strip.begin();
   strip.show();
   strip.setBrightness(100);
@@ -154,23 +189,209 @@ void setup() {
 }
 
 void loop() {
-  // Empty - all functionality handled by FreeRTOS tasks
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  if (configMode) {
+    server.handleClient();
+  } else {
+    // Empty - all functionality handled by FreeRTOS tasks
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
 }
 
-// Connect to WiFi network
-void connectToWiFi() {
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting to WiFi");
-  
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+// Initialize SPIFFS and load configuration
+void setupSPIFFS() {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("An error occurred while mounting SPIFFS");
+    return;
+  }
+  Serial.println("SPIFFS mounted successfully");
+  loadConfig();
+}
+
+// Load configuration from SPIFFS
+void loadConfig() {
+  File configFile = SPIFFS.open("/config.json", "r");
+  if (!configFile) {
+    Serial.println("No configuration file found, using defaults");
+    memset(&configData, 0, sizeof(configData));
+    return;
   }
   
-  Serial.println();
-  Serial.print("Connected with IP: ");
-  Serial.println(WiFi.localIP());
+  size_t size = configFile.size();
+  std::unique_ptr<char[]> buf(new char[size]);
+  configFile.readBytes(buf.get(), size);
+  configFile.close();
+  
+  DynamicJsonDocument doc(1024);
+  DeserializationError error = deserializeJson(doc, buf.get());
+  
+  if (error) {
+    Serial.println("Failed to parse config file");
+    return;
+  }
+  
+  strlcpy(configData.wifiSSID, doc["wifiSSID"] | "", sizeof(configData.wifiSSID));
+  strlcpy(configData.wifiPassword, doc["wifiPassword"] | "", sizeof(configData.wifiPassword));
+  strlcpy(configData.deviceID, doc["deviceID"] | "", sizeof(configData.deviceID));
+  configData.numLeds = doc["numLeds"] | NUM_LEDS;
+  
+  Serial.println("Configuration loaded from SPIFFS");
+}
+
+// Save configuration to SPIFFS
+void saveConfig() {
+  DynamicJsonDocument doc(1024);
+  doc["wifiSSID"] = configData.wifiSSID;
+  doc["wifiPassword"] = configData.wifiPassword;
+  doc["deviceID"] = configData.deviceID;
+  doc["numLeds"] = configData.numLeds;
+  
+  File configFile = SPIFFS.open("/config.json", "w");
+  if (!configFile) {
+    Serial.println("Failed to open config file for writing");
+    return;
+  }
+  
+  serializeJson(doc, configFile);
+  configFile.close();
+  Serial.println("Configuration saved to SPIFFS");
+}
+
+// Start configuration mode with AP and web server
+void startConfigMode() {
+  configMode = true;
+  Serial.println("Starting configuration mode...");
+  
+  // Set up Access Point
+  WiFi.softAP("Lumina", "");
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+  
+  // Set up web server routes
+  server.on("/", handleRoot);
+  server.on("/save", HTTP_POST, handleSaveConfig);
+  server.begin();
+  
+  Serial.println("Web server started. Connect to WiFi 'Lumina' and visit http://192.168.4.1");
+}
+
+// Handle root page
+void handleRoot() {
+  String html = R"rawliteral(
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <title>Lumina Configuration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: Arial; margin: 40px; background: #f0f0f0; }
+      .container { background: white; padding: 20px; border-radius: 10px; max-width: 400px; margin: 0 auto; }
+      h1 { color: #333; text-align: center; }
+      .form-group { margin-bottom: 15px; }
+      label { display: block; margin-bottom: 5px; font-weight: bold; }
+      input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+      button { background: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; width: 100%; }
+      button:hover { background: #45a049; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Lumina Configuration</h1>
+      <form action="/save" method="post">
+        <div class="form-group">
+          <label for="ssid">WiFi SSID:</label>
+          <input type="text" id="ssid" name="ssid" required>
+        </div>
+        <div class="form-group">
+          <label for="password">WiFi Password:</label>
+          <input type="password" id="password" name="password">
+        </div>
+        <div class="form-group">
+          <label for="deviceid">Device ID:</label>
+          <input type="text" id="deviceid" name="deviceid" required>
+        </div>
+        <div class="form-group">
+          <label for="numleds">Number of LEDs:</label>
+          <input type="number" id="numleds" name="numleds" value="180" min="1" max="1000" required>
+        </div>
+        <button type="submit">Save Configuration</button>
+      </form>
+    </div>
+  </body>
+  </html>
+  )rawliteral";
+  
+  server.send(200, "text/html", html);
+}
+
+// Handle configuration save
+void handleSaveConfig() {
+  if (server.hasArg("ssid") && server.hasArg("deviceid") && server.hasArg("numleds")) {
+    strlcpy(configData.wifiSSID, server.arg("ssid").c_str(), sizeof(configData.wifiSSID));
+    strlcpy(configData.wifiPassword, server.arg("password").c_str(), sizeof(configData.wifiPassword));
+    strlcpy(configData.deviceID, server.arg("deviceid").c_str(), sizeof(configData.deviceID));
+    configData.numLeds = server.arg("numleds").toInt();
+    
+    saveConfig();
+    
+    String html = R"rawliteral(
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Configuration Saved</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { font-family: Arial; margin: 40px; background: #f0f0f0; }
+        .container { background: white; padding: 20px; border-radius: 10px; max-width: 400px; margin: 0 auto; text-align: center; }
+        h1 { color: #4CAF50; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Configuration Saved!</h1>
+        <p>Device will restart and connect to your network.</p>
+        <p>Device ID: )rawliteral" + String(configData.deviceID) + R"rawliteral(</p>
+        <p>LEDs: )rawliteral" + String(configData.numLeds) + R"rawliteral(</p>
+      </div>
+      <script>
+        setTimeout(function() {
+          window.location.href = "/";
+        }, 5000);
+      </script>
+    </body>
+    </html>
+    )rawliteral";
+    
+    server.send(200, "text/html", html);
+    
+    delay(3000);
+    ESP.restart();
+  } else {
+    server.send(400, "text/plain", "Missing required fields");
+  }
+}
+
+// Connect to WiFi network using configured credentials
+void connectToWiFi() {
+  WiFi.begin(configData.wifiSSID, configData.wifiPassword);
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(configData.wifiSSID);
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
+    Serial.print("Connected with IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\nFailed to connect to WiFi. Starting configuration mode...");
+    startConfigMode();
+  }
 }
 
 // Synchronize with NTP server for accurate time
@@ -191,7 +412,7 @@ void setupTime() {
 
 // Setup Over-The-Air updates
 void setupOTA() {
-  String hostname = "esp32-neopixel-" + String(DEVICE_ID);
+  String hostname = "esp32-neopixel-" + String(configData.deviceID);
   ArduinoOTA.setHostname(hostname.c_str());
   
   ArduinoOTA
@@ -263,7 +484,7 @@ void setupFirebase() {
   createDefaultFirebaseData();
   
   // FIX: Stream from the parent devices path, not the specific device
-  String streamPath = "/devices/" + String(DEVICE_ID);
+  String streamPath = "/devices/" + String(configData.deviceID);
   Serial.println("Stream path: " + streamPath);
   
   if (!Firebase.RTDB.beginStream(&fbdoStream, streamPath.c_str())) {
@@ -276,7 +497,7 @@ void setupFirebase() {
 
 // Read initial values from Firebase on startup
 void readInitialFirebaseData() {
-  Serial.println("Reading initial Firebase data for device: " + String(DEVICE_ID));
+  Serial.println("Reading initial Firebase data for device: " + String(configData.deviceID));
   
   // Read current effect (FIXED: added leading slash)
   String effectPath = basePath + "/effect";
@@ -696,7 +917,7 @@ void updateLEDs() {
 
 // Create default data structure in Firebase (backup function) - FIXED: all paths corrected
 void createDefaultFirebaseData() {
-  Serial.println("Creating default Firebase data structure for device: " + String(DEVICE_ID));
+  Serial.println("Creating default Firebase data structure for device: " + String(configData.deviceID));
   
   // Set default effect (FIXED: added leading slash)
   String effectPath = basePath + "/effect";
@@ -769,4 +990,6 @@ void createDefaultFirebaseData() {
   } else {
     Serial.printf("Failed to set timer enabled: %s\n", fbdoUpload.errorReason().c_str());
   }
+  
+  Serial.println("Default Firebase data structure created");
 }

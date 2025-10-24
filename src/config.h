@@ -36,3 +36,14 @@
 #define NUM_LEDS 180
 
 #endif
+
+// Configuration data structure
+struct ConfigData {
+    char wifiSSID[32];
+    char wifiPassword[64];
+    char deviceID[32];
+    int numLeds;
+};
+
+// Declare global configData variable (extern means it's defined elsewhere)
+extern ConfigData configData;
