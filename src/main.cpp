@@ -50,6 +50,10 @@ volatile bool turnedOffByDarkness = false;
 // Sensor data
 volatile float currentLux = 0;
 volatile bool sensorAvailable = false;
+#define BUTTON_PIN 0
+// Button press detection
+unsigned long buttonPressStart = 0;
+bool buttonActive = false;
 
 // Device configuration from SPIFFS
 String deviceID;
@@ -89,6 +93,8 @@ void setup() {
   // Initialize SPIFFS
   initSPIFFS();
   
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
   // Check if we need to start config portal
   if (shouldStartConfigPortal()) {
     Serial.println("No configuration found. Starting config portal...");
@@ -187,8 +193,30 @@ void setup() {
 }
 
 void loop() {
-  // Empty - all functionality handled by FreeRTOS tasks
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // Check for 7-second button press
+  if (digitalRead(BUTTON_PIN) == LOW) { // Button pressed (LOW due to INPUT_PULLUP)
+    if (!buttonActive) {
+      buttonActive = true;
+      buttonPressStart = millis();
+      Serial.println("Button pressed - hold for 7 seconds to reset config");
+    }
+    
+    // Check if held for 7 seconds
+    if (millis() - buttonPressStart > 7000) {
+      Serial.println("7-second button press detected - resetting configuration...");
+      
+      if (SPIFFS.exists("/config.json")) {
+        SPIFFS.remove("/config.json");
+      }
+      
+      // Restart to enter config portal
+      ESP.restart();
+    }
+  } else {
+    buttonActive = false;
+  }
+  
+  vTaskDelay(100 / portTICK_PERIOD_MS); // Small delay to prevent watchdog timeout
 }
 
 // Initialize SPIFFS
