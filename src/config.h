@@ -22,9 +22,9 @@
 #define DAYLIGHT_OFFSET_SEC_WINTER 0
 
 // Default configuration (you can change this based on current season)
-#define TIMEZONE TIMEZONE_SUMMER
-#define GMT_OFFSET_SEC GMT_OFFSET_SEC_SUMMER
-#define DAYLIGHT_OFFSET_SEC DAYLIGHT_OFFSET_SEC_SUMMER
+#define TIMEZONE TIMEZONE_WINTER
+#define GMT_OFFSET_SEC GMT_OFFSET_SEC_WINTER
+#define DAYLIGHT_OFFSET_SEC DAYLIGHT_OFFSET_SEC_WINTER
 
 // NeoPixel configuration
 #define LED_PIN 26
