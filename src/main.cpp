@@ -8,6 +8,8 @@
 #include <esp_task_wdt.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
+#include <HTTPClient.h> // **NEW: Added for GitHub OTA**
+#include <Update.h>     // **NEW: Added for GitHub OTA**
 
 // Project configuration (Firebase, time settings)
 #include "config.h"
@@ -62,6 +64,17 @@ String wifiPassword;
 int ledCount;
 String basePath;
 
+// **NEW: GitHub OTA Update Configuration**
+// NOTE: I'm hardcoding these as per the example, but they should ideally be in config.h or read from Firebase/SPIFFS
+const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmware.bin";
+const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/version.txt";
+
+const char* currentFirmwareVersion = "1.0.0"; // **UPDATE THIS MANUALLY FOR NEW RELEASES**
+//const unsigned long UPDATE_CHECK_INTERVAL = 3600000; // Check every hour (1 hour in ms)
+const unsigned long UPDATE_CHECK_INTERVAL =  10*60*1000; // Check every hour (1 hour in ms)
+unsigned long lastUpdateCheck = 0;
+// **END NEW**
+
 // Function declarations
 void initSPIFFS();
 bool loadConfig();
@@ -86,6 +99,14 @@ bool checkTimeMatch(const char* scheduledTime);
 void updateTimerState(bool state);
 void readInitialFirebaseData();
 void setupTime();
+
+// **NEW: GitHub OTA Function Declarations**
+void checkForGitHubUpdate();
+String fetchLatestVersion();
+bool startGitHubOTAUpdate(WiFiClient* client, int contentLength);
+void downloadAndApplyFirmware();
+// **END NEW**
+
 
 void setup() {
   Serial.begin(115200);
@@ -216,6 +237,13 @@ void loop() {
     buttonActive = false;
   }
   
+  // **NEW: Check for GitHub OTA Update**
+  if (WiFi.status() == WL_CONNECTED && millis() - lastUpdateCheck > UPDATE_CHECK_INTERVAL) {
+    lastUpdateCheck = millis();
+    checkForGitHubUpdate();
+  }
+  // **END NEW**
+
   vTaskDelay(100 / portTICK_PERIOD_MS); // Small delay to prevent watchdog timeout
 }
 
@@ -311,7 +339,7 @@ void setupTime() {
   }
 }
 
-// Setup Over-The-Air updates
+// Setup Over-The-Air updates (local network)
 void setupOTA() {
   String hostname = "esp32-neopixel-" + deviceID;
   ArduinoOTA.setHostname(hostname.c_str());
@@ -517,6 +545,14 @@ void readInitialFirebaseData() {
   // Read reset flag (create if doesn't exist)
   String resetPath = basePath + "/reset";
   Firebase.RTDB.setBool(&fbdoUpload, resetPath.c_str(), false);
+// NEW: Publish firmware version to version stream
+  String versionPath = basePath + "/version";
+if (Firebase.RTDB.setString(&fbdoUpload, versionPath.c_str(), currentFirmwareVersion)) {
+  Serial.printf("Firmware version published: %s\n", currentFirmwareVersion);
+} else {
+  Serial.printf("Failed to publish firmware version: %s\n", fbdoUpload.errorReason().c_str());
+}
+
 }
 
 // Firebase management task - handles OTA and connection monitoring
@@ -945,3 +981,160 @@ void createDefaultFirebaseData() {
     Serial.println("Some default values failed to set. Check Firebase rules and connection.");
   }
 }
+
+// --- NEW GITHUB OTA FUNCTIONS ---
+
+/**
+ * @brief Checks the GitHub repository for a new firmware version.
+ */
+void checkForGitHubUpdate() {
+  Serial.println("Checking for GitHub firmware update...");
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected for GitHub OTA check");
+    return;
+  }
+
+  // Step 1: Fetch the latest version from GitHub
+  String latestVersion = fetchLatestVersion();
+  if (latestVersion == "") {
+    Serial.println("Failed to fetch latest version from GitHub");
+    return;
+  }
+
+  Serial.println("Current Firmware Version: " + String(currentFirmwareVersion));
+  Serial.println("Latest Firmware Version: " + latestVersion);
+
+  // Step 2: Compare versions
+  if (latestVersion != currentFirmwareVersion) {
+    Serial.println("New firmware available on GitHub. Starting OTA update...");
+    downloadAndApplyFirmware();
+  } else {
+    Serial.println("Device is up to date (GitHub check).");
+  }
+}
+
+/**
+ * @brief Fetches the latest firmware version string from the GitHub raw file URL.
+ * @return String The latest version string or an empty string on failure.
+ */
+String fetchLatestVersion() {
+  HTTPClient http;
+  http.begin(GITHUB_VERSION_URL);
+
+  int httpCode = http.GET();
+  if (httpCode == HTTP_CODE_OK) {
+    String latestVersion = http.getString();
+    latestVersion.trim();  // Remove any extra whitespace
+    http.end();
+    return latestVersion;
+  } else {
+    Serial.printf("Failed to fetch version. HTTP code: %d\n", httpCode);
+    http.end();
+    return "";
+  }
+}
+
+/**
+ * @brief Downloads the firmware from GitHub and initiates the OTA update.
+ */
+void downloadAndApplyFirmware() {
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.begin(GITHUB_FIRMWARE_URL);
+
+  int httpCode = http.GET();
+  Serial.printf("HTTP GET code for firmware: %d\n", httpCode);
+
+  if (httpCode == HTTP_CODE_OK) {
+    int contentLength = http.getSize();
+    Serial.printf("Firmware size: %d bytes\n", contentLength);
+
+    if (contentLength > 0) {
+      // Turn off LEDs for visual feedback during update
+      strip.clear();
+      strip.show();
+      Serial.println("Turning off LEDs for OTA process...");
+
+      WiFiClient* stream = http.getStreamPtr();
+      if (startGitHubOTAUpdate(stream, contentLength)) {
+        Serial.println("GitHub OTA update successful, restarting...");
+        delay(2000);
+        ESP.restart();
+      } else {
+        Serial.println("GitHub OTA update failed");
+      }
+    } else {
+      Serial.println("Invalid firmware size for GitHub OTA");
+    }
+  } else {
+    Serial.printf("Failed to fetch firmware from GitHub. HTTP code: %d\n", httpCode);
+  }
+  http.end();
+}
+
+/**
+ * @brief Performs the actual OTA update by writing the firmware stream.
+ * @param client Pointer to the WiFiClient stream.
+ * @param contentLength Expected size of the firmware.
+ * @return true if update is successful, false otherwise.
+ */
+bool startGitHubOTAUpdate(WiFiClient* client, int contentLength) {
+  Serial.println("Initializing GitHub update...");
+  if (!Update.begin(contentLength)) {
+    Serial.printf("Update begin failed: %s\n", Update.errorString());
+    return false;
+  }
+
+  Serial.println("Writing firmware...");
+  size_t written = 0;
+  int progress = 0;
+  int lastProgress = 0;
+
+  // Reduced timeout duration for a more responsive failure
+  const unsigned long timeoutDuration = 10 * 1000; // 10 seconds timeout
+  unsigned long lastDataTime = millis();
+
+  while (written < contentLength) {
+    if (client->available()) {
+      uint8_t buffer[128];
+      size_t len = client->read(buffer, sizeof(buffer));
+      if (len > 0) {
+        Update.write(buffer, len);
+        written += len;
+        lastDataTime = millis(); // Reset timeout on data reception
+
+        // Calculate and print progress
+        progress = (written * 100) / contentLength;
+        if (progress != lastProgress) {
+          Serial.printf("Writing Progress: %d%%\r", progress);
+          lastProgress = progress;
+        }
+      }
+    }
+    // Check for timeout
+    if (millis() - lastDataTime > timeoutDuration) {
+      Serial.println("\nTimeout: No data received for too long. Aborting update...");
+      Update.abort();
+      return false;
+    }
+
+    yield();
+  }
+  Serial.println("\nWriting complete");
+
+  if (written != contentLength) {
+    Serial.printf("Error: Write incomplete. Expected %d but got %d bytes\n", contentLength, written);
+    Update.abort();
+    return false;
+  }
+
+  if (!Update.end()) {
+    Serial.printf("Error: Update end failed: %s\n", Update.errorString());
+    return false;
+  }
+
+  Serial.println("Update successfully completed");
+  return true;
+}
+
+// --- END NEW GITHUB OTA FUNCTIONS ---

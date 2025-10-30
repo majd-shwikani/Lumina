@@ -2,6 +2,12 @@
 #define CONFIG_H
 
 
+// Your GitHub Repository details
+//#define GITHUB_USER "majd-shwikani"
+//#define GITHUB_REPO "Lumina" 
+//#define FIRMWARE_FILENAME "firmware.bin"
+//#define FIRMWARE_VERSION "1.0.0" // Current version of the firmware on this device
+
 // Firebase configuration
 #define FIREBASE_HOST "test-dbd7a-default-rtdb.firebaseio.com"
 #define FIREBASE_SECRET "jBVd9wZ6n1dYTv4CSVmB96l66M8HspblZSmCN161"
