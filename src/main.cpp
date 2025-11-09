@@ -10,6 +10,9 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h> // **NEW: Added for GitHub OTA**
 #include <Update.h>     // **NEW: Added for GitHub OTA**
+#include <driver/i2s.h>
+#include <arduinoFFT.h>
+
 
 // Project configuration (Firebase, time settings)
 #include "config.h"
@@ -75,6 +78,28 @@ const unsigned long UPDATE_CHECK_INTERVAL =  10*60*1000; // Check every hour (1 
 unsigned long lastUpdateCheck = 0;
 // **END NEW**
 
+// Add these pin definitions (adjust GPIO numbers as needed)
+#define I2S_WS   25
+#define I2S_SD   32  
+#define I2S_SCK  33
+#define I2S_PORT I2S_NUM_0
+// Frequency detection settings
+#define SAMPLE_RATE 16000
+#define N_SAMPLES 128
+#define BUFFER_LEN N_SAMPLES
+
+// Frequency detection variables
+int16_t raw_samples[BUFFER_LEN];
+ArduinoFFT<double> FFT = ArduinoFFT<double>();
+double vReal[N_SAMPLES];
+double vImag[N_SAMPLES];
+
+// Frequency effect variables
+volatile bool frequencyEffectActive = false;
+volatile double detectedFrequency = 0;
+volatile double frequencyMagnitude = 0;
+
+
 // Function declarations
 void initSPIFFS();
 bool loadConfig();
@@ -105,6 +130,9 @@ void checkForGitHubUpdate();
 String fetchLatestVersion();
 bool startGitHubOTAUpdate(WiFiClient* client, int contentLength);
 void downloadAndApplyFirmware();
+void setupFrequencyDetection();
+void updateFrequencyDetection();
+uint32_t frequencyToColor(double freq);
 // **END NEW**
 
 
@@ -154,6 +182,7 @@ void setup() {
   setupOTA();
   setupVEML7700();
   setupFirebase();
+setupFrequencyDetection();
   
   // Create FreeRTOS tasks for parallel processing
   
@@ -862,6 +891,7 @@ void updateLEDs() {
     case 19: effectSolarFlare(); break;
     case 20: effectFireSimulation(); break;
     case 21: effectSolidColor(); break;
+    case 22: effectFrequencyResponse(); break;
     default: effectRainbow(); break;
   }
   strip.show();
@@ -1138,3 +1168,55 @@ bool startGitHubOTAUpdate(WiFiClient* client, int contentLength) {
 }
 
 // --- END NEW GITHUB OTA FUNCTIONS ---
+void setupFrequencyDetection() {
+  const i2s_config_t i2s_config = {
+    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+    .sample_rate = SAMPLE_RATE,
+    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+    .communication_format = I2S_COMM_FORMAT_STAND_I2S,
+    .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+    .dma_buf_count = 4,
+    .dma_buf_len = BUFFER_LEN,
+    .use_apll = false,
+    .tx_desc_auto_clear = false,
+    .fixed_mclk = 0
+  };
+  
+  const i2s_pin_config_t pin_config = {
+    .bck_io_num = I2S_SCK,
+    .ws_io_num = I2S_WS,
+    .data_out_num = -1,
+    .data_in_num = I2S_SD
+  };
+  
+  i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
+  i2s_set_pin(I2S_PORT, &pin_config);
+}
+void updateFrequencyDetection() {
+  size_t bytes_read = 0;
+  i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
+
+  if (bytes_read == sizeof(raw_samples)) {
+    for (int i = 0; i < N_SAMPLES; i++) {
+      vReal[i] = (double)raw_samples[i];
+      vImag[i] = 0.0;
+    }
+    
+    FFT.compute(vReal, vImag, N_SAMPLES, FFT_FORWARD);
+    FFT.complexToMagnitude(vReal, vImag, N_SAMPLES);
+    
+    double max_magnitude = 0.0;
+    int max_index = 0;
+    
+    for (int i = 1; i < N_SAMPLES / 2; i++) {
+      if (vReal[i] > max_magnitude) {
+        max_magnitude = vReal[i];
+        max_index = i;
+      }
+    }
+    
+    detectedFrequency = ((double)max_index * SAMPLE_RATE) / N_SAMPLES;
+    frequencyMagnitude = max_magnitude;
+  }
+}

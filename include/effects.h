@@ -7,6 +7,9 @@
 extern Adafruit_NeoPixel strip;
 extern volatile uint32_t effectColor;
 extern volatile uint32_t effectSpeed;  // ADD THIS LINE
+extern volatile double detectedFrequency;
+extern volatile double frequencyMagnitude;
+extern void updateFrequencyDetection();
 
 // Animation function declarations
 void effectRainbow();              // 0: Rainbow cycle
@@ -31,7 +34,7 @@ void effectCyberCity();            // 18: Cyberpunk cityscape
 void effectSolarFlare();           // 19: Solar flare activity
 void effectFireSimulation();       // 20: Realistic fire simulation
 void effectSolidColor();           // 21: Solid Color
-
+void effectFrequencyResponse();
 // Helper function declarations
 uint32_t Wheel(byte WheelPos);
 uint32_t HeatColor(uint8_t temperature);

@@ -1184,3 +1184,57 @@ void setAllLeds(uint32_t color) {
     strip.setPixelColor(i, color);
   }
 }
+// Effect 22: Frequency Response
+void effectFrequencyResponse() {
+  // Update frequency detection
+  updateFrequencyDetection();
+  
+  // Check if the detected signal is strong enough (not noise)
+  // Adjust this threshold as needed for your environment
+  if (frequencyMagnitude > 2000.0) {
+    // Valid frequency detected - map to color
+    double freq = detectedFrequency;
+    uint32_t freqColor;
+    
+    // Frequency to color mapping (included directly in the function)
+    if (freq < 200) {
+      freqColor = strip.Color(255, 0, 0);    // Red - low frequencies
+    } else if (freq < 400) {
+      freqColor = strip.Color(255, 128, 0);  // Orange
+    } else if (freq < 600) {
+      freqColor = strip.Color(255, 255, 0);  // Yellow
+    } else if (freq < 800) {
+      freqColor = strip.Color(128, 255, 0);  // Lime
+    } else if (freq < 1000) {
+      freqColor = strip.Color(0, 255, 0);    // Green
+    } else if (freq < 1200) {
+      freqColor = strip.Color(0, 255, 128);  // Teal
+    } else if (freq < 1400) {
+      freqColor = strip.Color(0, 255, 255);  // Cyan
+    } else if (freq < 1600) {
+      freqColor = strip.Color(0, 128, 255);  // Light Blue
+    } else if (freq < 1800) {
+      freqColor = strip.Color(0, 0, 255);    // Blue
+    } else if (freq < 2000) {
+      freqColor = strip.Color(128, 0, 255);  // Purple
+    } else {
+      freqColor = strip.Color(255, 0, 255);  // Magenta - high frequencies
+    }
+    
+    // Display the color on all LEDs
+    for(int i = 0; i < strip.numPixels(); i++) {
+      strip.setPixelColor(i, freqColor);
+    }
+    
+    // Optional: Print frequency for debugging
+    // Serial.printf("Frequency: %.0f Hz, Magnitude: %.0f\n", detectedFrequency, frequencyMagnitude);
+  } else {
+    // Too noisy or no clear frequency - turn off LEDs
+    for(int i = 0; i < strip.numPixels(); i++) {
+      strip.setPixelColor(i, 0, 0, 0);
+    }
+    
+    // Optional: Print noise floor message
+    // Serial.println("Noise floor - LEDs off");
+  }
+}
