@@ -12,7 +12,7 @@
 #include <Update.h>     // **NEW: Added for GitHub OTA**
 #include <driver/i2s.h>
 #include <arduinoFFT.h>
-
+#include "sensors.h"
 
 // Project configuration (Firebase, time settings)
 #include "config.h"
@@ -23,12 +23,9 @@
 // Firebase token helper for authentication
 #include <addons/TokenHelper.h>
 
-// Light sensor threshold (controlled via Firebase)
-volatile float luxThreshold = 1.0;
 
 // Global objects
 Adafruit_NeoPixel strip(1, LED_PIN, NEO_GRB + NEO_KHZ800); // Temporary initial value
-Adafruit_VEML7700 veml = Adafruit_VEML7700();
 FirebaseData fbdoStream;
 FirebaseData fbdoUpload;
 
@@ -52,9 +49,6 @@ volatile bool stripEnabled = true;
 volatile bool autoDarknessControl = true;
 volatile bool turnedOffByDarkness = false;
 
-// Sensor data
-volatile float currentLux = 0;
-volatile bool sensorAvailable = false;
 #define BUTTON_PIN 0
 // Button press detection
 unsigned long buttonPressStart = 0;
@@ -78,35 +72,7 @@ const unsigned long UPDATE_CHECK_INTERVAL =  10*60*1000; // Check every hour (1 
 unsigned long lastUpdateCheck = 0;
 // **END NEW**
 
-// Add these pin definitions (adjust GPIO numbers as needed)
-#define I2S_WS   25
-#define I2S_SD   32  
-#define I2S_SCK  33
-#define I2S_PORT I2S_NUM_0
-// Frequency detection settings
-#define SAMPLE_RATE 16000
-#define N_SAMPLES 256  // Increased for better frequency resolution
-#define BUFFER_LEN N_SAMPLES
 
-// Frequency detection variables
-int16_t raw_samples[BUFFER_LEN];
-ArduinoFFT<double> FFT = ArduinoFFT<double>();
-double vReal[N_SAMPLES];
-double vImag[N_SAMPLES];
-\
-
-extern const int NUM_FREQ_BANDS;
-extern double bandMagnitudes[];
-extern double frequencyThreshold;
-
-// ADD THESE
- volatile double detectedFrequency; // <-- FIX: added 'volatile'
- volatile double frequencyMagnitude; // <-- FIX: added 'volatile'
-
-// Multi-frequency analysis variables
-extern const int NUM_FREQ_BANDS = 8;  // Number of frequency bands to analyze
-double bandMagnitudes[NUM_FREQ_BANDS] = {0};
-double frequencyThreshold = 1000.0;  // Minimum magnitude to consider a frequency present
 
 
 // Function declarations
@@ -116,7 +82,6 @@ bool shouldStartConfigPortal();
 void connectToWiFi();
 void setupFirebase();
 void setupOTA();
-void setupVEML7700();
 void firebaseTask(void *parameter);
 void ledTask(void *parameter);
 void automationtask(void *parameter);
@@ -127,8 +92,6 @@ void updateLEDs();
 void streamCallback(FirebaseStream data);
 void streamTimeoutCallback(bool timeout);
 void createDefaultFirebaseData();
-void updateSensorData();
-bool shouldTurnOffDueToDarkness();
 bool checkTimeMatch(const char* scheduledTime);
 void updateTimerState(bool state);
 void readInitialFirebaseData();
@@ -139,9 +102,7 @@ void checkForGitHubUpdate();
 String fetchLatestVersion();
 bool startGitHubOTAUpdate(WiFiClient* client, int contentLength);
 void downloadAndApplyFirmware();
-void setupFrequencyDetection();
-void updateFrequencyDetection();
-uint32_t frequencyToColor(double freq);
+
 // **END NEW**
 
 
@@ -414,19 +375,7 @@ void setupOTA() {
   Serial.println("OTA Ready - Hostname: " + hostname);
 }
 
-// Initialize VEML7700 light sensor
-void setupVEML7700() {
-  if (!veml.begin()) {
-    Serial.println("VEML7700 sensor not found, continuing without light sensor");
-    sensorAvailable = false;
-    return;
-  }
-  
-  sensorAvailable = true;
-  veml.setGain(VEML7700_GAIN_1_8);
-  veml.setIntegrationTime(VEML7700_IT_100MS);
-  Serial.println("VEML7700 initialized");
-}
+
 
 // Configure Firebase connection and stream
 void setupFirebase() {
@@ -751,16 +700,6 @@ bool checkTimeMatch(const char* scheduledTime) {
   strftime(currentTime, sizeof(currentTime), "%H:%M", &timeinfo);
   
   return strcmp(currentTime, scheduledTime) == 0;
-}
-
-// Read current light level from sensor
-void updateSensorData() {
-  currentLux = veml.readLux();
-}
-
-// Check if light level is below threshold
-bool shouldTurnOffDueToDarkness() {
-  return currentLux < luxThreshold;
 }
 
 // Handle real-time Firebase data changes
@@ -1176,70 +1115,4 @@ bool startGitHubOTAUpdate(WiFiClient* client, int contentLength) {
 
   Serial.println("Update successfully completed");
   return true;
-}
-
-// --- END NEW GITHUB OTA FUNCTIONS ---
-void setupFrequencyDetection() {
-  const i2s_config_t i2s_config = {
-    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-    .sample_rate = SAMPLE_RATE,
-    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-    .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-    .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-    .dma_buf_count = 4,
-    .dma_buf_len = BUFFER_LEN,
-    .use_apll = false,
-    .tx_desc_auto_clear = false,
-    .fixed_mclk = 0
-  };
-  
-  const i2s_pin_config_t pin_config = {
-    .bck_io_num = I2S_SCK,
-    .ws_io_num = I2S_WS,
-    .data_out_num = -1,
-    .data_in_num = I2S_SD
-  };
-  
-  i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
-  i2s_set_pin(I2S_PORT, &pin_config);
-}
-void updateFrequencyDetection() {
-  size_t bytes_read = 0;
-  i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
-
-  if (bytes_read == sizeof(raw_samples)) {
-    // Convert samples to double for FFT
-    for (int i = 0; i < N_SAMPLES; i++) {
-      vReal[i] = (double)raw_samples[i];
-      vImag[i] = 0.0;
-    }
-    
-    // Perform FFT
-    FFT.compute(vReal, vImag, N_SAMPLES, FFT_FORWARD);
-    FFT.complexToMagnitude(vReal, vImag, N_SAMPLES);
-    
-    // Reset band magnitudes
-    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-      bandMagnitudes[band] = 0.0;
-    }
-    
-    // Analyze frequency bands (divide spectrum into NUM_FREQ_BANDS bands)
-    int samplesPerBand = (N_SAMPLES / 2) / NUM_FREQ_BANDS;
-    
-    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-      double maxInBand = 0.0;
-      int startBin = band * samplesPerBand;
-      int endBin = startBin + samplesPerBand;
-      
-      // Find maximum magnitude in this frequency band
-      for (int bin = startBin; bin < endBin && bin < N_SAMPLES/2; bin++) {
-        if (vReal[bin] > maxInBand) {
-          maxInBand = vReal[bin];
-        }
-      }
-      
-      bandMagnitudes[band] = maxInBand;
-    }
-  }
 }
