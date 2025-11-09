@@ -1,5 +1,11 @@
 #include "effects.h"
 #include <Arduino.h>
+
+extern const int NUM_FREQ_BANDS;
+extern double bandMagnitudes[];
+extern double frequencyThreshold;
+
+
 // Effect 0: Rainbow cycle
 void effectRainbow() {
   static uint16_t j = 0;
@@ -1236,5 +1242,149 @@ void effectFrequencyResponse() {
     
     // Optional: Print noise floor message
     // Serial.println("Noise floor - LEDs off");
+  }
+}
+// Effect 23: Piano Tiles - Multi-Frequency Spectrum Analyzer
+void effectPianoTiles() {
+  const int TOTAL_LEDS = strip.numPixels();
+    const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+  // Update multi-frequency detection
+  updateFrequencyDetection();
+  
+  // Check if any frequency band has significant signal
+  bool hasSignal = false;
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    if (bandMagnitudes[band] > frequencyThreshold) {
+      hasSignal = true;
+      break;
+    }
+  }
+  
+  if (hasSignal) {
+    const int TOTAL_LEDS = strip.numPixels();
+    const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+    
+    // Colors for each frequency band (rainbow spectrum from low to high freq)
+    const uint32_t bandColors[NUM_FREQ_BANDS] = {
+      strip.Color(255, 0, 0),     // Red - lowest frequencies
+      strip.Color(255, 128, 0),   // Orange
+      strip.Color(255, 255, 0),   // Yellow
+      strip.Color(128, 255, 0),   // Lime
+      strip.Color(0, 255, 0),     // Green
+      strip.Color(0, 255, 128),   // Teal
+      strip.Color(0, 255, 255),   // Cyan
+      strip.Color(0, 128, 255)    // Blue - highest frequencies
+    };
+    
+    // Clear all LEDs first
+    for(int i = 0; i < TOTAL_LEDS; i++) {
+      strip.setPixelColor(i, 0, 0, 0);
+    }
+    
+    // Light up LEDs for each active frequency band
+    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+      if (bandMagnitudes[band] > frequencyThreshold) {
+        // Calculate LED positions for this band
+        // Lower frequencies (lower bands) use higher LED positions (like piano keys)
+        int bandPosition = NUM_FREQ_BANDS - 1 - band; // Reverse mapping
+        int startLed = bandPosition * LEDS_PER_BAND;
+        
+        // Calculate brightness based on magnitude (normalized)
+        float brightness = bandMagnitudes[band] / 10000.0; // Adjust divisor based on your mic sensitivity
+        if (brightness > 1.0) brightness = 1.0;
+        if (brightness < 0.1) brightness = 0.1; // Minimum visibility
+        
+        // Light up the LEDs for this frequency band
+        for (int i = 0; i < LEDS_PER_BAND && (startLed + i) < TOTAL_LEDS; i++) {
+          uint32_t baseColor = bandColors[band];
+          uint8_t r = ((baseColor >> 16) & 0xFF) * brightness;
+          uint8_t g = ((baseColor >> 8) & 0xFF) * brightness;
+          uint8_t b = (baseColor & 0xFF) * brightness;
+          strip.setPixelColor(startLed + i, r, g, b);
+        }
+      }
+    }
+    
+    // Optional: Debug output
+    /*
+    Serial.print("Spectrum: ");
+    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+      Serial.printf("[%d]:%.0f ", band, bandMagnitudes[band]);
+    }
+    Serial.println();
+    */
+    
+  } else {
+    // No significant frequencies detected - turn off all LEDs
+    for(int i = 0; i < strip.numPixels(); i++) {
+      strip.setPixelColor(i, 0, 0, 0);
+    }
+  }
+}
+// Effect 24: Piano Tiles - Frequency Bars (shows intensity as height)
+void effectPianoTilesBars() {
+  const int TOTAL_LEDS = strip.numPixels();
+    const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+  // Update multi-frequency detection
+  updateFrequencyDetection();
+  
+  // Check if any frequency band has significant signal
+  bool hasSignal = false;
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    if (bandMagnitudes[band] > frequencyThreshold) {
+      hasSignal = true;
+      break;
+    }
+  }
+  
+  if (hasSignal) {
+    const int TOTAL_LEDS = strip.numPixels();
+    const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+    const int MAX_BAR_HEIGHT = LEDS_PER_BAND; // Maximum bars can use all LEDs in their band
+    
+    // Colors for each frequency band
+    const uint32_t bandColors[NUM_FREQ_BANDS] = {
+      strip.Color(255, 0, 0),     // Red
+      strip.Color(255, 128, 0),   // Orange
+      strip.Color(255, 255, 0),   // Yellow
+      strip.Color(128, 255, 0),   // Lime
+      strip.Color(0, 255, 0),     // Green
+      strip.Color(0, 255, 128),   // Teal
+      strip.Color(0, 255, 255),   // Cyan
+      strip.Color(0, 128, 255)    // Blue
+    };
+    
+    // Clear all LEDs
+    for(int i = 0; i < TOTAL_LEDS; i++) {
+      strip.setPixelColor(i, 0, 0, 0);
+    }
+    
+    // Create bar graph for each frequency band
+    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+      if (bandMagnitudes[band] > frequencyThreshold) {
+        // Calculate bar height based on magnitude
+        int barHeight = (bandMagnitudes[band] / 15000.0) * MAX_BAR_HEIGHT; // Adjust divisor as needed
+        if (barHeight > MAX_BAR_HEIGHT) barHeight = MAX_BAR_HEIGHT;
+        if (barHeight < 1) barHeight = 1;
+        
+        // Calculate starting position (bars grow from bottom)
+        int bandPosition = NUM_FREQ_BANDS - 1 - band; // Reverse for piano layout
+        int baseLed = bandPosition * LEDS_PER_BAND;
+        
+        // Draw the bar from bottom to top
+        for (int height = 0; height < barHeight && height < LEDS_PER_BAND; height++) {
+          int ledIndex = baseLed + (LEDS_PER_BAND - 1 - height); // Bottom to top
+          if (ledIndex < TOTAL_LEDS) {
+            strip.setPixelColor(ledIndex, bandColors[band]);
+          }
+        }
+      }
+    }
+    
+  } else {
+    // No significant frequencies - turn off LEDs
+    for(int i = 0; i < strip.numPixels(); i++) {
+      strip.setPixelColor(i, 0, 0, 0);
+    }
   }
 }

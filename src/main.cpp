@@ -72,7 +72,7 @@ String basePath;
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmware.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/version.txt";
 
-const char* currentFirmwareVersion = "1.0.0"; // **UPDATE THIS MANUALLY FOR NEW RELEASES**
+const char* currentFirmwareVersion = "1.0.1"; // **UPDATE THIS MANUALLY FOR NEW RELEASES**
 //const unsigned long UPDATE_CHECK_INTERVAL = 3600000; // Check every hour (1 hour in ms)
 const unsigned long UPDATE_CHECK_INTERVAL =  10*60*1000; // Check every hour (1 hour in ms)
 unsigned long lastUpdateCheck = 0;
@@ -85,7 +85,7 @@ unsigned long lastUpdateCheck = 0;
 #define I2S_PORT I2S_NUM_0
 // Frequency detection settings
 #define SAMPLE_RATE 16000
-#define N_SAMPLES 128
+#define N_SAMPLES 256  // Increased for better frequency resolution
 #define BUFFER_LEN N_SAMPLES
 
 // Frequency detection variables
@@ -93,11 +93,20 @@ int16_t raw_samples[BUFFER_LEN];
 ArduinoFFT<double> FFT = ArduinoFFT<double>();
 double vReal[N_SAMPLES];
 double vImag[N_SAMPLES];
+\
 
-// Frequency effect variables
-volatile bool frequencyEffectActive = false;
-volatile double detectedFrequency = 0;
-volatile double frequencyMagnitude = 0;
+extern const int NUM_FREQ_BANDS;
+extern double bandMagnitudes[];
+extern double frequencyThreshold;
+
+// ADD THESE
+ volatile double detectedFrequency; // <-- FIX: added 'volatile'
+ volatile double frequencyMagnitude; // <-- FIX: added 'volatile'
+
+// Multi-frequency analysis variables
+extern const int NUM_FREQ_BANDS = 8;  // Number of frequency bands to analyze
+double bandMagnitudes[NUM_FREQ_BANDS] = {0};
+double frequencyThreshold = 1000.0;  // Minimum magnitude to consider a frequency present
 
 
 // Function declarations
@@ -892,6 +901,8 @@ void updateLEDs() {
     case 20: effectFireSimulation(); break;
     case 21: effectSolidColor(); break;
     case 22: effectFrequencyResponse(); break;
+    case 23: effectPianoTiles(); break;
+    case 24: effectPianoTilesBars(); break;
     default: effectRainbow(); break;
   }
   strip.show();
@@ -1198,25 +1209,37 @@ void updateFrequencyDetection() {
   i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
 
   if (bytes_read == sizeof(raw_samples)) {
+    // Convert samples to double for FFT
     for (int i = 0; i < N_SAMPLES; i++) {
       vReal[i] = (double)raw_samples[i];
       vImag[i] = 0.0;
     }
     
+    // Perform FFT
     FFT.compute(vReal, vImag, N_SAMPLES, FFT_FORWARD);
     FFT.complexToMagnitude(vReal, vImag, N_SAMPLES);
     
-    double max_magnitude = 0.0;
-    int max_index = 0;
-    
-    for (int i = 1; i < N_SAMPLES / 2; i++) {
-      if (vReal[i] > max_magnitude) {
-        max_magnitude = vReal[i];
-        max_index = i;
-      }
+    // Reset band magnitudes
+    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+      bandMagnitudes[band] = 0.0;
     }
     
-    detectedFrequency = ((double)max_index * SAMPLE_RATE) / N_SAMPLES;
-    frequencyMagnitude = max_magnitude;
+    // Analyze frequency bands (divide spectrum into NUM_FREQ_BANDS bands)
+    int samplesPerBand = (N_SAMPLES / 2) / NUM_FREQ_BANDS;
+    
+    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+      double maxInBand = 0.0;
+      int startBin = band * samplesPerBand;
+      int endBin = startBin + samplesPerBand;
+      
+      // Find maximum magnitude in this frequency band
+      for (int bin = startBin; bin < endBin && bin < N_SAMPLES/2; bin++) {
+        if (vReal[bin] > maxInBand) {
+          maxInBand = vReal[bin];
+        }
+      }
+      
+      bandMagnitudes[band] = maxInBand;
+    }
   }
 }

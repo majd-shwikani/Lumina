@@ -35,6 +35,8 @@ void effectSolarFlare();           // 19: Solar flare activity
 void effectFireSimulation();       // 20: Realistic fire simulation
 void effectSolidColor();           // 21: Solid Color
 void effectFrequencyResponse();
+void effectPianoTiles();
+void effectPianoTilesBars();
 // Helper function declarations
 uint32_t Wheel(byte WheelPos);
 uint32_t HeatColor(uint8_t temperature);
