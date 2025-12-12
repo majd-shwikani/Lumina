@@ -1,10 +1,6 @@
 #include "effects.h"
 #include <Arduino.h>
 
-extern const int NUM_FREQ_BANDS;
-extern double bandMagnitudes[];
-extern double frequencyThreshold;
-
 
 // Effect 0: Rainbow cycle
 void effectRainbow() {
@@ -1385,6 +1381,509 @@ void effectPianoTilesBars() {
     // No significant frequencies - turn off LEDs
     for(int i = 0; i < strip.numPixels(); i++) {
       strip.setPixelColor(i, 0, 0, 0);
+    }
+  }
+}
+void effectFrequencySpectrum() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+  
+  // Clear strip with dark background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    strip.setPixelColor(i, 2, 2, 5);
+  }
+  
+  // Color palette for each frequency band
+  const uint32_t bandColors[NUM_FREQ_BANDS] = {
+    strip.Color(255, 0, 0),      // Red - Bass
+    strip.Color(255, 80, 0),     // Orange
+    strip.Color(255, 255, 0),    // Yellow
+    strip.Color(100, 255, 0),    // Lime
+    strip.Color(0, 255, 0),      // Green
+    strip.Color(0, 255, 150),    // Cyan
+    strip.Color(0, 100, 255),    // Blue
+    strip.Color(200, 0, 255)     // Magenta - Treble
+  };
+  
+  // Draw frequency bars with gradient effect
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    double magnitude = bandMagnitudes[band];
+    int startLed = band * LEDS_PER_BAND;
+    
+    // Calculate bar height based on magnitude
+    int barHeight = (int)(magnitude * LEDS_PER_BAND * 1.5);
+    if (barHeight > LEDS_PER_BAND) barHeight = LEDS_PER_BAND;
+    
+    // Draw bar from bottom to top with gradient
+    for (int i = 0; i < barHeight; i++) {
+      int ledPos = startLed + (LEDS_PER_BAND - 1 - i);
+      if (ledPos < TOTAL_LEDS) {
+        // Gradient brightness (brighter at top)
+        float brightness = 0.3 + (0.7 * i / (float)barHeight);
+        
+        uint32_t color = bandColors[band];
+        uint8_t r = ((color >> 16) & 0xFF) * brightness;
+        uint8_t g = ((color >> 8) & 0xFF) * brightness;
+        uint8_t b = (color & 0xFF) * brightness;
+        
+        strip.setPixelColor(ledPos, r, g, b);
+      }
+    }
+    
+    // Draw peak indicator (brighter accent at top of bar)
+    if (barHeight > 0) {
+      int peakLed = startLed + (LEDS_PER_BAND - 1 - (barHeight - 1));
+      if (peakLed < TOTAL_LEDS) {
+        strip.setPixelColor(peakLed, 255, 255, 255);
+      }
+    }
+  }
+}
+
+// Effect 26: Reactive Waveform - Draws audio signal as waveform patterns
+void effectReactiveWaveform() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  static float waveOffset = 0;
+  
+  // Clear with very dark background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    strip.setPixelColor(i, 1, 1, 3);
+  }
+  
+  // Draw waveform based on band magnitudes
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    // Map LED position to frequency band
+    int band = (i * NUM_FREQ_BANDS) / TOTAL_LEDS;
+    if (band >= NUM_FREQ_BANDS) band = NUM_FREQ_BANDS - 1;
+    
+    // Get magnitude for this band
+    double magnitude = bandMagnitudes[band];
+    
+    // Create oscillating waveform
+    float wave = sin(waveOffset + (i * 0.1)) * magnitude;
+    wave = (wave + 1.0) / 2.0; // Normalize to 0-1
+    
+    // Color based on frequency band
+    uint8_t hue = (band * 255) / NUM_FREQ_BANDS;
+    uint32_t color = Wheel(hue);
+    
+    uint8_t r = ((color >> 16) & 0xFF) * wave;
+    uint8_t g = ((color >> 8) & 0xFF) * wave;
+    uint8_t b = (color & 0xFF) * wave;
+    
+    strip.setPixelColor(i, r, g, b);
+  }
+  
+  waveOffset += 0.3 * globalAudioLevel;
+}
+
+// Effect 27: Beat Pulse - Reacts to bass beats with expanding pulse
+void effectBeatPulse() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  static float pulseCenter = 0;
+  static float pulseWidth = 0;
+  static unsigned long lastBeatTime = 0;
+  
+  // Background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    strip.setPixelColor(i, 3, 1, 8);
+  }
+  
+  // Start new pulse on beat
+  if (beatDetected) {
+    pulseCenter = TOTAL_LEDS / 2;
+    pulseWidth = 1;
+    lastBeatTime = millis();
+  }
+  
+  // Expand pulse
+  if (millis() - lastBeatTime < 500) {
+    pulseWidth += 2.0 + (beatEnergy * 5.0);
+    
+    for (int i = 0; i < TOTAL_LEDS; i++) {
+      float distance = abs(i - pulseCenter);
+      if (distance < pulseWidth) {
+        // Color intensity decreases with distance from center
+        float intensity = 1.0 - (distance / pulseWidth);
+        intensity = intensity * intensity; // Quadratic falloff
+        
+        // Color transitions based on beat energy
+        uint8_t r = (uint8_t)(200 * intensity * beatEnergy + 100 * intensity * (1 - beatEnergy));
+        uint8_t g = (uint8_t)(50 * intensity);
+        uint8_t b = (uint8_t)(150 * intensity);
+        
+        strip.setPixelColor(i, r, g, b);
+      }
+    }
+  }
+}
+
+// Effect 28: Frequency Bloom - Frequencies bloom outward from center
+void effectFrequencyBloom() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  const int CENTER = TOTAL_LEDS / 2;
+  static float bloomPhase[NUM_FREQ_BANDS] = {0};
+  
+  // Dark background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    strip.setPixelColor(i, 2, 1, 4);
+  }
+  
+  // Each band blooms outward from center
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    double magnitude = bandMagnitudes[band];
+    
+    if (magnitude > 0.1) {
+      bloomPhase[band] = (bloomPhase[band] + 0.2 * magnitude) > 360 ? 0 : bloomPhase[band] + (0.2 * magnitude);
+      
+      // Distance from center that this band reaches
+      int bloomDistance = (int)((magnitude + 0.2) * (TOTAL_LEDS / 2));
+      
+      // Draw bloom points left and right of center
+      for (int offset = 0; offset < bloomDistance; offset++) {
+        int leftPos = CENTER - offset;
+        int rightPos = CENTER + offset;
+        
+        if (leftPos >= 0) {
+          float falloff = 1.0 - (offset / (float)bloomDistance);
+          falloff = falloff * falloff; // Smooth falloff
+          
+          uint8_t hue = (band * 255) / NUM_FREQ_BANDS;
+          uint32_t color = Wheel(hue);
+          
+          uint8_t r = ((color >> 16) & 0xFF) * falloff;
+          uint8_t g = ((color >> 8) & 0xFF) * falloff;
+          uint8_t b = (color & 0xFF) * falloff;
+          
+          strip.setPixelColor(leftPos, r, g, b);
+        }
+        
+        if (rightPos < TOTAL_LEDS) {
+          strip.setPixelColor(rightPos, 
+            ((Wheel((band * 255) / NUM_FREQ_BANDS) >> 16) & 0xFF) * (1.0 - (offset / (float)bloomDistance)),
+            ((Wheel((band * 255) / NUM_FREQ_BANDS) >> 8) & 0xFF) * (1.0 - (offset / (float)bloomDistance)),
+            (Wheel((band * 255) / NUM_FREQ_BANDS) & 0xFF) * (1.0 - (offset / (float)bloomDistance))
+          );
+        }
+      }
+    }
+  }
+}
+
+// Effect 29: Audio-Reactive Fire - Fire effect that reacts to music intensity
+void effectAudioReactiveFire() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  static uint8_t fireMap[256];
+  static unsigned long lastUpdate = 0;
+  
+  if (millis() - lastUpdate < 30) return;
+  lastUpdate = millis();
+  
+  // Initialize fire map
+  if (fireMap[0] == 0) {
+    memset(fireMap, 0, sizeof(fireMap));
+  }
+  
+  // Add new fire at bottom based on audio
+  fireMap[0] = 100 + (uint8_t)(bassLevel * 155);
+  
+  // Propagate fire upward
+  for (int i = TOTAL_LEDS - 1; i > 0; i--) {
+    fireMap[i] = fireMap[i - 1];
+  }
+  
+  // Draw fire with color gradient
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    uint8_t heat = fireMap[i];
+    uint32_t color;
+    
+    if (heat < 85) {
+      // Black to red
+      color = strip.Color(heat * 3, 0, 0);
+    } else if (heat < 170) {
+      // Red to yellow
+      color = strip.Color(255, (heat - 85) * 3, 0);
+    } else {
+      // Yellow to white
+      color = strip.Color(255, 255, (heat - 170) * 3);
+    }
+    
+    strip.setPixelColor(i, color);
+  }
+}
+
+// Effect 30: Musical Rainbow - Colors shift with frequency content
+void effectMusicalRainbow() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  static float hueShift = 0;
+  
+  // Base hue shifts with treble frequencies
+  hueShift = (hueShift + 2 + (trebleLevel * 5)) > 360 ? 0 : hueShift + 2 + (trebleLevel * 5);
+  
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    float pos = (float)i / TOTAL_LEDS;
+    
+    // Map position to frequency band
+    int band = (int)(pos * NUM_FREQ_BANDS);
+    if (band >= NUM_FREQ_BANDS) band = NUM_FREQ_BANDS - 1;
+    
+    // Base hue from position
+    uint8_t baseHue = (pos * 255) + hueShift;
+    uint32_t color = Wheel(baseHue);
+    
+    // Brightness from audio magnitude
+    double brightness = bandMagnitudes[band] + 0.2;
+    if (brightness > 1.0) brightness = 1.0;
+    
+    uint8_t r = ((color >> 16) & 0xFF) * brightness;
+    uint8_t g = ((color >> 8) & 0xFF) * brightness;
+    uint8_t b = (color & 0xFF) * brightness;
+    
+    strip.setPixelColor(i, r, g, b);
+  }
+}
+
+// Effect 31: Reactive Strobe - Strobes based on beat intensity
+void effectReactiveStrobe() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  static unsigned long lastStrobeTime = 0;
+  static bool strobeOn = false;
+  
+  // Strobe frequency based on beat energy
+  int strobePeriod = (int)(100 - (beatEnergy * 80));
+  if (strobePeriod < 20) strobePeriod = 20;
+  
+  // Toggle strobe state
+  if (millis() - lastStrobeTime > strobePeriod) {
+    lastStrobeTime = millis();
+    strobeOn = !strobeOn;
+  }
+  
+  // Strobe color based on audio frequency content
+  uint32_t strobeColor;
+  
+  if (bassLevel > midLevel && bassLevel > trebleLevel) {
+    strobeColor = strip.Color(255, 0, 0);    // Red for bass
+  } else if (midLevel > bassLevel && midLevel > trebleLevel) {
+    strobeColor = strip.Color(0, 255, 0);    // Green for mids
+  } else {
+    strobeColor = strip.Color(0, 0, 255);    // Blue for treble
+  }
+  
+  if (strobeOn) {
+    for (int i = 0; i < TOTAL_LEDS; i++) {
+      strip.setPixelColor(i, strobeColor);
+    }
+  } else {
+    // Dim strobe when off
+    for (int i = 0; i < TOTAL_LEDS; i++) {
+      uint8_t r = ((strobeColor >> 16) & 0xFF) / 10;
+      uint8_t g = ((strobeColor >> 8) & 0xFF) / 10;
+      uint8_t b = (strobeColor & 0xFF) / 10;
+      strip.setPixelColor(i, r, g, b);
+    }
+  }
+}
+
+// Effect 32: Guitar Visualization - Optimized for guitar frequency ranges
+void effectGuitarVisualizer() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+  
+  // Dark background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    strip.setPixelColor(i, 1, 2, 2);
+  }
+  
+  // Guitar color palette (warm tones)
+  const uint32_t guitarColors[NUM_FREQ_BANDS] = {
+    strip.Color(139, 69, 19),     // Dark brown - low E
+    strip.Color(184, 115, 51),    // Brown - A
+    strip.Color(210, 140, 60),    // Light brown - D
+    strip.Color(218, 165, 32),    // Goldenrod - G
+    strip.Color(255, 165, 0),     // Orange - B
+    strip.Color(255, 200, 100),   // Light orange - high E
+    strip.Color(255, 220, 130),   // Light tan - harmonics 1
+    strip.Color(255, 240, 160)    // Light cream - harmonics 2
+  };
+  
+  // Draw reactive bars with smooth animation
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    double magnitude = bandMagnitudes[band];
+    int startLed = band * LEDS_PER_BAND;
+    
+    // Calculate bar height with compression
+    int barHeight = (int)(magnitude * LEDS_PER_BAND * 1.3);
+    if (barHeight > LEDS_PER_BAND) barHeight = LEDS_PER_BAND;
+    
+    // Draw bar with smooth gradient
+    for (int i = 0; i < barHeight; i++) {
+      int ledPos = startLed + (LEDS_PER_BAND - 1 - i);
+      if (ledPos < TOTAL_LEDS) {
+        float brightness = 0.2 + (0.8 * i / (float)(barHeight + 1));
+        
+        uint32_t color = guitarColors[band];
+        uint8_t r = ((color >> 16) & 0xFF) * brightness;
+        uint8_t g = ((color >> 8) & 0xFF) * brightness;
+        uint8_t b = (color & 0xFF) * brightness;
+        
+        strip.setPixelColor(ledPos, r, g, b);
+      }
+    }
+  }
+}
+
+// Effect 33: Cascading Frequency - Frequencies cascade down like a waterfall
+void effectCascadingFrequency() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  const int ROWS = 16;
+  const int COLS = TOTAL_LEDS / ROWS;
+  
+  static uint8_t cascade[16][32];
+  
+  // Shift cascade down
+  for (int row = ROWS - 1; row > 0; row--) {
+    for (int col = 0; col < COLS; col++) {
+      cascade[row][col] = cascade[row - 1][col];
+    }
+  }
+  
+  // Add new data at top based on frequency bands
+  for (int col = 0; col < COLS && col < NUM_FREQ_BANDS; col++) {
+    cascade[0][col] = (uint8_t)(bandMagnitudes[col] * 255);
+  }
+  
+  // Draw cascade
+  for (int row = 0; row < ROWS; row++) {
+    for (int col = 0; col < COLS; col++) {
+      int ledPos = col + (row * COLS);
+      if (ledPos < TOTAL_LEDS) {
+        uint8_t intensity = cascade[row][col];
+        uint8_t hue = (col * 255) / COLS;
+        uint32_t color = Wheel(hue);
+        
+        uint8_t r = ((color >> 16) & 0xFF) * intensity / 255;
+        uint8_t g = ((color >> 8) & 0xFF) * intensity / 255;
+        uint8_t b = (color & 0xFF) * intensity / 255;
+        
+        strip.setPixelColor(ledPos, r, g, b);
+      }
+    }
+  }
+}
+
+// Effect 34: Energy Orbits - Orbiting particles driven by audio energy
+void effectEnergyOrbits() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  const int NUM_ORBITS = 3;
+  static float orbitAngles[NUM_ORBITS] = {0, 120, 240};
+  
+  // Clear background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    strip.setPixelColor(i, 2, 2, 8);
+  }
+  
+  // Update orbit speeds based on frequency
+  float speedMultiplier = 1.0 + (globalAudioLevel * 3.0);
+  orbitAngles[0] = fmod(orbitAngles[0] + 3.0 * speedMultiplier, 360);
+  orbitAngles[1] = fmod(orbitAngles[1] + 2.5 * speedMultiplier, 360);
+  orbitAngles[2] = fmod(orbitAngles[2] + 2.0 * speedMultiplier, 360);
+  
+  // Draw orbiting particles
+  for (int orbit = 0; orbit < NUM_ORBITS; orbit++) {
+    // Orbit radius depends on audio levels
+    float radius = 0.3 + (0.2 * (orbit / (float)NUM_ORBITS)) + (bassLevel * 0.15);
+    
+    // Calculate particle position on circle
+    float angle = orbitAngles[orbit] * 3.14159 / 180.0;
+    float posX = 0.5 + radius * cos(angle);
+    float posY = 0.5 + radius * sin(angle);
+    
+    // Project to LED position
+    int ledPos = posX * TOTAL_LEDS;
+    if (ledPos < 0) ledPos = 0;
+    if (ledPos >= TOTAL_LEDS) ledPos = TOTAL_LEDS - 1;
+    
+    // Particle color and brightness
+    uint8_t hue = (orbit * 85);
+    uint32_t color = Wheel(hue);
+    float brightness = 0.5 + (0.5 * globalAudioLevel);
+    
+    uint8_t r = ((color >> 16) & 0xFF) * brightness;
+    uint8_t g = ((color >> 8) & 0xFF) * brightness;
+    uint8_t b = (color & 0xFF) * brightness;
+    
+    strip.setPixelColor(ledPos, r, g, b);
+  }
+}
+
+// Effect 35: Audio Ripples - Sound creates ripples that expand outward
+void effectAudioRipples() {
+  updateFrequencyDetection();
+  
+  const int TOTAL_LEDS = strip.numPixels();
+  const int CENTER = TOTAL_LEDS / 2;
+  static float ripples[5] = {0};
+  static float rippleSpeeds[5] = {2, 2.5, 3, 3.5, 4};
+  static unsigned long lastRippleTime = 0;
+  
+  // Clear background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    strip.setPixelColor(i, 1, 1, 3);
+  }
+  
+  // Create new ripple on beat
+  if (beatDetected) {
+    for (int i = 4; i > 0; i--) {
+      ripples[i] = ripples[i - 1];
+    }
+    ripples[0] = 0;
+  }
+  
+  // Expand ripples
+  for (int r = 0; r < 5; r++) {
+    ripples[r] += rippleSpeeds[r];
+    if (ripples[r] > CENTER) ripples[r] = CENTER + 100;
+    
+    if (ripples[r] < CENTER) {
+      // Draw ripple circle
+      int ripplePos = (int)ripples[r];
+      
+      for (int i = 0; i < TOTAL_LEDS; i++) {
+        int distance = abs(i - CENTER);
+        if (distance > ripplePos - 3 && distance < ripplePos + 3) {
+          float intensity = 1.0 - (abs(distance - ripplePos) / 3.0);
+          
+          uint8_t hue = (r * 51) + (trebleLevel * 50);
+          uint32_t color = Wheel(hue);
+          
+          uint8_t cr = ((color >> 16) & 0xFF) * intensity;
+          uint8_t cg = ((color >> 8) & 0xFF) * intensity;
+          uint8_t cb = (color & 0xFF) * intensity;
+          
+          strip.setPixelColor(i, cr, cg, cb);
+        }
+      }
     }
   }
 }
