@@ -12,15 +12,11 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <driver/i2s.h>
+#include <driver/adc.h>
 #include <arduinoFFT.h>
-
-// Firebase token helper
 #include <addons/TokenHelper.h>
-
-// Configuration
+#include <esp_crt_bundle.h>
 #include "config.h"
-
-// Configuration portal
 #include "web_config_portal.h"
 
 // ============================================================================
@@ -45,17 +41,16 @@ volatile bool firebaseConnected = false;
 volatile bool stripEnabled = true;
 volatile bool autoDarknessControl = true;
 volatile bool turnedOffByDarkness = false;
-bool defaultDataCreated = false;
 
 // ============================================================================
-// AUDIO CONTROL PARAMETERS (NEW - Adjustable via Firebase)
+// AUTO-CALIBRATION VARIABLES
 // ============================================================================
 
-extern volatile float micSensitivity;
-extern volatile float frequencyThreshold;
-extern volatile float beatThreshold;
-extern volatile float bassBoost;
-extern volatile int activeMicrophone;
+volatile bool autoCalibrationEnabled = true;
+volatile bool calibrationRequested = false;
+unsigned long lastCalibrationTime = 0;
+static const unsigned long AUTO_RECALIBRATION_INTERVAL = 300000;
+
 // ============================================================================
 // TIMER SETTINGS
 // ============================================================================
@@ -65,7 +60,7 @@ char timerOffTime[6] = "17:00";
 bool timerEnabled = true;
 
 // ============================================================================
-// DEVICE CONFIGURATION FROM SPIFFS
+// DEVICE CONFIGURATION
 // ============================================================================
 
 String deviceID;
@@ -75,65 +70,54 @@ int ledCount;
 String basePath;
 
 // ============================================================================
-// GITHUB OTA UPDATE CONFIGURATION
+// GITHUB OTA CONFIGURATION
 // ============================================================================
 
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmware.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/version.txt";
-
-const char* currentFirmwareVersion = "1.0.1";
-const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000; // Check every 10 minutes
+const char* currentFirmwareVersion = "2.0.0";
+const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
 unsigned long lastUpdateCheck = 0;
 
 // ============================================================================
-// BUTTON PRESS DETECTION
+// CONNECTION STATE TRACKING
 // ============================================================================
 
+unsigned long lastSuccessfulFirebaseTime = 0;
+unsigned long lastWiFiAttempt = 0;
+const unsigned long WIFI_RECONNECT_INTERVAL = 10000;
+const unsigned long FIREBASE_RECONNECT_INTERVAL = 5000;
+
 #define BUTTON_PIN 0
-unsigned long buttonPressStart = 0;
-bool buttonActive = false;
 
 // ============================================================================
 // FUNCTION DECLARATIONS
 // ============================================================================
 
-// SPIFFS & Configuration
 void initSPIFFS();
 bool loadConfig();
 bool shouldStartConfigPortal();
-
-// WiFi & Network
 void connectToWiFi();
 void setupTime();
 void setupOTA();
-
-// Firebase
 void setupFirebase();
 void readInitialFirebaseData();
-void createDefaultFirebaseData();
-void handleFirebaseData();
-void streamCallback(FirebaseStream data);
-void streamTimeoutCallback(bool timeout);
-
-// LED Control
 void updateLEDs();
-
-// Timer Functions
 bool checkTimeMatch(const char* scheduledTime);
 void updateTimerState(bool state);
-
-// GitHub OTA
 void checkForGitHubUpdate();
 String fetchLatestVersion();
 bool startGitHubOTAUpdate(WiFiClient* client, int contentLength);
 void downloadAndApplyFirmware();
 
-// FreeRTOS Tasks
 void firebaseTask(void *parameter);
 void ledTask(void *parameter);
 void automationtask(void *parameter);
 void sensorDataTask(void *parameter);
 void timerTask(void *parameter);
+void calibrationTask(void *parameter);
+void streamCallback(FirebaseStream data);
+void streamTimeoutCallback(bool timeout);
 
 // ============================================================================
 // SETUP FUNCTION
@@ -141,47 +125,37 @@ void timerTask(void *parameter);
 
 void setup() {
   Serial.begin(115200);
+  delay(1000);
   
-  // Initialize SPIFFS
   initSPIFFS();
-  
-  // Configure button input
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  // Check if config portal is needed
   if (shouldStartConfigPortal()) {
     Serial.println("No configuration found. Starting config portal...");
     startConfigPortal();
     return;
   }
   
-  // Load configuration from SPIFFS
   if (!loadConfig()) {
     Serial.println("Failed to load config, restarting...");
+    delay(2000);
     ESP.restart();
     return;
   }
   
-  // Print loaded configuration
   Serial.println("\n=== Device Configuration ===");
   Serial.println("Device ID: " + deviceID);
   Serial.println("Base path: " + basePath);
   Serial.println("LED Count: " + String(ledCount));
   Serial.println("===========================\n");
   
-  // Initialize NeoPixel strip with configured count
   strip.updateLength(ledCount);
   strip.begin();
   strip.show();
   strip.setBrightness(100);
   
-  // Initialize watchdog timer (30s timeout)
   esp_task_wdt_init(30, true);
-  
-  // Initialize I2C for light sensor
   Wire.begin();
-  
-  // ========== SETUP SEQUENCE ==========
   
   Serial.println("Initializing systems...");
   
@@ -205,64 +179,28 @@ void setup() {
   
   Serial.println("All systems initialized!\n");
   
-  // ========== CREATE FREERTOS TASKS ==========
-  
-  // Firebase management task (core 0)
-  xTaskCreatePinnedToCore(
-    firebaseTask,
-    "FirebaseTask",
-    15000,
-    NULL,
-    1,
-    NULL,
-    0
-  );
+  // Firebase management task (core 0) - INCREASED STACK TO 20KB
+  xTaskCreatePinnedToCore(firebaseTask, "FirebaseTask", 20000, NULL, 2, NULL, 0);
 
   // LED animation task (core 1)
-  xTaskCreatePinnedToCore(
-    ledTask,
-    "LEDTask",
-    15000,
-    NULL,
-    1,
-    NULL,
-    1
-  );
+  xTaskCreatePinnedToCore(ledTask, "LEDTask", 15000, NULL, 1, NULL, 1);
 
-  // Sensor data reporting task (core 0)
-  xTaskCreatePinnedToCore(
-    sensorDataTask,
-    "SensorDataTask",
-    15000,
-    NULL,
-    1,
-    NULL,
-    0
-  );
+  // Sensor data reporting task (core 0) - INCREASED STACK TO 18KB
+  xTaskCreatePinnedToCore(sensorDataTask, "SensorDataTask", 18000, NULL, 2, NULL, 0);
 
   // Light-based automation task (core 0)
-  xTaskCreatePinnedToCore(
-    automationtask,
-    "AutomationTask",
-    4000,
-    NULL,
-    0,
-    NULL,
-    0
-  );
+  xTaskCreatePinnedToCore(automationtask, "AutomationTask", 4000, NULL, 0, NULL, 0);
 
   // Timer-based control task (core 0)
-  xTaskCreatePinnedToCore(
-    timerTask,
-    "TimerTask",
-    8000,
-    NULL,
-    1,
-    NULL,
-    0
-  );
+  xTaskCreatePinnedToCore(timerTask, "TimerTask", 8000, NULL, 1, NULL, 0);
+  
+  // Auto-calibration task (core 0) - INCREASED STACK TO 15KB
+  xTaskCreatePinnedToCore(calibrationTask, "CalibrationTask", 15000, NULL, 1, NULL, 0);
   
   Serial.println("All tasks created successfully!");
+  Serial.println("\nStarting auto-calibration in 3 seconds...");
+  delay(3000);
+  startAutoCalibration();
 }
 
 // ============================================================================
@@ -270,40 +208,15 @@ void setup() {
 // ============================================================================
 
 void loop() {
-  // Check for 7-second button press to reset config
-  if (digitalRead(BUTTON_PIN) == LOW) {
-    if (!buttonActive) {
-      buttonActive = true;
-      buttonPressStart = millis();
-      Serial.println("\nButton pressed - hold for 7 seconds to reset config");
-    }
-    
-    // Check if held for 7 seconds
-    if (millis() - buttonPressStart > 7000) {
-      Serial.println("7-second button press detected - resetting configuration...");
-      
-      if (SPIFFS.exists("/config.json")) {
-        SPIFFS.remove("/config.json");
-      }
-      
-      // Restart to enter config portal
-      ESP.restart();
-    }
-  } else {
-    buttonActive = false;
-  }
-  
-  // Check for GitHub OTA updates periodically
   if (WiFi.status() == WL_CONNECTED && millis() - lastUpdateCheck > UPDATE_CHECK_INTERVAL) {
     lastUpdateCheck = millis();
     checkForGitHubUpdate();
   }
-
   vTaskDelay(100 / portTICK_PERIOD_MS);
 }
 
 // ============================================================================
-// SPIFFS & CONFIGURATION FUNCTIONS
+// SPIFFS & CONFIGURATION
 // ============================================================================
 
 void initSPIFFS() {
@@ -337,8 +250,6 @@ bool loadConfig() {
   wifiPassword = doc["wifi_password"].as<String>();
   deviceID = doc["device_id"].as<String>();
   ledCount = doc["num_leds"];
-  
-  // Set base path
   basePath = "/devices/" + deviceID;
   
   Serial.println("Configuration loaded:");
@@ -354,10 +265,15 @@ bool shouldStartConfigPortal() {
 }
 
 // ============================================================================
-// WIFI & NETWORK FUNCTIONS
+// WIFI & NETWORK
 // ============================================================================
 
 void connectToWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(false);
+  
   WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
   Serial.print("Connecting to WiFi: " + wifiSSID);
   
@@ -402,24 +318,17 @@ void setupOTA() {
   
   ArduinoOTA
     .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH) {
-        type = "sketch";
-      } else {
-        type = "filesystem";
-      }
+      String type = (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
       Serial.println("Start updating " + type);
       strip.clear();
       strip.show();
     })
-    .onEnd([]() {
-      Serial.println("\nEnd");
-    })
+    .onEnd([]() { Serial.println("\nOTA End"); })
     .onProgress([](unsigned int progress, unsigned int total) {
       Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
     })
     .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
+      Serial.printf("OTA Error[%u]: ", error);
       if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
       else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
       else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
@@ -432,13 +341,16 @@ void setupOTA() {
 }
 
 // ============================================================================
-// FIREBASE SETUP & CONFIGURATION
+// FIREBASE SETUP - IMPROVED SSL CONFIGURATION
 // ============================================================================
 
 void setupFirebase() {
   config.host = FIREBASE_HOST;
   config.signer.tokens.legacy_token = FIREBASE_SECRET;
+  
+  // CRITICAL: Improved timeout settings
   config.timeout.serverResponse = 10 * 1000;
+  config.timeout.socketConnection = 10 * 1000;
   
   fbdoStream.setResponseSize(2048);
   
@@ -446,12 +358,10 @@ void setupFirebase() {
   Firebase.reconnectNetwork(true);
   
   Serial.println("Connecting to Firebase...");
-  delay(1000);
+  delay(2000);
   
-  // Read initial values from Firebase
   readInitialFirebaseData();
 
-  // Start stream from device path
   String streamPath = "/devices/" + deviceID;
   Serial.println("Stream path: " + streamPath);
   
@@ -464,35 +374,30 @@ void setupFirebase() {
 }
 
 // ============================================================================
-// FIREBASE DATA READING (INITIAL)
+// FIREBASE DATA READING
 // ============================================================================
 
 void readInitialFirebaseData() {
   Serial.println("\nReading initial Firebase data for device: " + deviceID);
   
-  // Read current effect
   String effectPath = basePath + "/effect";
   if (Firebase.RTDB.getInt(&fbdoUpload, effectPath.c_str())) {
     currentEffect = fbdoUpload.intData();
     Serial.printf("Initial effect: %d\n", currentEffect);
   } else {
-    Serial.printf("Failed to read effect: %s\n", fbdoUpload.errorReason().c_str());
     currentEffect = 0;
     Firebase.RTDB.setInt(&fbdoUpload, effectPath.c_str(), currentEffect);
   }
   
-  // Read animation speed
   String speedPath = basePath + "/speed";
   if (Firebase.RTDB.getInt(&fbdoUpload, speedPath.c_str())) {
     effectSpeed = fbdoUpload.intData();
     Serial.printf("Initial speed: %d\n", effectSpeed);
   } else {
-    Serial.printf("Failed to read speed: %s\n", fbdoUpload.errorReason().c_str());
     effectSpeed = 50;
     Firebase.RTDB.setInt(&fbdoUpload, speedPath.c_str(), effectSpeed);
   }
   
-  // Read LED color
   String colorPath = basePath + "/color";
   if (Firebase.RTDB.getString(&fbdoUpload, colorPath.c_str())) {
     String colorStr = fbdoUpload.stringData();
@@ -501,12 +406,10 @@ void readInitialFirebaseData() {
       Serial.printf("Initial color: %s\n", colorStr.c_str());
     }
   } else {
-    Serial.printf("Failed to read color: %s\n", fbdoUpload.errorReason().c_str());
     effectColor = 0xFF0000;
     Firebase.RTDB.setString(&fbdoUpload, colorPath.c_str(), "FF0000");
   }
   
-  // Read enabled state
   String enabledPath = basePath + "/enabled";
   if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
     stripEnabled = fbdoUpload.boolData();
@@ -516,34 +419,28 @@ void readInitialFirebaseData() {
       strip.show();
     }
   } else {
-    Serial.printf("Failed to read enabled state: %s\n", fbdoUpload.errorReason().c_str());
     stripEnabled = true;
     Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), stripEnabled);
   }
   
-  // Read auto darkness control setting
   String autoDarknessPath = basePath + "/auto_darkness_control";
   if (Firebase.RTDB.getBool(&fbdoUpload, autoDarknessPath.c_str())) {
     autoDarknessControl = fbdoUpload.boolData();
     Serial.printf("Initial auto darkness control: %s\n", autoDarknessControl ? "true" : "false");
   } else {
-    Serial.printf("Failed to read auto darkness control: %s\n", fbdoUpload.errorReason().c_str());
     autoDarknessControl = true;
     Firebase.RTDB.setBool(&fbdoUpload, autoDarknessPath.c_str(), autoDarknessControl);
   }
   
-  // Read lux threshold for auto-off
   String luxThresholdPath = basePath + "/lux_threshold";
   if (Firebase.RTDB.getFloat(&fbdoUpload, luxThresholdPath.c_str())) {
     luxThreshold = fbdoUpload.floatData();
     Serial.printf("Initial lux threshold: %.2f\n", luxThreshold);
   } else {
-    Serial.printf("Failed to read lux threshold: %s\n", fbdoUpload.errorReason().c_str());
     luxThreshold = 1.0;
     Firebase.RTDB.setFloat(&fbdoUpload, luxThresholdPath.c_str(), luxThreshold);
   }
   
-  // Read timer on time
   String timerOnPath = basePath + "/timer_on";
   if (Firebase.RTDB.getString(&fbdoUpload, timerOnPath.c_str())) {
     String timeStr = fbdoUpload.stringData();
@@ -552,12 +449,10 @@ void readInitialFirebaseData() {
       Serial.printf("Initial timer on time: %s\n", timerOnTime);
     }
   } else {
-    Serial.printf("Failed to read timer on time: %s\n", fbdoUpload.errorReason().c_str());
     strcpy(timerOnTime, "09:00");
     Firebase.RTDB.setString(&fbdoUpload, timerOnPath.c_str(), timerOnTime);
   }
   
-  // Read timer off time
   String timerOffPath = basePath + "/timer_off";
   if (Firebase.RTDB.getString(&fbdoUpload, timerOffPath.c_str())) {
     String timeStr = fbdoUpload.stringData();
@@ -566,95 +461,45 @@ void readInitialFirebaseData() {
       Serial.printf("Initial timer off time: %s\n", timerOffTime);
     }
   } else {
-    Serial.printf("Failed to read timer off time: %s\n", fbdoUpload.errorReason().c_str());
     strcpy(timerOffTime, "17:00");
     Firebase.RTDB.setString(&fbdoUpload, timerOffPath.c_str(), timerOffTime);
   }
   
-  // Read timer enabled state
   String timerEnabledPath = basePath + "/timer_enabled";
   if (Firebase.RTDB.getBool(&fbdoUpload, timerEnabledPath.c_str())) {
     timerEnabled = fbdoUpload.boolData();
     Serial.printf("Initial timer enabled: %s\n", timerEnabled ? "true" : "false");
   } else {
-    Serial.printf("Failed to read timer enabled: %s\n", fbdoUpload.errorReason().c_str());
     timerEnabled = true;
     Firebase.RTDB.setBool(&fbdoUpload, timerEnabledPath.c_str(), timerEnabled);
   }
   
-  // ============================================================================
-  // AUDIO PARAMETERS (NEW)
-  // ============================================================================
-  
-  // Read microphone selection
-  String micSelectionPath = basePath + "/microphone_type";
-  if (Firebase.RTDB.getInt(&fbdoUpload, micSelectionPath.c_str())) {
+  String micTypePath = basePath + "/microphone_type";
+  if (Firebase.RTDB.getInt(&fbdoUpload, micTypePath.c_str())) {
     int micType = fbdoUpload.intData();
     selectMicrophone(micType);
     activeMicrophone = micType;
-    Serial.printf("Microphone set to: %d\n", micType);
+    Serial.printf("Microphone type: %d\n", micType);
   } else {
-    Serial.printf("Failed to read microphone type: %s\n", fbdoUpload.errorReason().c_str());
     selectMicrophone(MIC_I2S_ICS43434);
-    Firebase.RTDB.setInt(&fbdoUpload, micSelectionPath.c_str(), (int)MIC_I2S_ICS43434);
+    Firebase.RTDB.setInt(&fbdoUpload, micTypePath.c_str(), (int)MIC_I2S_ICS43434);
   }
   
-  // Read microphone sensitivity
-  String micSensitivityPath = basePath + "/mic_sensitivity";
-  if (Firebase.RTDB.getFloat(&fbdoUpload, micSensitivityPath.c_str())) {
-    micSensitivity = fbdoUpload.floatData();
-    Serial.printf("Mic sensitivity: %.2f\n", micSensitivity);
+  String autoCalibrationPath = basePath + "/auto_calibration_enabled";
+  if (Firebase.RTDB.getBool(&fbdoUpload, autoCalibrationPath.c_str())) {
+    autoCalibrationEnabled = fbdoUpload.boolData();
+    Serial.printf("Auto-calibration: %s\n", autoCalibrationEnabled ? "enabled" : "disabled");
   } else {
-    Serial.printf("Failed to read mic sensitivity: %s\n", fbdoUpload.errorReason().c_str());
-    micSensitivity = 1.0;
-    Firebase.RTDB.setFloat(&fbdoUpload, micSensitivityPath.c_str(), micSensitivity);
+    autoCalibrationEnabled = true;
+    Firebase.RTDB.setBool(&fbdoUpload, autoCalibrationPath.c_str(), autoCalibrationEnabled);
   }
   
-  // Read frequency threshold
-  String freqThresholdPath = basePath + "/frequency_threshold";
-  if (Firebase.RTDB.getFloat(&fbdoUpload, freqThresholdPath.c_str())) {
-    frequencyThreshold = fbdoUpload.floatData();
-    Serial.printf("Frequency threshold: %.2f\n", frequencyThreshold);
-  } else {
-    Serial.printf("Failed to read frequency threshold: %s\n", fbdoUpload.errorReason().c_str());
-    frequencyThreshold = 500.0;
-    Firebase.RTDB.setFloat(&fbdoUpload, freqThresholdPath.c_str(), frequencyThreshold);
-  }
-  
-  // Read beat threshold
-  String beatThresholdPath = basePath + "/beat_threshold";
-  if (Firebase.RTDB.getFloat(&fbdoUpload, beatThresholdPath.c_str())) {
-    beatThreshold = fbdoUpload.floatData();
-    Serial.printf("Beat threshold: %.2f\n", beatThreshold);
-  } else {
-    Serial.printf("Failed to read beat threshold: %s\n", fbdoUpload.errorReason().c_str());
-    beatThreshold = 5000.0;
-    Firebase.RTDB.setFloat(&fbdoUpload, beatThresholdPath.c_str(), beatThreshold);
-  }
-  
-  // Read bass boost
-  String bassBoostPath = basePath + "/bass_boost";
-  if (Firebase.RTDB.getFloat(&fbdoUpload, bassBoostPath.c_str())) {
-    bassBoost = fbdoUpload.floatData();
-    Serial.printf("Bass boost: %.2f\n", bassBoost);
-  } else {
-    Serial.printf("Failed to read bass boost: %s\n", fbdoUpload.errorReason().c_str());
-    bassBoost = 1.2;
-    Firebase.RTDB.setFloat(&fbdoUpload, bassBoostPath.c_str(), bassBoost);
-  }
-  
-  // ============================================================================
-  
-  // Read reset flag
   String resetPath = basePath + "/reset";
   Firebase.RTDB.setBool(&fbdoUpload, resetPath.c_str(), false);
   
-  // Publish firmware version
   String versionPath = basePath + "/version";
   if (Firebase.RTDB.setString(&fbdoUpload, versionPath.c_str(), currentFirmwareVersion)) {
     Serial.printf("Firmware version published: %s\n", currentFirmwareVersion);
-  } else {
-    Serial.printf("Failed to publish firmware version: %s\n", fbdoUpload.errorReason().c_str());
   }
   
   Serial.println("Initial data read complete.\n");
@@ -665,24 +510,18 @@ void readInitialFirebaseData() {
 // ============================================================================
 
 void streamCallback(FirebaseStream data) {
-  Serial.printf("Stream data path: %s, type: %s, value: %s\n",
-                data.dataPath().c_str(),
-                data.dataType().c_str(),
-                data.stringData().c_str());
+  Serial.printf("Stream: %s = %s\n", data.dataPath().c_str(), data.stringData().c_str());
 
   String dataPath = data.dataPath().c_str();
 
-  // Effect change
   if (dataPath == "/effect") {
     currentEffect = data.intData();
     Serial.printf("Effect changed to: %d\n", currentEffect);
   }
-  // Speed change
   else if (dataPath == "/speed") {
     effectSpeed = data.intData();
     Serial.printf("Speed changed to: %d\n", effectSpeed);
   }
-  // Color change
   else if (dataPath == "/color") {
     String colorStr = data.stringData();
     if (colorStr.length() == 6) {
@@ -690,15 +529,12 @@ void streamCallback(FirebaseStream data) {
       Serial.printf("Color changed to: %s\n", colorStr.c_str());
     }
   }
-  // Lux threshold change
   else if (dataPath == "/lux_threshold") {
     luxThreshold = data.floatData();
     Serial.printf("Lux threshold changed to: %.2f\n", luxThreshold);
   }
-  // Enabled state change
   else if (dataPath == "/enabled") {
-    bool newState = data.boolData();
-    stripEnabled = newState;
+    stripEnabled = data.boolData();
     turnedOffByDarkness = false;
     Serial.printf("Strip %s\n", stripEnabled ? "enabled" : "disabled");
     if (!stripEnabled) {
@@ -706,73 +542,49 @@ void streamCallback(FirebaseStream data) {
       strip.show();
     }
   }
-  // Timer enabled change
   else if (dataPath == "/timer_enabled") {
     timerEnabled = data.boolData();
     Serial.printf("Timer %s\n", timerEnabled ? "enabled" : "disabled");
   }
-  // Auto darkness control change
   else if (dataPath == "/auto_darkness_control") {
     autoDarknessControl = data.boolData();
     Serial.printf("Auto darkness control %s\n", autoDarknessControl ? "enabled" : "disabled");
   }
-  // Timer on time change
   else if (dataPath == "/timer_on") {
     String timeStr = data.stringData();
     if (timeStr.length() == 5) {
       strncpy(timerOnTime, timeStr.c_str(), sizeof(timerOnTime));
-      Serial.printf("Timer ON time changed to: %s\n", timerOnTime);
+      Serial.printf("Timer ON time: %s\n", timerOnTime);
     }
   }
-  // Timer off time change
   else if (dataPath == "/timer_off") {
     String timeStr = data.stringData();
     if (timeStr.length() == 5) {
       strncpy(timerOffTime, timeStr.c_str(), sizeof(timerOffTime));
-      Serial.printf("Timer OFF time changed to: %s\n", timerOffTime);
+      Serial.printf("Timer OFF time: %s\n", timerOffTime);
     }
   }
-  // ============================================================================
-  // AUDIO PARAMETERS (NEW)
-  // ============================================================================
-  // Microphone type selection
   else if (dataPath == "/microphone_type") {
     int micType = data.intData();
     selectMicrophone(micType);
     activeMicrophone = micType;
     Serial.printf("Microphone switched to: %d\n", micType);
   }
-  // Microphone sensitivity
-  else if (dataPath == "/mic_sensitivity") {
-    micSensitivity = data.floatData();
-    Serial.printf("Mic sensitivity changed to: %.2f\n", micSensitivity);
+  else if (dataPath == "/auto_calibration_enabled") {
+    autoCalibrationEnabled = data.boolData();
+    Serial.printf("Auto-calibration: %s\n", autoCalibrationEnabled ? "enabled" : "disabled");
   }
-  // Frequency threshold
-  else if (dataPath == "/frequency_threshold") {
-    frequencyThreshold = data.floatData();
-    Serial.printf("Frequency threshold changed to: %.2f\n", frequencyThreshold);
+  else if (dataPath == "/request_calibration" && data.boolData() == true) {
+    Serial.println("Calibration requested via Firebase");
+    calibrationRequested = true;
+    Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/request_calibration").c_str(), false);
   }
-  // Beat threshold
-  else if (dataPath == "/beat_threshold") {
-    beatThreshold = data.floatData();
-    Serial.printf("Beat threshold changed to: %.2f\n", beatThreshold);
-  }
-  // Bass boost
-  else if (dataPath == "/bass_boost") {
-    bassBoost = data.floatData();
-    Serial.printf("Bass boost changed to: %.2f\n", bassBoost);
-  }
-  // ============================================================================
-  // Reset handler
   else if (dataPath == "/reset" && data.boolData() == true) {
-    Serial.println("Reset command received - deleting config and restarting...");
-    
+    Serial.println("Reset command received - restarting...");
     if (SPIFFS.exists("/config.json")) {
       SPIFFS.remove("/config.json");
     }
-    
     ESP.restart();
-    return;
   }
 }
 
@@ -786,200 +598,44 @@ void streamTimeoutCallback(bool timeout) {
 }
 
 // ============================================================================
-// CREATE DEFAULT FIREBASE DATA
+// FREERTOS TASKS - IMPROVED WITH BETTER ERROR HANDLING
 // ============================================================================
 
-void createDefaultFirebaseData() {
-  String testPath = basePath + "/effect";
-  
-  if (Firebase.RTDB.getInt(&fbdoUpload, testPath.c_str())) {
-    Serial.println("Firebase data already exists, skipping default data creation");
-    defaultDataCreated = true;
-    return;
-  }
-  
-  Serial.println("Creating default Firebase structure for device: " + deviceID);
-  
-  bool allSuccess = true;
-  
-  // Set default effect
-  String effectPath = basePath + "/effect";
-  if (Firebase.RTDB.setInt(&fbdoUpload, effectPath.c_str(), 0)) {
-    Serial.println("Effect set to default: 0");
-  } else {
-    Serial.printf("Failed to set effect: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default speed
-  String speedPath = basePath + "/speed";
-  if (Firebase.RTDB.setInt(&fbdoUpload, speedPath.c_str(), 50)) {
-    Serial.println("Speed set to default: 50");
-  } else {
-    Serial.printf("Failed to set speed: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default color
-  String colorPath = basePath + "/color";
-  if (Firebase.RTDB.setString(&fbdoUpload, colorPath.c_str(), "FF0000")) {
-    Serial.println("Color set to default: FF0000");
-  } else {
-    Serial.printf("Failed to set color: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default enabled state
-  String enabledPath = basePath + "/enabled";
-  if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), true)) {
-    Serial.println("Enabled set to default: true");
-  } else {
-    Serial.printf("Failed to set enabled: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default auto darkness control
-  String autoDarknessPath = basePath + "/auto_darkness_control";
-  if (Firebase.RTDB.setBool(&fbdoUpload, autoDarknessPath.c_str(), true)) {
-    Serial.println("Auto darkness control set to default: true");
-  } else {
-    Serial.printf("Failed to set auto darkness control: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default lux threshold
-  String luxThresholdPath = basePath + "/lux_threshold";
-  if (Firebase.RTDB.setFloat(&fbdoUpload, luxThresholdPath.c_str(), 1.0)) {
-    Serial.println("Lux threshold set to default: 1.0");
-  } else {
-    Serial.printf("Failed to set lux threshold: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default timer on time
-  String timerOnPath = basePath + "/timer_on";
-  if (Firebase.RTDB.setString(&fbdoUpload, timerOnPath.c_str(), "09:00")) {
-    Serial.println("Timer ON set to default: 09:00");
-  } else {
-    Serial.printf("Failed to set timer ON: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default timer off time
-  String timerOffPath = basePath + "/timer_off";
-  if (Firebase.RTDB.setString(&fbdoUpload, timerOffPath.c_str(), "17:00")) {
-    Serial.println("Timer OFF set to default: 17:00");
-  } else {
-    Serial.printf("Failed to set timer OFF: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default timer enabled state
-  String timerEnabledPath = basePath + "/timer_enabled";
-  if (Firebase.RTDB.setBool(&fbdoUpload, timerEnabledPath.c_str(), true)) {
-    Serial.println("Timer enabled set to default: true");
-  } else {
-    Serial.printf("Failed to set timer enabled: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // ============================================================================
-  // AUDIO PARAMETERS (NEW)
-  // ============================================================================
-  
-  // Set default microphone type
-  String micSelectionPath = basePath + "/microphone_type";
-  if (Firebase.RTDB.setInt(&fbdoUpload, micSelectionPath.c_str(), (int)MIC_I2S_ICS43434)) {
-    Serial.println("Microphone type set to default: ICS43434");
-  } else {
-    Serial.printf("Failed to set microphone type: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default mic sensitivity
-  String micSensitivityPath = basePath + "/mic_sensitivity";
-  if (Firebase.RTDB.setFloat(&fbdoUpload, micSensitivityPath.c_str(), 1.0)) {
-    Serial.println("Mic sensitivity set to default: 1.0");
-  } else {
-    Serial.printf("Failed to set mic sensitivity: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default frequency threshold
-  String freqThresholdPath = basePath + "/frequency_threshold";
-  if (Firebase.RTDB.setFloat(&fbdoUpload, freqThresholdPath.c_str(), 500.0)) {
-    Serial.println("Frequency threshold set to default: 500.0");
-  } else {
-    Serial.printf("Failed to set frequency threshold: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default beat threshold
-  String beatThresholdPath = basePath + "/beat_threshold";
-  if (Firebase.RTDB.setFloat(&fbdoUpload, beatThresholdPath.c_str(), 5000.0)) {
-    Serial.println("Beat threshold set to default: 5000.0");
-  } else {
-    Serial.printf("Failed to set beat threshold: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // Set default bass boost
-  String bassBoostPath = basePath + "/bass_boost";
-  if (Firebase.RTDB.setFloat(&fbdoUpload, bassBoostPath.c_str(), 1.2)) {
-    Serial.println("Bass boost set to default: 1.2");
-  } else {
-    Serial.printf("Failed to set bass boost: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  // ============================================================================
-  
-  // Set default reset flag
-  String resetPath = basePath + "/reset";
-  if (Firebase.RTDB.setBool(&fbdoUpload, resetPath.c_str(), false)) {
-    Serial.println("Reset flag set to default: false");
-  } else {
-    Serial.printf("Failed to set reset flag: %s\n", fbdoUpload.errorReason().c_str());
-    allSuccess = false;
-  }
-  
-  defaultDataCreated = allSuccess;
-  
-  if (allSuccess) {
-    Serial.println("Default Firebase data structure created successfully");
-  } else {
-    Serial.println("Some default values failed to set. Check Firebase rules.");
-  }
-}
-
-// ============================================================================
-// FREERTOS TASKS
-// ============================================================================
-
-// Firebase management task - handles OTA and connection monitoring
 void firebaseTask(void *parameter) {
+  unsigned long lastReconnectAttempt = 0;
+  
   for(;;) {
+    esp_task_wdt_reset();
+    
     if (WiFi.status() == WL_CONNECTED) {
       ArduinoOTA.handle();
       
       if (!Firebase.ready()) {
-        Serial.println("Firebase not ready, reconnecting...");
-        firebaseConnected = false;
-        delay(1000);
+        if (millis() - lastReconnectAttempt > FIREBASE_RECONNECT_INTERVAL) {
+          Serial.println("Firebase not ready, checking connection...");
+          firebaseConnected = false;
+          lastReconnectAttempt = millis();
+          Firebase.reconnectNetwork(true);
+          delay(500);
+        }
       } else {
         firebaseConnected = true;
+        lastSuccessfulFirebaseTime = millis();
       }
     } else {
       firebaseConnected = false;
-      Serial.println("WiFi disconnected, attempting reconnect...");
-      connectToWiFi();
+      
+      if (millis() - lastWiFiAttempt > WIFI_RECONNECT_INTERVAL) {
+        Serial.println("WiFi disconnected, attempting reconnect...");
+        WiFi.reconnect();
+        lastWiFiAttempt = millis();
+      }
     }
     
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
   }
 }
 
-// LED animation task - runs selected effect
 void ledTask(void *parameter) {
   for(;;) {
     updateLEDs();
@@ -987,15 +643,15 @@ void ledTask(void *parameter) {
   }
 }
 
-// Automation task - handles light-based auto on/off
 void automationtask(void *parameter) {
   const TickType_t xDelay = 100 / portTICK_PERIOD_MS;
 
   for(;;) {
+    esp_task_wdt_reset();
+    
     if (sensorAvailable) {
       updateSensorData();
 
-      // Auto-off when too dark
       if (autoDarknessControl && shouldTurnOffDueToDarkness()) {
         if (stripEnabled) {
           stripEnabled = false;
@@ -1005,7 +661,6 @@ void automationtask(void *parameter) {
           Serial.println("Darkness detected - turning LEDs off automatically");
         }
       } 
-      // Auto-on when light returns
       else if (autoDarknessControl && turnedOffByDarkness && !shouldTurnOffDueToDarkness()) {
         stripEnabled = true;
         turnedOffByDarkness = false;
@@ -1017,38 +672,49 @@ void automationtask(void *parameter) {
   }
 }
 
-// Sensor data task - reads and reports light levels to Firebase
 void sensorDataTask(void *parameter) {
-  const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // 2 second interval
+  const TickType_t xDelay = 2000 / portTICK_PERIOD_MS;
   
   for(;;) {
+    esp_task_wdt_reset();
+    
     if (firebaseConnected) {
       if (sensorAvailable) {
         updateSensorData();
         
         String luxPath = basePath + "/lux";
-        
         if (Firebase.RTDB.setFloat(&fbdoUpload, luxPath.c_str(), currentLux)) {
           Serial.printf("Lux data sent: %.2f\n", currentLux);
         } else {
           Serial.printf("Failed to send lux data: %s\n", fbdoUpload.errorReason().c_str());
         }
       }
+      
+      esp_task_wdt_reset();
+      
+      String noiseFloorPath = basePath + "/audio/noise_floor";
+      Firebase.RTDB.setFloat(&fbdoUpload, noiseFloorPath.c_str(), noiseFloor);
+      
+      String peakLevelPath = basePath + "/audio/peak_level";
+      Firebase.RTDB.setFloat(&fbdoUpload, peakLevelPath.c_str(), peakLevel);
+      
+      String dynamicRangePath = basePath + "/audio/dynamic_range";
+      Firebase.RTDB.setFloat(&fbdoUpload, dynamicRangePath.c_str(), dynamicRange);
     }
     
     vTaskDelay(xDelay);
   }
 }
 
-// Timer task - handles scheduled on/off times
 void timerTask(void *parameter) {
-  const TickType_t xDelay = 1000 / portTICK_PERIOD_MS; // Check every second
+  const TickType_t xDelay = 1000 / portTICK_PERIOD_MS;
   bool lastOnTriggered = false;
   bool lastOffTriggered = false;
   
   for(;;) {
+    esp_task_wdt_reset();
+    
     if (firebaseConnected && timerEnabled) {
-      // Check timer on time
       if (checkTimeMatch(timerOnTime)) {
         if (!lastOnTriggered) {
           Serial.println("Timer ON triggered");
@@ -1059,7 +725,6 @@ void timerTask(void *parameter) {
         lastOnTriggered = false;
       }
       
-      // Check timer off time
       if (checkTimeMatch(timerOffTime)) {
         if (!lastOffTriggered) {
           Serial.println("Timer OFF triggered");
@@ -1075,6 +740,44 @@ void timerTask(void *parameter) {
   }
 }
 
+void calibrationTask(void *parameter) {
+  const TickType_t xDelay = 100 / portTICK_PERIOD_MS;
+  
+  for(;;) {
+    esp_task_wdt_reset();
+    
+    if (autoCalibrationEnabled && firebaseConnected) {
+      if (calibrationRequested) {
+        startAutoCalibration();
+        calibrationRequested = false;
+      }
+      
+      if (millis() - lastCalibrationTime > AUTO_RECALIBRATION_INTERVAL) {
+        Serial.println("Performing periodic re-calibration...");
+        startAutoCalibration();
+        lastCalibrationTime = millis();
+      }
+      
+      String calibStatusPath = basePath + "/audio/calibration_active";
+      Firebase.RTDB.setBool(&fbdoUpload, calibStatusPath.c_str(), calibrationActive);
+      
+      String calibCompletePath = basePath + "/audio/calibration_complete";
+      Firebase.RTDB.setBool(&fbdoUpload, calibCompletePath.c_str(), isCalibrationComplete());
+      
+      String micSensPath = basePath + "/audio/mic_sensitivity";
+      Firebase.RTDB.setFloat(&fbdoUpload, micSensPath.c_str(), micSensitivity);
+      
+      String freqThreshPath = basePath + "/audio/frequency_threshold";
+      Firebase.RTDB.setFloat(&fbdoUpload, freqThreshPath.c_str(), frequencyThreshold);
+      
+      String beatThreshPath = basePath + "/audio/beat_threshold";
+      Firebase.RTDB.setFloat(&fbdoUpload, beatThreshPath.c_str(), beatThreshold);
+    }
+    
+    vTaskDelay(xDelay);
+  }
+}
+
 // ============================================================================
 // TIMER & TIME FUNCTIONS
 // ============================================================================
@@ -1082,7 +785,6 @@ void timerTask(void *parameter) {
 bool checkTimeMatch(const char* scheduledTime) {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
-    Serial.println("Failed to obtain time");
     return false;
   }
   
@@ -1114,23 +816,19 @@ void updateTimerState(bool state) {
 // ============================================================================
 
 void updateLEDs() {
-  // Auto-off due to darkness
   if (autoDarknessControl && sensorAvailable && shouldTurnOffDueToDarkness()) {
     strip.clear();
     strip.show();
     return;
   }
   
-  // Manual off state
   if (!stripEnabled) {
     strip.clear();
     strip.show();
     return;
   }
   
-  // Run selected animation effect
   switch(currentEffect) {
-    // Original effects (0-21)
     case 0: effectRainbow(); break;
     case 1: effectMeteorShower(); break;
     case 2: effectDigitalRain(); break;
@@ -1153,8 +851,6 @@ void updateLEDs() {
     case 19: effectSolarFlare(); break;
     case 20: effectFireSimulation(); break;
     case 21: effectSolidColor(); break;
-    
-    // NEW: Sound-reactive effects (22-32)
     case 22: effectFrequencySpectrum(); break;
     case 23: effectReactiveWaveform(); break;
     case 24: effectBeatPulse(); break;
@@ -1166,7 +862,6 @@ void updateLEDs() {
     case 30: effectCascadingFrequency(); break;
     case 31: effectEnergyOrbits(); break;
     case 32: effectAudioRipples(); break;
-    
     default: effectRainbow(); break;
   }
   strip.show();

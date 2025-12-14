@@ -26,6 +26,12 @@ extern volatile float frequencyThreshold;
 extern volatile float beatThreshold;
 extern volatile float bassBoost;
 
+// Auto-calibration and noise tracking
+extern volatile float noiseFloor;
+extern volatile float dynamicRange;
+extern volatile float peakLevel;
+extern volatile bool calibrationActive;
+
 // Number of frequency bands
 #define NUM_FREQ_BANDS 8
 
@@ -36,6 +42,10 @@ extern double bandMaxima[NUM_FREQ_BANDS];
 extern void updateFrequencyDetection();
 extern void analyzeAudioBands();
 extern void detectBeat();
+extern void startAutoCalibration();
+extern void updateAutoCalibration();
+extern bool isCalibrationComplete();
+extern void resetAutoCalibration();
 
 // ============================================================================
 // ORIGINAL ANIMATION EFFECTS (0-21)
