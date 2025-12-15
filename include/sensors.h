@@ -5,7 +5,6 @@
 #include <Wire.h>
 #include <Adafruit_VEML7700.h>
 #include <driver/i2s.h>
-#include <driver/adc.h>
 #include <arduinoFFT.h>
 #include <Adafruit_NeoPixel.h>
 
@@ -35,8 +34,7 @@ extern volatile int activeMicrophone;
 #define I2S_PORT I2S_NUM_0
 
 // Analog Configuration (for MAX9814)
-#define ANALOG_MIC_PIN 27  
-#define ANALOG_READ_SAMPLES 64
+#define ANALOG_MIC_PIN 27
 
 // Audio FFT Configuration
 #define SAMPLE_RATE 16000
@@ -48,32 +46,22 @@ extern volatile int activeMicrophone;
 // AUTO-CALIBRATION CONFIGURATION
 // ============================================================================
 
-// Calibration parameters
-#define CALIBRATION_DURATION_MS 3000  // 3 seconds of calibration
-#define CALIBRATION_UPDATE_INTERVAL_MS 30000  // Update every 30 seconds
-#define MIN_THRESHOLD_FLOOR 100.0
-#define MAX_THRESHOLD_CEILING 50000.0
+// Calibration constants
+#define CALIBRATION_DURATION 3000        // 3 seconds of calibration
+#define CALIBRATION_CHECK_INTERVAL 30000 // Re-calibrate every 30 seconds
+#define NOISE_FLOOR_MULTIPLIER 1.5       // Noise floor * this = detection threshold (lowered for sensitivity)
+#define TARGET_PEAK_LEVEL 0.8             // Target peak magnitude (0-1 scale) - aim higher
+#define GAIN_ADJUSTMENT_RATE 0.05         // Rate of gain adjustment per cycle (faster adaptation)
+#define INITIAL_GAIN_MULTIPLIER 5.0       // Start with higher gain (instead of 1.0)
 
-// Audio sensitivity and thresholds (managed by auto-calibration)
-extern volatile float micSensitivity;          // Dynamic sensitivity (0.5 - 3.0)
-extern volatile float frequencyThreshold;      // Dynamic threshold (auto-adjusted)
-extern volatile float beatThreshold;           // Dynamic beat threshold (auto-adjusted)
-extern volatile float bassBoost;               // Fixed bass boost (1.0 - 2.0)
+// Microphone calibration state
+extern volatile bool calibrationComplete;
+extern volatile double noiseFloor;
+extern volatile double gainMultiplier;
+extern unsigned long lastCalibrationTime;
 
-// Noise floor and dynamic range tracking
-extern volatile float noiseFloor;              // Automatically measured
-extern volatile float dynamicRange;            // Automatically measured
-extern volatile float peakLevel;               // Running peak level
-extern volatile bool calibrationActive;        // Calibration state indicator
-
-// ============================================================================
-// FFT AND AUDIO BUFFERS
-// ============================================================================
-
-// I2S samples
+// FFT Variables
 extern int16_t raw_samples[BUFFER_LEN];
-
-// FFT objects
 extern ArduinoFFT<double> FFT;
 extern double vReal[N_SAMPLES];
 extern double vImag[N_SAMPLES];
@@ -93,62 +81,38 @@ extern volatile double trebleLevel;
 extern volatile bool beatDetected;
 extern volatile float beatEnergy;
 
-// Smoothing and temporal analysis
+// Smoothing variables
 extern double smoothedBandMagnitudes[NUM_FREQ_BANDS];
-extern unsigned long lastAudioUpdate;
-extern const unsigned long AUDIO_UPDATE_INTERVAL;
 
 // NeoPixel reference
 extern Adafruit_NeoPixel strip;
 
 // ============================================================================
-// FUNCTION DECLARATIONS - LIGHT SENSOR
+// FUNCTION DECLARATIONS
 // ============================================================================
 
+// Light Sensor Functions
 void setupVEML7700();
 void updateSensorData();
 bool shouldTurnOffDueToDarkness();
 
-// ============================================================================
-// FUNCTION DECLARATIONS - AUDIO SENSOR SETUP
-// ============================================================================
-
+// Audio Sensor Setup
 void setupFrequencyDetection();
 void selectMicrophone(int micType);
-void setupI2SMicrophone();
-void setupAnalogMicrophone();
 
-// ============================================================================
-// FUNCTION DECLARATIONS - AUTO-CALIBRATION
-// ============================================================================
-
-void startAutoCalibration();
-void updateAutoCalibration();
-bool isCalibrationComplete();
-void resetAutoCalibration();
-float getMeasuredNoiseFloor();
-float getMeasuredPeakLevel();
-
-// ============================================================================
-// FUNCTION DECLARATIONS - AUDIO PROCESSING
-// ============================================================================
-
+// Audio Processing Functions
 void updateFrequencyDetection();
-void readI2SSamples();
-void readAnalogSamples();
 void analyzeAudioBands();
 void detectBeat();
 void normalizeAudioLevels();
-void applyNoiseGate();
-void smoothAudioData();
 
-// ============================================================================
-// FUNCTION DECLARATIONS - UTILITY
-// ============================================================================
+// Auto-calibration Functions
+void calibrateMicrophone();
+void performAutoGainControl();
+void checkAndRecalibrate();
 
+// Utility Functions
 uint32_t frequencyToColor(double freq);
 double getAudioLevelSmoothed(int index, double currentValue);
-float constrainSensitivity(float value);
-float constrainThreshold(float value);
 
 #endif

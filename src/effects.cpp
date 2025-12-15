@@ -1186,19 +1186,19 @@ void setAllLeds(uint32_t color) {
     strip.setPixelColor(i, color);
   }
 }
+
 // Effect 22: Frequency Response
 void effectFrequencyResponse() {
   // Update frequency detection
   updateFrequencyDetection();
   
   // Check if the detected signal is strong enough (not noise)
-  // Adjust this threshold as needed for your environment
   if (frequencyMagnitude > 2000.0) {
     // Valid frequency detected - map to color
     double freq = detectedFrequency;
     uint32_t freqColor;
     
-    // Frequency to color mapping (included directly in the function)
+    // Frequency to color mapping
     if (freq < 200) {
       freqColor = strip.Color(255, 0, 0);    // Red - low frequencies
     } else if (freq < 400) {
@@ -1227,39 +1227,33 @@ void effectFrequencyResponse() {
     for(int i = 0; i < strip.numPixels(); i++) {
       strip.setPixelColor(i, freqColor);
     }
-    
-    // Optional: Print frequency for debugging
-    // Serial.printf("Frequency: %.0f Hz, Magnitude: %.0f\n", detectedFrequency, frequencyMagnitude);
   } else {
     // Too noisy or no clear frequency - turn off LEDs
     for(int i = 0; i < strip.numPixels(); i++) {
       strip.setPixelColor(i, 0, 0, 0);
     }
-    
-    // Optional: Print noise floor message
-    // Serial.println("Noise floor - LEDs off");
   }
 }
+
 // Effect 23: Piano Tiles - Multi-Frequency Spectrum Analyzer
 void effectPianoTiles() {
   const int TOTAL_LEDS = strip.numPixels();
-    const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+  
   // Update multi-frequency detection
   updateFrequencyDetection();
   
   // Check if any frequency band has significant signal
   bool hasSignal = false;
   for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-    if (bandMagnitudes[band] > frequencyThreshold) {
+    // Use noise floor as threshold instead of frequencyThreshold
+    if (bandMagnitudes[band] > 0.1) {  // 0.1 = 10% of normalized scale
       hasSignal = true;
       break;
     }
   }
   
   if (hasSignal) {
-    const int TOTAL_LEDS = strip.numPixels();
-    const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
-    
     // Colors for each frequency band (rainbow spectrum from low to high freq)
     const uint32_t bandColors[NUM_FREQ_BANDS] = {
       strip.Color(255, 0, 0),     // Red - lowest frequencies
@@ -1279,15 +1273,14 @@ void effectPianoTiles() {
     
     // Light up LEDs for each active frequency band
     for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-      if (bandMagnitudes[band] > frequencyThreshold) {
+      if (bandMagnitudes[band] > 0.1) {  // Threshold of 0.1 normalized
         // Calculate LED positions for this band
         // Lower frequencies (lower bands) use higher LED positions (like piano keys)
         int bandPosition = NUM_FREQ_BANDS - 1 - band; // Reverse mapping
         int startLed = bandPosition * LEDS_PER_BAND;
         
-        // Calculate brightness based on magnitude (normalized)
-        float brightness = bandMagnitudes[band] / 10000.0; // Adjust divisor based on your mic sensitivity
-        if (brightness > 1.0) brightness = 1.0;
+        // Use normalized band magnitude directly (already 0-1)
+        float brightness = bandMagnitudes[band];
         if (brightness < 0.1) brightness = 0.1; // Minimum visibility
         
         // Light up the LEDs for this frequency band
@@ -1300,16 +1293,6 @@ void effectPianoTiles() {
         }
       }
     }
-    
-    // Optional: Debug output
-    /*
-    Serial.print("Spectrum: ");
-    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-      Serial.printf("[%d]:%.0f ", band, bandMagnitudes[band]);
-    }
-    Serial.println();
-    */
-    
   } else {
     // No significant frequencies detected - turn off all LEDs
     for(int i = 0; i < strip.numPixels(); i++) {
@@ -1317,25 +1300,26 @@ void effectPianoTiles() {
     }
   }
 }
+
 // Effect 24: Piano Tiles - Frequency Bars (shows intensity as height)
 void effectPianoTilesBars() {
   const int TOTAL_LEDS = strip.numPixels();
-    const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+  
   // Update multi-frequency detection
   updateFrequencyDetection();
   
   // Check if any frequency band has significant signal
   bool hasSignal = false;
   for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-    if (bandMagnitudes[band] > frequencyThreshold) {
+    // Use noise floor threshold
+    if (bandMagnitudes[band] > 0.1) {
       hasSignal = true;
       break;
     }
   }
   
   if (hasSignal) {
-    const int TOTAL_LEDS = strip.numPixels();
-    const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
     const int MAX_BAR_HEIGHT = LEDS_PER_BAND; // Maximum bars can use all LEDs in their band
     
     // Colors for each frequency band
@@ -1357,9 +1341,9 @@ void effectPianoTilesBars() {
     
     // Create bar graph for each frequency band
     for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-      if (bandMagnitudes[band] > frequencyThreshold) {
-        // Calculate bar height based on magnitude
-        int barHeight = (bandMagnitudes[band] / 15000.0) * MAX_BAR_HEIGHT; // Adjust divisor as needed
+      if (bandMagnitudes[band] > 0.1) {
+        // Calculate bar height based on normalized magnitude (0-1 scale)
+        int barHeight = (int)(bandMagnitudes[band] * MAX_BAR_HEIGHT);
         if (barHeight > MAX_BAR_HEIGHT) barHeight = MAX_BAR_HEIGHT;
         if (barHeight < 1) barHeight = 1;
         
@@ -1376,7 +1360,6 @@ void effectPianoTilesBars() {
         }
       }
     }
-    
   } else {
     // No significant frequencies - turn off LEDs
     for(int i = 0; i < strip.numPixels(); i++) {
@@ -1384,6 +1367,8 @@ void effectPianoTilesBars() {
     }
   }
 }
+
+// Effect 25: Frequency Spectrum
 void effectFrequencySpectrum() {
   updateFrequencyDetection();
   
@@ -1412,7 +1397,7 @@ void effectFrequencySpectrum() {
     double magnitude = bandMagnitudes[band];
     int startLed = band * LEDS_PER_BAND;
     
-    // Calculate bar height based on magnitude
+    // Calculate bar height based on normalized magnitude
     int barHeight = (int)(magnitude * LEDS_PER_BAND * 1.5);
     if (barHeight > LEDS_PER_BAND) barHeight = LEDS_PER_BAND;
     
@@ -1567,11 +1552,17 @@ void effectFrequencyBloom() {
         }
         
         if (rightPos < TOTAL_LEDS) {
-          strip.setPixelColor(rightPos, 
-            ((Wheel((band * 255) / NUM_FREQ_BANDS) >> 16) & 0xFF) * (1.0 - (offset / (float)bloomDistance)),
-            ((Wheel((band * 255) / NUM_FREQ_BANDS) >> 8) & 0xFF) * (1.0 - (offset / (float)bloomDistance)),
-            (Wheel((band * 255) / NUM_FREQ_BANDS) & 0xFF) * (1.0 - (offset / (float)bloomDistance))
-          );
+          float falloff = 1.0 - (offset / (float)bloomDistance);
+          falloff = falloff * falloff;
+          
+          uint8_t hue = (band * 255) / NUM_FREQ_BANDS;
+          uint32_t color = Wheel(hue);
+          
+          uint8_t r = ((color >> 16) & 0xFF) * falloff;
+          uint8_t g = ((color >> 8) & 0xFF) * falloff;
+          uint8_t b = (color & 0xFF) * falloff;
+          
+          strip.setPixelColor(rightPos, r, g, b);
         }
       }
     }
