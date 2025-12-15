@@ -578,6 +578,10 @@ void readInitialFirebaseData() {
   String resetPath = basePath + "/reset";
   Firebase.RTDB.setBool(&fbdoUpload, resetPath.c_str(), false);
   
+  // Initialize mic_calibration flag to false
+  String micCalibPath = basePath + "/mic_calibration";
+  Firebase.RTDB.setBool(&fbdoUpload, micCalibPath.c_str(), false);
+  
   // Publish firmware version
   String versionPath = basePath + "/version";
   if (Firebase.RTDB.setString(&fbdoUpload, versionPath.c_str(), currentFirmwareVersion)) {
@@ -671,6 +675,11 @@ void streamCallback(FirebaseStream data) {
     
     ESP.restart();
     return;
+  }
+  // Microphone calibration trigger
+  else if (dataPath == "/mic_calibration" && data.boolData() == true) {
+    Serial.println("\n*** MICROPHONE CALIBRATION TRIGGERED VIA FIREBASE ***");
+    triggerMicCalibration = true;
   }
 }
 
@@ -787,6 +796,15 @@ void createDefaultFirebaseData() {
     Serial.println("Reset flag set to default: false");
   } else {
     Serial.printf("Failed to set reset flag: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
+  }
+  
+  // Set default mic calibration flag
+  String micCalibPath = basePath + "/mic_calibration";
+  if (Firebase.RTDB.setBool(&fbdoUpload, micCalibPath.c_str(), false)) {
+    Serial.println("Mic calibration flag set to default: false");
+  } else {
+    Serial.printf("Failed to set mic calibration flag: %s\n", fbdoUpload.errorReason().c_str());
     allSuccess = false;
   }
   

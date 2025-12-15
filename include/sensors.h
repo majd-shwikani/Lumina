@@ -48,11 +48,14 @@ extern volatile int activeMicrophone;
 
 // Calibration constants
 #define CALIBRATION_DURATION 3000        // 3 seconds of calibration
-#define CALIBRATION_CHECK_INTERVAL 30000 // Re-calibrate every 30 seconds
 #define NOISE_FLOOR_MULTIPLIER 1.5       // Noise floor * this = detection threshold (lowered for sensitivity)
 #define TARGET_PEAK_LEVEL 0.8             // Target peak magnitude (0-1 scale) - aim higher
 #define GAIN_ADJUSTMENT_RATE 0.05         // Rate of gain adjustment per cycle (faster adaptation)
 #define INITIAL_GAIN_MULTIPLIER 5.0       // Start with higher gain (instead of 1.0)
+
+// Manual calibration trigger
+extern volatile bool triggerMicCalibration;
+extern volatile bool isCalibrating;
 
 // Microphone calibration state
 extern volatile bool calibrationComplete;
