@@ -27,6 +27,11 @@ extern volatile bool sensorAvailable;
 extern volatile double globalAudioLevel;
 extern volatile float currentLux;
 
+// --- NEW: Define Effect Names Array ---
+extern const char* EFFECT_NAMES[];
+extern const int NUM_EFFECTS;
+// --------------------------------------
+
 // MQTT Configuration Structure
 typedef struct {
   char broker_address[256];
@@ -50,7 +55,7 @@ void updateMQTTConfigFromFirebase();
 bool connectToMQTT();
 void mqttTask(void *parameter);
 
-// Global MQTT objects (declared in mqtt_integration.cpp)
+// Global MQTT objects
 extern WiFiClient espClient;
 extern PubSubClient mqttClient;
 extern MQTTConfig mqttConfig;

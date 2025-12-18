@@ -23,6 +23,20 @@ const unsigned long MQTT_STATE_PUBLISH_INTERVAL = 5000;
 unsigned long lastMQTTSensorPublish = 0;
 const unsigned long MQTT_SENSOR_PUBLISH_INTERVAL = 2000;
 
+// --- NEW: Centralized Effect List ---
+const char* EFFECT_NAMES[] = {
+    "Rainbow", "Meteor Shower", "Digital Rain", "Pulsing Spheres", "Binary Clock",
+    "Vortex", "DNA Helix", "Audio Visualizer", "Lava Lamp", "Radar Sweep",
+    "Quantum Particles", "Neural Network", "Galaxy Spin", "Crystal Growth",
+    "Lightning Storm", "Ocean Depth", "Northern Lights", "Time Tunnel",
+    "Cyber City", "Solar Flare", "Fire Simulation", "Solid Color",
+    "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom",
+    "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer",
+    "Cascading Frequency", "Energy Orbits", "Audio Ripples"
+};
+const int NUM_EFFECTS = sizeof(EFFECT_NAMES) / sizeof(EFFECT_NAMES[0]);
+// -------------------------------------
+
 // ============================================================================
 // LOAD/SAVE MQTT CONFIG FROM SPIFFS
 // ============================================================================
@@ -186,6 +200,8 @@ void setupMQTT() {
   
   loadMQTTConfig();
 
+  mqttClient.setBufferSize(2048);
+
   if (firebaseConnected) {
     updateMQTTConfigFromFirebase();
   }
@@ -221,6 +237,17 @@ void mqttConnectAndSubscribe() {
       if (connectToMQTT()) {
         mqttConnected = true;
         Serial.println("MQTT reconnected");
+        
+        // Subscribe to all command topics
+        mqttClient.subscribe((deviceTopic + "/light/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/brightness/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/color/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/timer/cmd").c_str());
+        
+        Serial.println("Subscribed to command topics");
+
         publishHomeAssistantDiscovery();
         mqttPublishState();
       } else {
@@ -231,6 +258,14 @@ void mqttConnectAndSubscribe() {
     if (!mqttConnected) {
       mqttConnected = true;
       Serial.println("MQTT connection established");
+      
+      mqttClient.subscribe((deviceTopic + "/light/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/brightness/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/color/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/timer/cmd").c_str());
+      
       publishHomeAssistantDiscovery();
       mqttPublishState();
     }
@@ -257,7 +292,7 @@ void publishHomeAssistantDiscovery() {
   // Light entity
   {
     String configTopic = discoveryPrefix + "/light/" + deviceId + "/config";
-    DynamicJsonDocument doc(2048);
+    DynamicJsonDocument doc(4096); // Increased buffer for effect list
 
     doc["name"] = String(mqttConfig.device_name) + " Light";
     doc["unique_id"] = deviceId + "_light";
@@ -271,41 +306,12 @@ void publishHomeAssistantDiscovery() {
     doc["effect_command_topic"] = deviceTopic + "/effect/cmd";
     doc["effect_state_topic"] = deviceTopic + "/state";
     
-    // Effect list
+    // --- UPDATED: Generate effect list dynamically ---
     JsonArray effectList = doc.createNestedArray("effect_list");
-    effectList.add("Rainbow");
-    effectList.add("Meteor Shower");
-    effectList.add("Digital Rain");
-    effectList.add("Pulsing Spheres");
-    effectList.add("Binary Clock");
-    effectList.add("Vortex");
-    effectList.add("DNA Helix");
-    effectList.add("Audio Visualizer");
-    effectList.add("Lava Lamp");
-    effectList.add("Radar Sweep");
-    effectList.add("Quantum Particles");
-    effectList.add("Neural Network");
-    effectList.add("Galaxy Spin");
-    effectList.add("Crystal Growth");
-    effectList.add("Lightning Storm");
-    effectList.add("Ocean Depth");
-    effectList.add("Northern Lights");
-    effectList.add("Time Tunnel");
-    effectList.add("Cyber City");
-    effectList.add("Solar Flare");
-    effectList.add("Fire Simulation");
-    effectList.add("Solid Color");
-    effectList.add("Frequency Spectrum");
-    effectList.add("Reactive Waveform");
-    effectList.add("Beat Pulse");
-    effectList.add("Frequency Bloom");
-    effectList.add("Audio Reactive Fire");
-    effectList.add("Musical Rainbow");
-    effectList.add("Reactive Strobe");
-    effectList.add("Guitar Visualizer");
-    effectList.add("Cascading Frequency");
-    effectList.add("Energy Orbits");
-    effectList.add("Audio Ripples");
+    for (int i = 0; i < NUM_EFFECTS; i++) {
+      effectList.add(EFFECT_NAMES[i]);
+    }
+    // ------------------------------------------------
 
     JsonObject device = doc.createNestedObject("device");
     JsonArray identifiers = device.createNestedArray("identifiers");
@@ -327,7 +333,7 @@ void publishHomeAssistantDiscovery() {
     if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
       Serial.println("✓ Light discovery published");
     } else {
-      Serial.println("✗ Failed to publish light discovery");
+      Serial.println("✗ Failed to publish light discovery (Buffer might be too small)");
     }
     delay(200);
   }
@@ -466,10 +472,22 @@ void mqttPublishState() {
   stateDoc["state"] = stripEnabled ? "ON" : "OFF";
   stateDoc["brightness"] = strip.getBrightness();
   stateDoc["color_mode"] = "rgb";
-  stateDoc["effect"] = currentEffect;
+  
+  // --- UPDATED: Send effect Name instead of Index ---
+  if (currentEffect >= 0 && currentEffect < NUM_EFFECTS) {
+    stateDoc["effect"] = EFFECT_NAMES[currentEffect];
+  } else {
+    stateDoc["effect"] = EFFECT_NAMES[0]; // Fallback to first effect
+  }
+  // ------------------------------------------------
+
   stateDoc["color"]["r"] = (effectColor >> 16) & 0xFF;
   stateDoc["color"]["g"] = (effectColor >> 8) & 0xFF;
   stateDoc["color"]["b"] = effectColor & 0xFF;
+  
+  // Also publishing aux states
+  stateDoc["speed"] = effectSpeed;
+  stateDoc["timer"] = timerEnabled ? "ON" : "OFF";
 
   String statePayload;
   serializeJson(stateDoc, statePayload);
@@ -523,6 +541,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       strip.clear();
       strip.show();
     }
+    // Force a state update immediately so HA UI reflects change
+    mqttPublishState();
   }
   // Brightness control
   else if (topicStr.endsWith("/brightness/cmd")) {
@@ -544,13 +564,45 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Firebase.RTDB.setString(&fbdoUpload, (basePath + "/color").c_str(), colorStr);
     }
   }
-  // Effect selection
+  // --- UPDATED: Effect selection (String to Int conversion) ---
   else if (topicStr.endsWith("/effect/cmd")) {
-    int effect = atoi(message);
-    effect = constrain(effect, 0, 32);
-    currentEffect = effect;
-    Firebase.RTDB.setInt(&fbdoUpload, (basePath + "/effect").c_str(), effect);
+    String payloadStr = String(message);
+    int newEffect = -1;
+
+    // First try: Direct string match against our names array
+    for (int i = 0; i < NUM_EFFECTS; i++) {
+        if (payloadStr.equalsIgnoreCase(EFFECT_NAMES[i])) {
+            newEffect = i;
+            break;
+        }
+    }
+
+    // Second try: If no string match, check if it's a raw number (legacy support)
+    // payloadStr.toInt() returns 0 if conversion fails, so we carefully check "0" string
+    if (newEffect == -1) {
+        if (payloadStr == "0") {
+            newEffect = 0;
+        } else {
+            int val = payloadStr.toInt();
+            if (val > 0) newEffect = val;
+        }
+    }
+    
+    // Apply effect if valid
+    if (newEffect >= 0 && newEffect < NUM_EFFECTS) {
+      currentEffect = newEffect;
+      Serial.printf("Effect switched to: %d (%s)\n", currentEffect, EFFECT_NAMES[currentEffect]);
+      Firebase.RTDB.setInt(&fbdoUpload, (basePath + "/effect").c_str(), currentEffect);
+      
+      // Force immediate state publish so HA UI updates
+      lastMQTTStatePublish = 0; // Reset timer to force publish
+      mqttPublishState();
+    } else {
+      Serial.printf("Unknown effect received: %s\n", message);
+    }
   }
+  // -----------------------------------------------------------
+  
   // Speed control
   else if (topicStr.endsWith("/speed/cmd")) {
     int speed = atoi(message);
