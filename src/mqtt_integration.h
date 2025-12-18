@@ -27,10 +27,17 @@ extern volatile bool sensorAvailable;
 extern volatile double globalAudioLevel;
 extern volatile float currentLux;
 
-// --- NEW: Define Effect Names Array ---
+// NEW: Timer and automation parameters
+extern char timerOnTime[6];
+extern char timerOffTime[6];
+extern volatile bool autoDarknessControl;
+extern volatile float luxThreshold;
+extern volatile bool turnedOffByDarkness;
+extern volatile bool triggerMicCalibration;
+
+// NEW: Define Effect Names Array
 extern const char* EFFECT_NAMES[];
 extern const int NUM_EFFECTS;
-// --------------------------------------
 
 // MQTT Configuration Structure
 typedef struct {

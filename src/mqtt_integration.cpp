@@ -1,5 +1,5 @@
 // ============================================================================
-// mqtt_integration.cpp
+// mqtt_integration.cpp - FIXED VERSION (COMPLETE)
 // ============================================================================
 
 #include <Arduino.h>
@@ -23,7 +23,7 @@ const unsigned long MQTT_STATE_PUBLISH_INTERVAL = 5000;
 unsigned long lastMQTTSensorPublish = 0;
 const unsigned long MQTT_SENSOR_PUBLISH_INTERVAL = 2000;
 
-// --- NEW: Centralized Effect List ---
+// Centralized Effect List
 const char* EFFECT_NAMES[] = {
     "Rainbow", "Meteor Shower", "Digital Rain", "Pulsing Spheres", "Binary Clock",
     "Vortex", "DNA Helix", "Audio Visualizer", "Lava Lamp", "Radar Sweep",
@@ -35,7 +35,6 @@ const char* EFFECT_NAMES[] = {
     "Cascading Frequency", "Energy Orbits", "Audio Ripples"
 };
 const int NUM_EFFECTS = sizeof(EFFECT_NAMES) / sizeof(EFFECT_NAMES[0]);
-// -------------------------------------
 
 // ============================================================================
 // LOAD/SAVE MQTT CONFIG FROM SPIFFS
@@ -98,64 +97,49 @@ void saveMQTTConfig() {
 void updateMQTTConfigFromFirebase() {
   String mqttBasePath = basePath + "/mqtt";
 
-  // Read broker address
   String brokerPath = mqttBasePath + "/broker_address";
   if (Firebase.RTDB.getString(&fbdoUpload, brokerPath.c_str())) {
     String brokerStr = fbdoUpload.stringData();
     strlcpy(mqttConfig.broker_address, brokerStr.c_str(), sizeof(mqttConfig.broker_address));
     Serial.printf("MQTT broker: %s\n", mqttConfig.broker_address);
-  } else {
-    Serial.println("⚠ MQTT broker_address not found in Firebase");
   }
 
-  // Read broker port
   String portPath = mqttBasePath + "/broker_port";
   if (Firebase.RTDB.getInt(&fbdoUpload, portPath.c_str())) {
     mqttConfig.broker_port = fbdoUpload.intData();
     Serial.printf("MQTT port: %d\n", mqttConfig.broker_port);
   } else {
-    Serial.println("⚠ MQTT broker_port not found, using default 1883");
     mqttConfig.broker_port = 1883;
   }
 
-  // Read username
   String usernamePath = mqttBasePath + "/username";
   if (Firebase.RTDB.getString(&fbdoUpload, usernamePath.c_str())) {
     String usernameStr = fbdoUpload.stringData();
     strlcpy(mqttConfig.username, usernameStr.c_str(), sizeof(mqttConfig.username));
     Serial.println("MQTT username loaded");
-  } else {
-    Serial.println("⚠ MQTT username not found in Firebase");
   }
 
-  // Read password
   String passwordPath = mqttBasePath + "/password";
   if (Firebase.RTDB.getString(&fbdoUpload, passwordPath.c_str())) {
     String passwordStr = fbdoUpload.stringData();
     strlcpy(mqttConfig.password, passwordStr.c_str(), sizeof(mqttConfig.password));
     Serial.println("MQTT password loaded");
-  } else {
-    Serial.println("⚠ MQTT password not found in Firebase");
   }
 
-  // Read enabled state
   String enabledPath = mqttBasePath + "/enabled";
   if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
     mqttConfig.enabled = fbdoUpload.boolData();
     Serial.printf("MQTT enabled: %s\n", mqttConfig.enabled ? "true" : "false");
   } else {
-    Serial.println("⚠ MQTT enabled not found, setting to false");
     mqttConfig.enabled = false;
   }
 
-  // Read device name
   String deviceNamePath = mqttBasePath + "/device_name";
   if (Firebase.RTDB.getString(&fbdoUpload, deviceNamePath.c_str())) {
     String deviceNameStr = fbdoUpload.stringData();
     strlcpy(mqttConfig.device_name, deviceNameStr.c_str(), sizeof(mqttConfig.device_name));
     Serial.printf("MQTT device name: %s\n", mqttConfig.device_name);
   } else {
-    Serial.println("⚠ MQTT device_name not found, using default Lumina");
     strlcpy(mqttConfig.device_name, "Lumina", sizeof(mqttConfig.device_name));
   }
 
@@ -195,11 +179,9 @@ bool connectToMQTT() {
 }
 
 void setupMQTT() {
-  // Wait for Firebase to be ready
   delay(1000);
   
   loadMQTTConfig();
-
   mqttClient.setBufferSize(2048);
 
   if (firebaseConnected) {
@@ -238,15 +220,19 @@ void mqttConnectAndSubscribe() {
         mqttConnected = true;
         Serial.println("MQTT reconnected");
         
-        // Subscribe to all command topics
         mqttClient.subscribe((deviceTopic + "/light/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/brightness/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/color/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/timer/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/timer_on/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/timer_off/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/auto_darkness/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/lux_threshold/cmd").c_str());
+        mqttClient.subscribe((deviceTopic + "/calibrate_mic/cmd").c_str());
         
-        Serial.println("Subscribed to command topics");
+        Serial.println("Subscribed to all command topics");
 
         publishHomeAssistantDiscovery();
         mqttPublishState();
@@ -265,6 +251,11 @@ void mqttConnectAndSubscribe() {
       mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
       mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
       mqttClient.subscribe((deviceTopic + "/timer/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/timer_on/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/timer_off/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/auto_darkness/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/lux_threshold/cmd").c_str());
+      mqttClient.subscribe((deviceTopic + "/calibrate_mic/cmd").c_str());
       
       publishHomeAssistantDiscovery();
       mqttPublishState();
@@ -289,10 +280,10 @@ void publishHomeAssistantDiscovery() {
   String deviceId = deviceID;
   String discoveryPrefix = "homeassistant";
 
-  // Light entity
+  // LIGHT ENTITY
   {
     String configTopic = discoveryPrefix + "/light/" + deviceId + "/config";
-    DynamicJsonDocument doc(4096); // Increased buffer for effect list
+    DynamicJsonDocument doc(4096);
 
     doc["name"] = String(mqttConfig.device_name) + " Light";
     doc["unique_id"] = deviceId + "_light";
@@ -300,18 +291,22 @@ void publishHomeAssistantDiscovery() {
     doc["state_topic"] = deviceTopic + "/state";
     doc["brightness_command_topic"] = deviceTopic + "/brightness/cmd";
     doc["brightness_state_topic"] = deviceTopic + "/state";
-    doc["brightness_scale"] = 100;
+    doc["brightness_scale"] = 255;
+    doc["brightness_value_template"] = "{{ value_json.brightness }}";
     doc["rgb_command_topic"] = deviceTopic + "/color/cmd";
     doc["rgb_state_topic"] = deviceTopic + "/state";
+    doc["rgb_value_template"] = "{{ value_json.color.r }},{{ value_json.color.g }},{{ value_json.color.b }}";
     doc["effect_command_topic"] = deviceTopic + "/effect/cmd";
     doc["effect_state_topic"] = deviceTopic + "/state";
+    doc["effect_value_template"] = "{{ value_json.effect }}";
     
-    // --- UPDATED: Generate effect list dynamically ---
     JsonArray effectList = doc.createNestedArray("effect_list");
     for (int i = 0; i < NUM_EFFECTS; i++) {
       effectList.add(EFFECT_NAMES[i]);
     }
-    // ------------------------------------------------
+
+    JsonArray colorModes = doc.createNestedArray("supported_color_modes");
+    colorModes.add("rgb");
 
     JsonObject device = doc.createNestedObject("device");
     JsonArray identifiers = device.createNestedArray("identifiers");
@@ -327,18 +322,201 @@ void publishHomeAssistantDiscovery() {
     String payload;
     serializeJson(doc, payload);
     
-    Serial.printf("Publishing to: %s\n", configTopic.c_str());
-    Serial.printf("Payload size: %d bytes\n", payload.length());
-    
     if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Light discovery published");
-    } else {
-      Serial.println("✗ Failed to publish light discovery (Buffer might be too small)");
+      Serial.println("✓ Light entity published");
     }
     delay(200);
   }
 
-  // Lux sensor
+  // SPEED NUMBER
+  {
+    String configTopic = discoveryPrefix + "/number/" + deviceId + "_speed/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " Speed";
+    doc["unique_id"] = deviceId + "_speed";
+    doc["command_topic"] = deviceTopic + "/speed/cmd";
+    doc["state_topic"] = deviceTopic + "/state";
+    doc["value_template"] = "{{ value_json.speed }}";
+    doc["min"] = 10;
+    doc["max"] = 200;
+    doc["step"] = 5;
+    doc["unit_of_measurement"] = "ms";
+    doc["icon"] = "mdi:speedometer";
+    doc["mode"] = "slider";
+    
+    JsonObject device = doc.createNestedObject("device");
+    JsonArray identifiers = device.createNestedArray("identifiers");
+    identifiers.add(deviceId);
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
+      Serial.println("✓ Speed entity published");
+    }
+    delay(200);
+  }
+
+  // TIMER ON TIME
+  {
+    String configTopic = discoveryPrefix + "/text/" + deviceId + "_timer_on/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " Timer ON";
+    doc["unique_id"] = deviceId + "_timer_on";
+    doc["command_topic"] = deviceTopic + "/timer_on/cmd";
+    doc["state_topic"] = deviceTopic + "/state";
+    doc["value_template"] = "{{ value_json.timer_on }}";
+    doc["icon"] = "mdi:clock-start";
+    
+    JsonObject device = doc.createNestedObject("device");
+    JsonArray identifiers = device.createNestedArray("identifiers");
+    identifiers.add(deviceId);
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
+      Serial.println("✓ Timer ON entity published");
+    }
+    delay(200);
+  }
+
+  // TIMER OFF TIME
+  {
+    String configTopic = discoveryPrefix + "/text/" + deviceId + "_timer_off/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " Timer OFF";
+    doc["unique_id"] = deviceId + "_timer_off";
+    doc["command_topic"] = deviceTopic + "/timer_off/cmd";
+    doc["state_topic"] = deviceTopic + "/state";
+    doc["value_template"] = "{{ value_json.timer_off }}";
+    doc["icon"] = "mdi:clock-end";
+    
+    JsonObject device = doc.createNestedObject("device");
+    JsonArray identifiers = device.createNestedArray("identifiers");
+    identifiers.add(deviceId);
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
+      Serial.println("✓ Timer OFF entity published");
+    }
+    delay(200);
+  }
+
+  // TIMER ENABLED SWITCH
+  {
+    String configTopic = discoveryPrefix + "/switch/" + deviceId + "_timer/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " Timer";
+    doc["unique_id"] = deviceId + "_timer";
+    doc["command_topic"] = deviceTopic + "/timer/cmd";
+    doc["state_topic"] = deviceTopic + "/state";
+    doc["value_template"] = "{{ value_json.timer }}";
+    doc["payload_on"] = "ON";
+    doc["payload_off"] = "OFF";
+    doc["icon"] = "mdi:clock";
+    
+    JsonObject device = doc.createNestedObject("device");
+    JsonArray identifiers = device.createNestedArray("identifiers");
+    identifiers.add(deviceId);
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
+      Serial.println("✓ Timer switch entity published");
+    }
+    delay(200);
+  }
+
+  // AUTO DARKNESS CONTROL SWITCH
+  {
+    String configTopic = discoveryPrefix + "/switch/" + deviceId + "_auto_darkness/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " Auto Darkness";
+    doc["unique_id"] = deviceId + "_auto_darkness";
+    doc["command_topic"] = deviceTopic + "/auto_darkness/cmd";
+    doc["state_topic"] = deviceTopic + "/state";
+    doc["value_template"] = "{{ value_json.auto_darkness }}";
+    doc["payload_on"] = "ON";
+    doc["payload_off"] = "OFF";
+    doc["icon"] = "mdi:brightness-auto";
+    
+    JsonObject device = doc.createNestedObject("device");
+    JsonArray identifiers = device.createNestedArray("identifiers");
+    identifiers.add(deviceId);
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
+      Serial.println("✓ Auto Darkness entity published");
+    }
+    delay(200);
+  }
+
+  // LUX THRESHOLD NUMBER
+  {
+    String configTopic = discoveryPrefix + "/number/" + deviceId + "_lux_threshold/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " Lux Threshold";
+    doc["unique_id"] = deviceId + "_lux_threshold";
+    doc["command_topic"] = deviceTopic + "/lux_threshold/cmd";
+    doc["state_topic"] = deviceTopic + "/state";
+    doc["value_template"] = "{{ value_json.lux_threshold }}";
+    doc["min"] = 0.5;
+    doc["max"] = 100;
+    doc["step"] = 0.1;
+    doc["unit_of_measurement"] = "lux";
+    doc["icon"] = "mdi:lightbulb";
+    doc["mode"] = "box";
+    
+    JsonObject device = doc.createNestedObject("device");
+    JsonArray identifiers = device.createNestedArray("identifiers");
+    identifiers.add(deviceId);
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
+      Serial.println("✓ Lux Threshold entity published");
+    }
+    delay(200);
+  }
+
+  // MICROPHONE CALIBRATION BUTTON
+  {
+    String configTopic = discoveryPrefix + "/button/" + deviceId + "_calibrate_mic/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " Calibrate Mic";
+    doc["unique_id"] = deviceId + "_calibrate_mic";
+    doc["command_topic"] = deviceTopic + "/calibrate_mic/cmd";
+    doc["payload_press"] = "PRESS";
+    doc["icon"] = "mdi:microphone";
+    
+    JsonObject device = doc.createNestedObject("device");
+    JsonArray identifiers = device.createNestedArray("identifiers");
+    identifiers.add(deviceId);
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
+      Serial.println("✓ Calibrate Mic button published");
+    }
+    delay(200);
+  }
+
+  // LUX SENSOR
   {
     String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_lux/config";
     DynamicJsonDocument doc(1024);
@@ -348,110 +526,68 @@ void publishHomeAssistantDiscovery() {
     doc["state_topic"] = deviceTopic + "/sensors/lux";
     doc["unit_of_measurement"] = "lux";
     doc["icon"] = "mdi:lightbulb";
-    doc["value_template"] = "{{ value }}";
     
     JsonObject device = doc.createNestedObject("device");
     JsonArray identifiers = device.createNestedArray("identifiers");
     identifiers.add(deviceId);
-    
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
     if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Lux sensor discovery published");
+      Serial.println("✓ Lux sensor published");
     }
     delay(200);
   }
 
-  // Audio level sensor
+  // AUDIO LEVEL SENSOR
   {
     String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_audio/config";
     DynamicJsonDocument doc(1024);
 
-    doc["name"] = String(mqttConfig.device_name) + " Audio";
+    doc["name"] = String(mqttConfig.device_name) + " Audio Level";
     doc["unique_id"] = deviceId + "_audio";
     doc["state_topic"] = deviceTopic + "/sensors/audio_level";
     doc["unit_of_measurement"] = "%";
     doc["icon"] = "mdi:volume-high";
-    doc["value_template"] = "{{ value }}";
     
     JsonObject device = doc.createNestedObject("device");
     JsonArray identifiers = device.createNestedArray("identifiers");
     identifiers.add(deviceId);
-    
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
     if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Audio sensor discovery published");
+      Serial.println("✓ Audio Level sensor published");
     }
     delay(200);
   }
 
-  // Timer switch
+  // FIRMWARE VERSION SENSOR
   {
-    String configTopic = discoveryPrefix + "/switch/" + deviceId + "_timer/config";
+    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_firmware/config";
     DynamicJsonDocument doc(1024);
 
-    doc["name"] = String(mqttConfig.device_name) + " Timer";
-    doc["unique_id"] = deviceId + "_timer";
-    doc["command_topic"] = deviceTopic + "/timer/cmd";
-    doc["state_topic"] = deviceTopic + "/state";
-    doc["payload_on"] = "ON";
-    doc["payload_off"] = "OFF";
-    doc["state_on"] = "ON";
-    doc["state_off"] = "OFF";
-    doc["icon"] = "mdi:clock";
-    doc["value_template"] = "{{ value_json.timer }}";
+    doc["name"] = String(mqttConfig.device_name) + " Firmware";
+    doc["unique_id"] = deviceId + "_firmware";
+    doc["state_topic"] = deviceTopic + "/sensors/firmware";
+    doc["icon"] = "mdi:information";
     
     JsonObject device = doc.createNestedObject("device");
     JsonArray identifiers = device.createNestedArray("identifiers");
     identifiers.add(deviceId);
-    
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
     if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Timer switch discovery published");
+      Serial.println("✓ Firmware version sensor published");
     }
     delay(200);
   }
 
-  // Speed number
-  {
-    String configTopic = discoveryPrefix + "/number/" + deviceId + "_speed/config";
-    DynamicJsonDocument doc(1024);
-
-    doc["name"] = String(mqttConfig.device_name) + " Speed";
-    doc["unique_id"] = deviceId + "_speed";
-    doc["command_topic"] = deviceTopic + "/speed/cmd";
-    doc["state_topic"] = deviceTopic + "/state";
-    doc["min"] = 10;
-    doc["max"] = 200;
-    doc["step"] = 5;
-    doc["unit_of_measurement"] = "ms";
-    doc["icon"] = "mdi:speedometer";
-    doc["mode"] = "slider";
-    doc["value_template"] = "{{ value_json.speed }}";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
-    
-    doc["availability_topic"] = deviceTopic + "/status";
-
-    String payload;
-    serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Speed number discovery published");
-    }
-    delay(200);
-  }
-
-  Serial.println("\n=== Discovery Complete ===\n");
+  Serial.println("=== Discovery Complete ===\n");
 }
 
 // ============================================================================
@@ -473,21 +609,22 @@ void mqttPublishState() {
   stateDoc["brightness"] = strip.getBrightness();
   stateDoc["color_mode"] = "rgb";
   
-  // --- UPDATED: Send effect Name instead of Index ---
   if (currentEffect >= 0 && currentEffect < NUM_EFFECTS) {
     stateDoc["effect"] = EFFECT_NAMES[currentEffect];
   } else {
-    stateDoc["effect"] = EFFECT_NAMES[0]; // Fallback to first effect
+    stateDoc["effect"] = EFFECT_NAMES[0];
   }
-  // ------------------------------------------------
 
   stateDoc["color"]["r"] = (effectColor >> 16) & 0xFF;
   stateDoc["color"]["g"] = (effectColor >> 8) & 0xFF;
   stateDoc["color"]["b"] = effectColor & 0xFF;
   
-  // Also publishing aux states
   stateDoc["speed"] = effectSpeed;
   stateDoc["timer"] = timerEnabled ? "ON" : "OFF";
+  stateDoc["timer_on"] = timerOnTime;
+  stateDoc["timer_off"] = timerOffTime;
+  stateDoc["auto_darkness"] = autoDarknessControl ? "ON" : "OFF";
+  stateDoc["lux_threshold"] = luxThreshold;
 
   String statePayload;
   serializeJson(stateDoc, statePayload);
@@ -512,6 +649,9 @@ void mqttPublishSensorData() {
 
   String audioPayload = String((int)(globalAudioLevel * 100));
   mqttClient.publish((deviceTopic + "/sensors/audio_level").c_str(), audioPayload.c_str());
+
+  extern const char* currentFirmwareVersion;
+  mqttClient.publish((deviceTopic + "/sensors/firmware").c_str(), currentFirmwareVersion);
 }
 
 // ============================================================================
@@ -541,16 +681,18 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       strip.clear();
       strip.show();
     }
-    // Force a state update immediately so HA UI reflects change
+    lastMQTTStatePublish = 0;
     mqttPublishState();
   }
   // Brightness control
   else if (topicStr.endsWith("/brightness/cmd")) {
     int brightness = atoi(message);
-    brightness = constrain(brightness, 0, 100);
-    strip.setBrightness((brightness * 255) / 100);
+    brightness = constrain(brightness, 0, 255);
+    strip.setBrightness(brightness);
+    lastMQTTStatePublish = 0;
+    mqttPublishState();
   }
-  // Color control (RGB)
+  // Color control
   else if (topicStr.endsWith("/color/cmd")) {
     DynamicJsonDocument doc(256);
     if (deserializeJson(doc, message) == DeserializationError::Ok) {
@@ -564,45 +706,34 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Firebase.RTDB.setString(&fbdoUpload, (basePath + "/color").c_str(), colorStr);
     }
   }
-  // --- UPDATED: Effect selection (String to Int conversion) ---
+  // Effect selection
   else if (topicStr.endsWith("/effect/cmd")) {
     String payloadStr = String(message);
     int newEffect = -1;
 
-    // First try: Direct string match against our names array
     for (int i = 0; i < NUM_EFFECTS; i++) {
-        if (payloadStr.equalsIgnoreCase(EFFECT_NAMES[i])) {
-            newEffect = i;
-            break;
-        }
+      if (payloadStr.equalsIgnoreCase(EFFECT_NAMES[i])) {
+        newEffect = i;
+        break;
+      }
     }
 
-    // Second try: If no string match, check if it's a raw number (legacy support)
-    // payloadStr.toInt() returns 0 if conversion fails, so we carefully check "0" string
     if (newEffect == -1) {
-        if (payloadStr == "0") {
-            newEffect = 0;
-        } else {
-            int val = payloadStr.toInt();
-            if (val > 0) newEffect = val;
-        }
+      if (payloadStr == "0") {
+        newEffect = 0;
+      } else {
+        int val = payloadStr.toInt();
+        if (val > 0) newEffect = val;
+      }
     }
     
-    // Apply effect if valid
     if (newEffect >= 0 && newEffect < NUM_EFFECTS) {
       currentEffect = newEffect;
-      Serial.printf("Effect switched to: %d (%s)\n", currentEffect, EFFECT_NAMES[currentEffect]);
       Firebase.RTDB.setInt(&fbdoUpload, (basePath + "/effect").c_str(), currentEffect);
-      
-      // Force immediate state publish so HA UI updates
-      lastMQTTStatePublish = 0; // Reset timer to force publish
+      lastMQTTStatePublish = 0;
       mqttPublishState();
-    } else {
-      Serial.printf("Unknown effect received: %s\n", message);
     }
   }
-  // -----------------------------------------------------------
-  
   // Speed control
   else if (topicStr.endsWith("/speed/cmd")) {
     int speed = atoi(message);
@@ -610,10 +741,52 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     effectSpeed = speed;
     Firebase.RTDB.setInt(&fbdoUpload, (basePath + "/speed").c_str(), speed);
   }
-  // Timer control
+  // Timer enabled
   else if (topicStr.endsWith("/timer/cmd")) {
     timerEnabled = strcmp(message, "ON") == 0;
     Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/timer_enabled").c_str(), timerEnabled);
+    lastMQTTStatePublish = 0;
+    mqttPublishState();
+  }
+  // Timer ON time
+  else if (topicStr.endsWith("/timer_on/cmd")) {
+    if (strlen(message) == 5) {
+      strncpy(timerOnTime, message, sizeof(timerOnTime));
+      Firebase.RTDB.setString(&fbdoUpload, (basePath + "/timer_on").c_str(), timerOnTime);
+      lastMQTTStatePublish = 0;
+      mqttPublishState();
+    }
+  }
+  // Timer OFF time
+  else if (topicStr.endsWith("/timer_off/cmd")) {
+    if (strlen(message) == 5) {
+      strncpy(timerOffTime, message, sizeof(timerOffTime));
+      Firebase.RTDB.setString(&fbdoUpload, (basePath + "/timer_off").c_str(), timerOffTime);
+      lastMQTTStatePublish = 0;
+      mqttPublishState();
+    }
+  }
+  // Auto Darkness Control
+  else if (topicStr.endsWith("/auto_darkness/cmd")) {
+    autoDarknessControl = strcmp(message, "ON") == 0;
+    Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/auto_darkness_control").c_str(), autoDarknessControl);
+    lastMQTTStatePublish = 0;
+    mqttPublishState();
+  }
+  // Lux Threshold
+  else if (topicStr.endsWith("/lux_threshold/cmd")) {
+    float threshold = atof(message);
+    threshold = constrain(threshold, 0.5, 100.0);
+    luxThreshold = threshold;
+    Firebase.RTDB.setFloat(&fbdoUpload, (basePath + "/lux_threshold").c_str(), threshold);
+    lastMQTTStatePublish = 0;
+    mqttPublishState();
+  }
+  // Microphone Calibration
+  else if (topicStr.endsWith("/calibrate_mic/cmd")) {
+    Serial.println("Microphone calibration triggered via MQTT");
+    Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/mic_calibration").c_str(), true);
+    triggerMicCalibration = true;
   }
 }
 
