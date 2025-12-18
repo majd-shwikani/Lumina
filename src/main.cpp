@@ -72,7 +72,7 @@ String basePath;
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmware.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/version.txt";
 
-const char* currentFirmwareVersion = "1.0.2";
+const char* currentFirmwareVersion = "1.1.1";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000; // Check every 10 minutes
 unsigned long lastUpdateCheck = 0;
 
@@ -1057,9 +1057,34 @@ void checkForGitHubUpdate() {
   Serial.println("Current Firmware Version: " + String(currentFirmwareVersion));
   Serial.println("Latest Firmware Version: " + latestVersion);
 
+  // ADD THIS SIMPLE COMPARISON - Only update if latest version is different from current
+  // This assumes your version strings are in format "X.Y.Z" where higher numbers are newer
   if (latestVersion != currentFirmwareVersion) {
-    Serial.println("New firmware available. Starting OTA update...");
-    downloadAndApplyFirmware();
+    // Parse version numbers
+    int curMajor = 0, curMinor = 0, curPatch = 0;
+    int latMajor = 0, latMinor = 0, latPatch = 0;
+    
+    // Parse current version "X.Y.Z"
+    sscanf(currentFirmwareVersion, "%d.%d.%d", &curMajor, &curMinor, &curPatch);
+    // Parse latest version "X.Y.Z"
+    sscanf(latestVersion.c_str(), "%d.%d.%d", &latMajor, &latMinor, &latPatch);
+    
+    // Compare version components
+    bool shouldUpdate = false;
+    if (latMajor > curMajor) {
+      shouldUpdate = true;
+    } else if (latMajor == curMajor && latMinor > curMinor) {
+      shouldUpdate = true;
+    } else if (latMajor == curMajor && latMinor == curMinor && latPatch > curPatch) {
+      shouldUpdate = true;
+    }
+    
+    if (shouldUpdate) {
+      Serial.println("New firmware available. Starting OTA update...");
+      downloadAndApplyFirmware();
+    } else {
+      Serial.println("GitHub version is same or older. Skipping update.");
+    }
   } else {
     Serial.println("Device is up to date.");
   }
