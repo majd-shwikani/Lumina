@@ -692,18 +692,50 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     lastMQTTStatePublish = 0;
     mqttPublishState();
   }
-  // Color control
+  // Color control - Handle both JSON and comma-separated formats
   else if (topicStr.endsWith("/color/cmd")) {
+    uint8_t r = 0, g = 0, b = 0;
+    bool parsed = false;
+    
+    // Try parsing as JSON first
     DynamicJsonDocument doc(256);
     if (deserializeJson(doc, message) == DeserializationError::Ok) {
-      uint8_t r = doc["r"] | 0;
-      uint8_t g = doc["g"] | 0;
-      uint8_t b = doc["b"] | 0;
+      if (doc.containsKey("r") && doc.containsKey("g") && doc.containsKey("b")) {
+        r = doc["r"] | 0;
+        g = doc["g"] | 0;
+        b = doc["b"] | 0;
+        parsed = true;
+        Serial.println("Color parsed as JSON");
+      }
+    }
+    
+    // If JSON parsing failed, try comma-separated format (Home Assistant default)
+    if (!parsed) {
+      String msgStr(message);
+      int commaPos1 = msgStr.indexOf(',');
+      int commaPos2 = msgStr.lastIndexOf(',');
+      
+      if (commaPos1 > 0 && commaPos2 > commaPos1) {
+        r = atoi(msgStr.substring(0, commaPos1).c_str());
+        g = atoi(msgStr.substring(commaPos1 + 1, commaPos2).c_str());
+        b = atoi(msgStr.substring(commaPos2 + 1).c_str());
+        parsed = true;
+        Serial.printf("Color parsed as CSV: R=%d, G=%d, B=%d\n", r, g, b);
+      }
+    }
+    
+    if (parsed) {
       effectColor = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
       
       char colorStr[7];
       sprintf(colorStr, "%02X%02X%02X", r, g, b);
       Firebase.RTDB.setString(&fbdoUpload, (basePath + "/color").c_str(), colorStr);
+      
+      Serial.printf("Color updated: #%s\n", colorStr);
+      lastMQTTStatePublish = 0;
+      mqttPublishState();
+    } else {
+      Serial.println("Failed to parse color command");
     }
   }
   // Effect selection
