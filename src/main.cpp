@@ -13,6 +13,7 @@
 #include <Update.h>
 #include <driver/i2s.h>
 #include <arduinoFFT.h>
+#include "mqtt_integration.h"
 
 // Firebase token helper
 #include <addons/TokenHelper.h>
@@ -195,6 +196,9 @@ void setup() {
   Serial.println("✓ Frequency detection initialized");
   Serial.println("✓ Starting microphone calibration...");
   
+  setupMQTT();
+  Serial.println("✓ MQTT integration initialized");
+  
   Serial.println("All systems initialized!\n");
   
   // ========== CREATE FREERTOS TASKS ==========
@@ -248,6 +252,17 @@ void setup() {
     timerTask,
     "TimerTask",
     8000,
+    NULL,
+    1,
+    NULL,
+    0
+  );
+
+  // MQTT management task (core 0)
+  xTaskCreatePinnedToCore(
+    mqttTask,
+    "MQTTTask",
+    15000,
     NULL,
     1,
     NULL,
@@ -582,6 +597,50 @@ void readInitialFirebaseData() {
   String micCalibPath = basePath + "/mic_calibration";
   Firebase.RTDB.setBool(&fbdoUpload, micCalibPath.c_str(), false);
   
+  // Read/Create MQTT configuration
+  String mqttEnabledPath = basePath + "/mqtt/enabled";
+  if (!Firebase.RTDB.getBool(&fbdoUpload, mqttEnabledPath.c_str())) {
+    // MQTT config doesn't exist, create defaults
+    Serial.println("Creating default MQTT configuration...");
+    
+    String mqttBasePath = basePath + "/mqtt";
+    delay(500);
+    
+    if (Firebase.RTDB.setString(&fbdoUpload, (mqttBasePath + "/broker_address").c_str(), "192.168.1.100")) {
+      Serial.println("✓ broker_address created");
+    }
+    delay(200);
+    
+    if (Firebase.RTDB.setInt(&fbdoUpload, (mqttBasePath + "/broker_port").c_str(), 1883)) {
+      Serial.println("✓ broker_port created");
+    }
+    delay(200);
+    
+    if (Firebase.RTDB.setString(&fbdoUpload, (mqttBasePath + "/username").c_str(), "mqtt_user")) {
+      Serial.println("✓ username created");
+    }
+    delay(200);
+    
+    if (Firebase.RTDB.setString(&fbdoUpload, (mqttBasePath + "/password").c_str(), "mqtt_password")) {
+      Serial.println("✓ password created");
+    }
+    delay(200);
+    
+    if (Firebase.RTDB.setBool(&fbdoUpload, (mqttBasePath + "/enabled").c_str(), false)) {
+      Serial.println("✓ enabled created");
+    }
+    delay(200);
+    
+    if (Firebase.RTDB.setString(&fbdoUpload, (mqttBasePath + "/device_name").c_str(), "Lumina")) {
+      Serial.println("✓ device_name created");
+    }
+    
+    Serial.println("Default MQTT configuration created in Firebase");
+    updateMQTTConfigFromFirebase();
+  } else {
+    updateMQTTConfigFromFirebase();
+  }
+  
   // Publish firmware version
   String versionPath = basePath + "/version";
   if (Firebase.RTDB.setString(&fbdoUpload, versionPath.c_str(), currentFirmwareVersion)) {
@@ -664,6 +723,16 @@ void streamCallback(FirebaseStream data) {
       strncpy(timerOffTime, timeStr.c_str(), sizeof(timerOffTime));
       Serial.printf("Timer OFF time changed to: %s\n", timerOffTime);
     }
+  }
+  // MQTT configuration changes
+  else if (dataPath == "/mqtt/broker_address" || 
+           dataPath == "/mqtt/broker_port" ||
+           dataPath == "/mqtt/username" ||
+           dataPath == "/mqtt/password" ||
+           dataPath == "/mqtt/enabled" ||
+           dataPath == "/mqtt/device_name") {
+    updateMQTTConfigFromFirebase();
+    Serial.println("MQTT configuration updated from Firebase");
   }
   // Reset handler
   else if (dataPath == "/reset" && data.boolData() == true) {
@@ -1019,7 +1088,7 @@ void updateLEDs() {
     case 20: effectFireSimulation(); break;
     case 21: effectSolidColor(); break;
     
-    // NEW: Sound-reactive effects (22-32)
+    // Sound-reactive effects (22-32)
     case 22: effectFrequencySpectrum(); break;
     case 23: effectReactiveWaveform(); break;
     case 24: effectBeatPulse(); break;
@@ -1057,8 +1126,6 @@ void checkForGitHubUpdate() {
   Serial.println("Current Firmware Version: " + String(currentFirmwareVersion));
   Serial.println("Latest Firmware Version: " + latestVersion);
 
-  // ADD THIS SIMPLE COMPARISON - Only update if latest version is different from current
-  // This assumes your version strings are in format "X.Y.Z" where higher numbers are newer
   if (latestVersion != currentFirmwareVersion) {
     // Parse version numbers
     int curMajor = 0, curMinor = 0, curPatch = 0;
