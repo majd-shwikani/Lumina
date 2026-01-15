@@ -1011,7 +1011,7 @@ void automationtask(void *parameter) {
         // Use Hysteresis: If ON, stay ON until it's very bright. If OFF, stay OFF until very dark.
         if (stripEnabled) {
           // Turn OFF only if it gets quite bright (e.g., threshold + 10 lux)
-          targetState = (currentLux < (luxThreshold + 10.0));
+          targetState = (currentLux < luxThreshold);
           reason = "Darkness check (Hysteresis High)";
         } else {
           // Turn ON only if it gets truly dark
@@ -1035,7 +1035,7 @@ void automationtask(void *parameter) {
         } else {
           // Use Hysteresis to prevent LED light from triggering a shutoff
           if (stripEnabled) {
-            targetState = (currentLux < (luxThreshold + 15.0)); // Higher buffer when LEDs are on
+            targetState = (currentLux < luxThreshold); // Higher buffer when LEDs are on
             reason = "Presence + Light Hysteresis";
           } else {
             targetState = (currentLux < luxThreshold);
