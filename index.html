@@ -590,6 +590,9 @@
         <header>
             <h1><i class="fas fa-lightbulb"></i> Lumina Control</h1>
             <p class="subtitle">Advanced LED Lighting Management System</p>
+            <a href="settings.html" class="btn btn-secondary" style="position:absolute; top:20px; right:20px;">
+                <i class="fas fa-cog"></i> Settings
+            </a>
         </header>
 
         <div class="status-bar">
@@ -636,6 +639,25 @@
                 
                 <p class="info-text">
                     <i class="fas fa-info-circle"></i> Auto darkness control turns off LEDs when ambient light is below threshold.
+                </p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-user-check"></i>
+                    <h2>Presence Sensor</h2>
+                </div>
+                <div class="lux-display">
+                    <span class="label">Presence:</span>
+                    <span class="value" id="presenceValue">--</span>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" id="calibrateMicBtn">
+                        <i class="fas fa-microphone"></i> Calibrate Microphone
+                    </button>
+                </div>
+                <p class="info-text">
+                    <i class="fas fa-info-circle"></i> Live LD2410 presence detection state.
                 </p>
             </div>
 
@@ -732,9 +754,18 @@
         const colorPreview = document.getElementById('colorPreview');
         const applyColorBtn = document.getElementById('applyColorBtn');
         const randomColorBtn = document.getElementById('randomColorBtn');
+        const calibrateMicBtn = document.getElementById('calibrateMicBtn');
         const luxThresholdInput = document.getElementById('luxThresholdInput');
         const currentLuxValue = document.getElementById('currentLuxValue');
         const luxValue = document.getElementById('luxValue');
+        const presenceValue = document.getElementById('presenceValue');
+
+        // Device scoping
+        const lastDeviceId = localStorage.getItem('lastDeviceId') || '';
+        const basePath = lastDeviceId ? `/devices/${lastDeviceId}/` : '';
+        if (!basePath) {
+            statusText.textContent = 'Set device ID in Settings';
+        }
 
         // Effect names matching the ESP32 code
         const effects = [
@@ -742,7 +773,10 @@
             "Vortex", "DNA Helix", "Audio Visualizer", "Lava Lamp", "Radar Sweep",
             "Quantum Particles", "Neural Network", "Galaxy Spin", "Crystal Growth", "Lightning Storm",
             "Ocean Depth", "Northern Lights", "Time Tunnel", "Cyber City", "Solar Flare", "Fire Simulation",
-            "Solid Color"  // NEW: Added Solid Color effect
+            "Solid Color",
+            "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom",
+            "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer",
+            "Cascading Frequency", "Energy Orbits", "Audio Ripples"
         ];
 
         // Current state
@@ -805,12 +839,13 @@
 
         // Update Firebase value
         function updateFirebaseValue(path, value) {
-            database.ref(path).set(value)
+            const fullPath = basePath + path;
+            database.ref(fullPath).set(value)
                 .then(() => {
-                    console.log(`Updated ${path} to ${value}`);
+                    console.log(`Updated ${fullPath} to ${value}`);
                 })
                 .catch((error) => {
-                    console.error(`Error updating ${path}:`, error);
+                    console.error(`Error updating ${fullPath}:`, error);
                 });
         }
 
@@ -902,12 +937,32 @@
                 colorPicker.value = `#${randomColor}`;
                 updateFirebaseValue('color', randomColor);
             });
+
+            // Microphone calibration button
+            calibrateMicBtn.addEventListener('click', async () => {
+                try {
+                    calibrateMicBtn.disabled = true;
+                    calibrateMicBtn.textContent = 'Calibrating...';
+                    if (!basePath) throw new Error('No device selected');
+                    await database.ref(basePath + 'mic_calibration').set(true);
+                    setTimeout(async () => {
+                        await database.ref(basePath + 'mic_calibration').set(false);
+                        calibrateMicBtn.disabled = false;
+                        calibrateMicBtn.textContent = 'Calibrate Microphone';
+                    }, 20000);
+                } catch (err) {
+                    console.error('Mic calibration error:', err);
+                    calibrateMicBtn.disabled = false;
+                    calibrateMicBtn.textContent = 'Calibrate Microphone';
+                }
+            });
         }
 
         // Listen for Firebase value changes
         function initializeFirebaseListeners() {
+            if (!basePath) return;
             // Effect
-            database.ref('effect').on('value', (snapshot) => {
+            database.ref(basePath + 'effect').on('value', (snapshot) => {
                 const effect = snapshot.val();
                 if (effect !== null) {
                     currentState.effect = effect;
@@ -922,7 +977,7 @@
             });
 
             // Speed
-            database.ref('speed').on('value', (snapshot) => {
+            database.ref(basePath + 'speed').on('value', (snapshot) => {
                 const speed = snapshot.val();
                 if (speed !== null) {
                     currentState.speed = speed;
@@ -932,7 +987,7 @@
             });
 
             // Color
-            database.ref('color').on('value', (snapshot) => {
+            database.ref(basePath + 'color').on('value', (snapshot) => {
                 const color = snapshot.val();
                 if (color !== null) {
                     currentState.color = color;
@@ -943,7 +998,7 @@
             });
 
             // Enabled
-            database.ref('enabled').on('value', (snapshot) => {
+            database.ref(basePath + 'enabled').on('value', (snapshot) => {
                 const enabled = snapshot.val();
                 if (enabled !== null) {
                     currentState.enabled = enabled;
@@ -952,7 +1007,7 @@
             });
 
             // Auto darkness control
-            database.ref('auto_darkness_control').on('value', (snapshot) => {
+            database.ref(basePath + 'auto_darkness_control').on('value', (snapshot) => {
                 const autoDarkness = snapshot.val();
                 if (autoDarkness !== null) {
                     currentState.auto_darkness_control = autoDarkness;
@@ -961,7 +1016,7 @@
             });
 
             // Lux threshold
-            database.ref('lux_threshold').on('value', (snapshot) => {
+            database.ref(basePath + 'lux_threshold').on('value', (snapshot) => {
                 const threshold = snapshot.val();
                 if (threshold !== null) {
                     currentState.lux_threshold = threshold;
@@ -973,7 +1028,7 @@
             database.ref('.info/connected').on('value', (snapshot) => {
                 if (snapshot.val() === true) {
                     connectionStatus.className = 'status-indicator connected';
-                    statusText.textContent = 'Connected to Firebase';
+                    statusText.textContent = lastDeviceId ? `Connected: ${lastDeviceId}` : 'Connected to Firebase';
                 } else {
                     connectionStatus.className = 'status-indicator';
                     statusText.textContent = 'Disconnected from Firebase';
@@ -981,11 +1036,19 @@
             });
 
             // Lux value
-            database.ref('lux').on('value', (snapshot) => {
+            database.ref(basePath + 'lux').on('value', (snapshot) => {
                 const lux = snapshot.val();
                 if (lux !== null) {
                     luxValue.textContent = lux.toFixed(2);
                     currentLuxValue.textContent = lux.toFixed(2);
+                }
+            });
+
+            // Presence value
+            database.ref(basePath + 'presence').on('value', (snapshot) => {
+                const presence = snapshot.val();
+                if (presence !== null) {
+                    presenceValue.textContent = presence ? 'YES' : 'NO';
                 }
             });
         }

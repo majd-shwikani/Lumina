@@ -3,7 +3,7 @@ import time
 
 # --- CONFIGURATION ---
 # ⚠️ CHANGE 'COM3' to the port your Arduino/device is connected to
-PORT_NAME = 'COM7'
+PORT_NAME = 'COM5'
 BAUD_RATE = 115200
 
 # --- SCRIPT START ---

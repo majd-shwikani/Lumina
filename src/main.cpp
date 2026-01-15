@@ -14,6 +14,7 @@
 #include <driver/i2s.h>
 #include <arduinoFFT.h>
 #include "mqtt_integration.h"
+#include <ld2410.h>
 
 // Firebase token helper
 #include <addons/TokenHelper.h>
@@ -49,6 +50,27 @@ volatile bool turnedOffByDarkness = false;
 bool defaultDataCreated = false;
 
 // ============================================================================
+// AUTOMATION CONTROL VARIABLES
+// ============================================================================
+
+unsigned long lastStateChangeTime = 0;
+const unsigned long STATE_CHANGE_DEBOUNCE = 5000; // 5 seconds debounce (increased)
+float luxHysteresis = 5.0; // Increased hysteresis to 5 lux
+unsigned long luxReadDelayAfterChange = 0; // Time to ignore sensor after LED change
+
+// ============================================================================
+// PRESENCE DETECTION VARIABLES
+// ============================================================================
+
+ld2410 radar;
+volatile bool lastPresence = false;
+volatile bool presenceDetectionEnabled = true;
+volatile bool lastPresenceState = false;
+unsigned long lastPresenceReport = 0;
+static const int RADAR_RX_PIN = 16;
+static const int RADAR_TX_PIN = 17;
+
+// ============================================================================
 // TIMER SETTINGS
 // ============================================================================
 
@@ -73,7 +95,7 @@ String basePath;
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmware.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/version.txt";
 
-const char* currentFirmwareVersion = "1.1.1";
+const char* currentFirmwareVersion = "1.1.2";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000; // Check every 10 minutes
 unsigned long lastUpdateCheck = 0;
 
@@ -198,6 +220,15 @@ void setup() {
   
   setupMQTT();
   Serial.println("✓ MQTT integration initialized");
+  
+  Serial1.begin(256000, SERIAL_8N1, RADAR_RX_PIN, RADAR_TX_PIN);
+  Serial.println("Initializing LD2410 radar...");
+  if (radar.begin(Serial1)) {
+    Serial.println("✓ LD2410 radar initialized successfully");
+  } else {
+    Serial.println("✗ LD2410 radar initialization failed");
+  }
+  radar.debug(Serial);
   
   Serial.println("All systems initialized!\n");
   
@@ -539,6 +570,17 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setBool(&fbdoUpload, autoDarknessPath.c_str(), autoDarknessControl);
   }
   
+  // Read presence detection enabled state
+  String presenceEnabledPath = basePath + "/presence_detection_enabled";
+  if (Firebase.RTDB.getBool(&fbdoUpload, presenceEnabledPath.c_str())) {
+    presenceDetectionEnabled = fbdoUpload.boolData();
+    Serial.printf("Initial presence detection enabled: %s\n", presenceDetectionEnabled ? "true" : "false");
+  } else {
+    Serial.printf("Failed to read presence detection enabled: %s\n", fbdoUpload.errorReason().c_str());
+    presenceDetectionEnabled = true;
+    Firebase.RTDB.setBool(&fbdoUpload, presenceEnabledPath.c_str(), presenceDetectionEnabled);
+  }
+  
   // Read lux threshold for auto-off
   String luxThresholdPath = basePath + "/lux_threshold";
   if (Firebase.RTDB.getFloat(&fbdoUpload, luxThresholdPath.c_str())) {
@@ -708,6 +750,11 @@ void streamCallback(FirebaseStream data) {
     autoDarknessControl = data.boolData();
     Serial.printf("Auto darkness control %s\n", autoDarknessControl ? "enabled" : "disabled");
   }
+  // Presence detection enabled change
+  else if (dataPath == "/presence_detection_enabled") {
+    presenceDetectionEnabled = data.boolData();
+    Serial.printf("Presence detection %s\n", presenceDetectionEnabled ? "enabled" : "disabled");
+  }
   // Timer on time change
   else if (dataPath == "/timer_on") {
     String timeStr = data.stringData();
@@ -823,6 +870,15 @@ void createDefaultFirebaseData() {
     allSuccess = false;
   }
   
+  // Set default presence detection enabled state
+  String presenceEnabledPath = basePath + "/presence_detection_enabled";
+  if (Firebase.RTDB.setBool(&fbdoUpload, presenceEnabledPath.c_str(), true)) {
+    Serial.println("Presence detection enabled set to default: true");
+  } else {
+    Serial.printf("Failed to set presence detection enabled: %s\n", fbdoUpload.errorReason().c_str());
+    allSuccess = false;
+  }
+  
   // Set default lux threshold
   String luxThresholdPath = basePath + "/lux_threshold";
   if (Firebase.RTDB.setFloat(&fbdoUpload, luxThresholdPath.c_str(), 1.0)) {
@@ -921,29 +977,88 @@ void ledTask(void *parameter) {
   }
 }
 
-// Automation task - handles light-based auto on/off
+// Automation task - handles presence and light-based automation
+// ============================================================================
+// REWRITTEN AUTOMATION TASK
+// ============================================================================
 void automationtask(void *parameter) {
   const TickType_t xDelay = 100 / portTICK_PERIOD_MS;
+  static unsigned long lastStateChangeTime = 0;
+  const unsigned long CHANGE_LOCKOUT_MS = 3000; // Wait 3 seconds before allowing another change
+  
+  // Wait for system to fully initialize
+  vTaskDelay(3000 / portTICK_PERIOD_MS);
+  
+  Serial.println("Automation Task: Active with Anti-Flicker Logic");
 
   for(;;) {
+    // 1. Update sensor readings
     if (sensorAvailable) {
       updateSensorData();
+    }
+    radar.read();
+    bool presenceDetected = radar.presenceDetected();
+    lastPresence = presenceDetected; // Update global for effects
 
-      // Auto-off when too dark
-      if (autoDarknessControl && shouldTurnOffDueToDarkness()) {
+    // 2. Determine intended state based on rules
+    bool targetState = false;
+    String reason = "";
+
+    // Logic Tree
+    if (!presenceDetectionEnabled) {
+      // Rule: Presence ignored, only light matters
+      if (autoDarknessControl) {
+        // Use Hysteresis: If ON, stay ON until it's very bright. If OFF, stay OFF until very dark.
         if (stripEnabled) {
-          stripEnabled = false;
-          turnedOffByDarkness = true;
+          // Turn OFF only if it gets quite bright (e.g., threshold + 10 lux)
+          targetState = (currentLux < (luxThreshold + 10.0));
+          reason = "Darkness check (Hysteresis High)";
+        } else {
+          // Turn ON only if it gets truly dark
+          targetState = (currentLux < luxThreshold);
+          reason = "Darkness check (Threshold Low)";
+        }
+      } else {
+        targetState = true; 
+        reason = "Manual override (Always ON)";
+      }
+    } else {
+      // Rule: Presence is required
+      if (!presenceDetected) {
+        targetState = false;
+        reason = "No presence";
+      } else {
+        // Presence detected, now check light
+        if (!autoDarknessControl) {
+          targetState = true;
+          reason = "Presence detected (Darkness control OFF)";
+        } else {
+          // Use Hysteresis to prevent LED light from triggering a shutoff
+          if (stripEnabled) {
+            targetState = (currentLux < (luxThreshold + 15.0)); // Higher buffer when LEDs are on
+            reason = "Presence + Light Hysteresis";
+          } else {
+            targetState = (currentLux < luxThreshold);
+            reason = "Presence + Darkness check";
+          }
+        }
+      }
+    }
+
+    // 3. Apply state change with Lockout Timer
+    // Only allow a change if targetState is different AND we haven't changed recently
+    if (targetState != stripEnabled) {
+      if (millis() - lastStateChangeTime > CHANGE_LOCKOUT_MS) {
+        stripEnabled = targetState;
+        lastStateChangeTime = millis();
+        
+        if (stripEnabled) {
+          Serial.printf("\n💡 LEDs ON: %s (Lux: %.2f)\n", reason.c_str(), currentLux);
+        } else {
           strip.clear();
           strip.show();
-          Serial.println("Darkness detected - turning LEDs off automatically");
+          Serial.printf("\n🌙 LEDs OFF: %s (Lux: %.2f)\n", reason.c_str(), currentLux);
         }
-      } 
-      // Auto-on when light returns
-      else if (autoDarknessControl && turnedOffByDarkness && !shouldTurnOffDueToDarkness()) {
-        stripEnabled = true;
-        turnedOffByDarkness = false;
-        Serial.println("Light detected - turning LEDs back on automatically");
       }
     }
 
@@ -951,12 +1066,13 @@ void automationtask(void *parameter) {
   }
 }
 
-// Sensor data task - reads and reports light levels to Firebase
+// Sensor data task - reads and reports sensor data to Firebase
 void sensorDataTask(void *parameter) {
   const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // 2 second interval
   
   for(;;) {
     if (firebaseConnected) {
+      // Report light sensor data
       if (sensorAvailable) {
         updateSensorData();
         
@@ -966,6 +1082,24 @@ void sensorDataTask(void *parameter) {
           Serial.printf("Lux data sent: %.2f\n", currentLux);
         } else {
           Serial.printf("Failed to send lux data: %s\n", fbdoUpload.errorReason().c_str());
+        }
+      }
+      
+      // Report presence sensor data
+      radar.read();
+      static bool lastPresenceSent = false;
+      static unsigned long lastPresenceSend = 0;
+      bool present = radar.presenceDetected();
+      
+      // Send presence data if changed or every 5 seconds
+      if (present != lastPresenceSent || (millis() - lastPresenceSend) > 5000) {
+        String presencePath = basePath + "/presence";
+        if (Firebase.RTDB.setBool(&fbdoUpload, presencePath.c_str(), present)) {
+          Serial.printf("Presence sent: %s\n", present ? "true" : "false");
+          lastPresenceSent = present;
+          lastPresenceSend = millis();
+        } else {
+          Serial.printf("Failed to send presence: %s\n", fbdoUpload.errorReason().c_str());
         }
       }
     }
@@ -1048,14 +1182,7 @@ void updateTimerState(bool state) {
 // ============================================================================
 
 void updateLEDs() {
-  // Auto-off due to darkness
-  if (autoDarknessControl && sensorAvailable && shouldTurnOffDueToDarkness()) {
-    strip.clear();
-    strip.show();
-    return;
-  }
-  
-  // Manual off state
+  // If strip is disabled for any reason, turn off LEDs
   if (!stripEnabled) {
     strip.clear();
     strip.show();

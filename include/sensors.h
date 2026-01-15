@@ -89,6 +89,7 @@ extern double smoothedBandMagnitudes[NUM_FREQ_BANDS];
 
 // NeoPixel reference
 extern Adafruit_NeoPixel strip;
+extern volatile bool stripEnabled;
 
 // ============================================================================
 // FUNCTION DECLARATIONS

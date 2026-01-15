@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Lumina Control</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-dark: #3a56d4;
+            --secondary: #7209b7;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --dark: #212529;
+            --light: #f8f9fa;
+            --gray: #6c757d;
+            --border-radius: 12px;
+            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            color: var(--light);
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* LED Background Effect */
+        .led-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.15;
+            pointer-events: none;
+        }
+
+        .led-strip {
+            position: absolute;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, 
+                #ff0000, #ff8000, #ffff00, #80ff00, 
+                #00ff00, #00ff80, #00ffff, #0080ff, 
+                #0000ff, #8000ff, #ff00ff, #ff0080);
+            background-size: 1200% 100%;
+            animation: led-animation 8s linear infinite;
+            filter: blur(1px);
+        }
+
+        .led-strip:nth-child(2) {
+            top: 20%;
+            animation-delay: -1s;
+        }
+
+        .led-strip:nth-child(3) {
+            top: 40%;
+            animation-delay: -2s;
+        }
+
+        .led-strip:nth-child(4) {
+            top: 60%;
+            animation-delay: -3s;
+        }
+
+        .led-strip:nth-child(5) {
+            top: 80%;
+            animation-delay: -4s;
+        }
+
+        @keyframes led-animation {
+            0% {
+                background-position: 0% 0%;
+            }
+            100% {
+                background-position: 100% 0%;
+            }
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--border-radius);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, 
+                #ff0000, #ff8000, #ffff00, #80ff00, 
+                #00ff00, #00ff80, #00ffff, #0080ff, 
+                #0000ff, #8000ff, #ff00ff, #ff0080);
+            background-size: 1200% 100%;
+            animation: led-animation 8s linear infinite;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: var(--gray);
+        }
+
+        .back-link {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: var(--light);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: var(--transition);
+        }
+
+        .back-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--border-radius);
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 25px;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.5s ease;
+        }
+
+        .card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--box-shadow);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card-header i {
+            font-size: 1.5rem;
+            color: var(--primary);
+        }
+
+        h2 {
+            font-size: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 1.1rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--light);
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.3);
+        }
+
+        .form-text {
+            margin-top: 5px;
+            font-size: 0.9rem;
+            color: var(--gray);
+        }
+
+        .slider-container {
+            margin: 20px 0;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .slider-value {
+            font-weight: bold;
+            color: var(--success);
+        }
+
+        .range-slider {
+            width: 100%;
+            height: 8px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            outline: none;
+        }
+
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .range-slider::-webkit-slider-thumb:hover {
+            background: var(--primary-dark);
+            transform: scale(1.1);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e01a6e;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--light);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .action-buttons .btn {
+            flex: 1;
+            justify-content: center; 
+        }
+
+        .info-text {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: var(--gray);
+        }
+
+        .current-value {
+            display: inline-block;
+            padding: 5px 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-left: 10px;
+            font-family: monospace;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: var(--gray);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .back-link {
+                position: relative;
+                top: 0;
+                left: 0;
+                margin-bottom: 15px;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+            
+            .card {
+                padding: 20px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="led-background">
+        <div class="led-strip"></div>
+        <div class="led-strip"></div>
+        <div class="led-strip"></div>
+        <div class="led-strip"></div>
+        <div class="led-strip"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <a href="index.html" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to Control
+            </a>
+            <h1><i class="fas fa-cog"></i> Settings</h1>
+            <p class="subtitle">Configure your device settings</p>
+        </header>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-microchip"></i>
+                <h2>Device Configuration</h2>
+            </div>
+            
+            <div class="form-group">
+                <label for="deviceIdInput" class="form-label">Device ID</label>
+                <input type="text" class="form-control" id="deviceIdInput" placeholder="Enter device ID">
+                <div class="form-text">
+                    The device ID is used to identify your LED controller in the Firebase database.
+                </div>
+            </div>
+            
+            <div class="action-buttons">
+                <button class="btn btn-primary" id="saveDeviceIdBtn">
+                    <i class="fas fa-save"></i> Save Device ID
+                </button>
+                <button class="btn btn-secondary" id="loadDeviceIdBtn">
+                    <i class="fas fa-download"></i> Load Current
+                </button>
+            </div>
+            
+            <div class="info-text">
+                <i class="fas fa-info-circle"></i> Current device ID: <span class="current-value" id="currentDeviceId">Not set</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-sun"></i>
+                <h2>Light Sensitivity</h2>
+            </div>
+            
+            <div class="form-group">
+                <label for="luxThresholdInput" class="form-label">Lux Threshold</label>
+<input type="number" min="1" max="100" step="0.1" value="10" class="form-control" id="luxThresholdInput">
+                </div>
+            
+            <div class="form-text">
+                The lux threshold determines when the auto darkness control will turn off the LEDs. 
+                Lower values mean the LEDs will turn off in darker conditions.
+            </div>
+            
+            <div class="action-buttons">
+                <button class="btn btn-primary" id="saveLuxThresholdBtn">
+                    <i class="fas fa-save"></i> Save Threshold
+                </button>
+            </div>
+            
+            <div class="info-text">
+                <i class="fas fa-info-circle"></i> Current threshold: <span class="current-value" id="currentLuxThreshold">--</span> lux
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-redo"></i>
+                <h2>Device Management</h2>
+            </div>
+            
+            <div class="form-group">
+                <p>Reset your device to factory defaults. This will clear all custom settings and restore the default configuration.</p>
+            </div>
+            
+            <div class="action-buttons">
+                <button class="btn btn-danger" id="resetDeviceBtn">
+                    <i class="fas fa-exclamation-triangle"></i> Reset Device
+                </button>
+            </div>
+            
+            <div class="info-text">
+                <i class="fas fa-info-circle"></i> Warning: This action cannot be undone.
+            </div>
+        </div>
+
+        <footer>
+            <p>Lumina Control Settings</p>
+        </footer>
+    </div>
+
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyC-8dRf8a9y7v9y8z7x6w5v4u3y2i1o0p9",
+            authDomain: "test-dbd7a-default-rtdb.firebaseapp.com",
+            databaseURL: "https://test-dbd7a-default-rtdb.firebaseio.com",
+            projectId: "test-dbd7a",
+            storageBucket: "test-dbd7a.appspot.com",
+            messagingSenderId: "123456789012",
+            appId: "1:123456789012:web:abcdef123456"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // DOM Elements
+        const deviceIdInput = document.getElementById('deviceIdInput');
+        const saveDeviceIdBtn = document.getElementById('saveDeviceIdBtn');
+        const loadDeviceIdBtn = document.getElementById('loadDeviceIdBtn');
+        const currentDeviceId = document.getElementById('currentDeviceId');
+        // START OF CHANGE: Renamed and changed element type
+        const luxThresholdInput = document.getElementById('luxThresholdInput');
+        // Removed luxThresholdValue, as it was for the slider display
+        // const luxThresholdValue = document.getElementById('luxThresholdValue');
+        const saveLuxThresholdBtn = document.getElementById('saveLuxThresholdBtn');
+        const currentLuxThreshold = document.getElementById('currentLuxThreshold');
+        const resetDeviceBtn = document.getElementById('resetDeviceBtn');
+        // END OF CHANGE
+
+        // Current state
+        let currentState = {
+            deviceId: "",
+            basePath: "",
+            lux_threshold: 10.0
+        };
+
+        // Firebase listeners reference
+        let firebaseListeners = [];
+
+        // Update Firebase value with device path
+        function updateFirebaseValue(path, value) {
+            if (!currentState.basePath) return;
+            
+            const fullPath = currentState.basePath + path;
+            database.ref(fullPath).set(value)
+                .then(() => {
+                    console.log(`Updated ${fullPath} to ${value}`);
+                })
+                .catch((error) => {
+                    console.error(`Error updating ${fullPath}:`, error);
+                });
+        }
+
+        // Connect to device
+        function connectToDevice(deviceId) {
+            if (!deviceId || deviceId.trim() === '') {
+                alert('Please enter a device ID');
+                return;
+            }
+
+            // Remove previous listeners
+            removeFirebaseListeners();
+
+            // Set new device ID and base path
+            currentState.deviceId = deviceId.trim();
+            currentState.basePath = `/devices/${currentState.deviceId}/`;
+            
+            // Update UI
+            currentDeviceId.textContent = currentState.deviceId;
+            
+            // Initialize Firebase listeners for the new device
+            initializeFirebaseListeners();
+            
+            // Save to localStorage for convenience
+            localStorage.setItem('lastDeviceId', currentState.deviceId);
+        }
+
+        // Remove all Firebase listeners
+        function removeFirebaseListeners() {
+            firebaseListeners.forEach(ref => {
+                ref.off();
+            });
+            firebaseListeners = [];
+        }
+
+        // Initialize Firebase listeners
+        function initializeFirebaseListeners() {
+            if (!currentState.basePath) return;
+
+            // Listen for device data
+            const deviceRef = database.ref(currentState.basePath);
+            firebaseListeners.push(deviceRef);
+            
+            deviceRef.on("value", (snapshot) => {
+                const data = snapshot.val();
+                
+                if (data) {
+                    // Update UI with device data
+                    if (data.lux_threshold !== undefined) {
+                        // START OF CHANGE: Updated element reference
+                        luxThresholdInput.value = data.lux_threshold;
+                        // luxThresholdValue was removed, so this line is commented/removed
+                        // luxThresholdValue.textContent = data.lux_threshold; 
+                        // END OF CHANGE
+                        currentLuxThreshold.textContent = data.lux_threshold;
+                        currentState.lux_threshold = data.lux_threshold;
+                    }
+                } else {
+                    console.log('Device not found');
+                }
+            }, (error) => {
+                console.error('Firebase error:', error);
+            });
+        }
+
+        // Initialize event listeners
+        function initializeEventListeners() {
+            // Save device ID button
+            saveDeviceIdBtn.addEventListener('click', () => {
+                const deviceId = deviceIdInput.value.trim();
+                if (deviceId) {
+                    connectToDevice(deviceId);
+                    deviceIdInput.value = '';
+                    alert('Device ID saved successfully!');
+                } else {
+                    alert('Please enter a device ID');
+                }
+            });
+
+            // Load current device ID button
+            loadDeviceIdBtn.addEventListener('click', () => {
+                const lastDeviceId = localStorage.getItem('lastDeviceId');
+                if (lastDeviceId) {
+                    deviceIdInput.value = lastDeviceId;
+                } else {
+                    alert('No device ID found in storage');
+                }
+            });
+
+            // START OF CHANGE: Removed slider 'input' event listener
+            // luxThresholdSlider.addEventListener('input', () => {
+            //     luxThresholdValue.textContent = luxThresholdSlider.value;
+            // });
+            // END OF CHANGE
+
+            // Save lux threshold button
+            saveLuxThresholdBtn.addEventListener('click', () => {
+                if (!currentState.basePath) {
+                    alert('Please set a device ID first');
+                    return;
+                }
+                
+                // START OF CHANGE: Updated element reference
+                const newLuxThreshold = parseFloat(luxThresholdInput.value);
+                if (isNaN(newLuxThreshold)) {
+                    alert('Please enter a valid lux threshold number.');
+                    return;
+                }
+                
+                updateFirebaseValue('lux_threshold', newLuxThreshold);
+                // END OF CHANGE
+                alert('Lux threshold saved successfully!');
+            });
+
+            // Reset device button
+            resetDeviceBtn.addEventListener('click', () => {
+                if (!currentState.basePath) {
+                    alert('Please set a device ID first');
+                    return;
+                }
+                
+                if (confirm('Are you sure you want to reset the device to factory defaults? This action cannot be undone.')) {
+                    // Reset to default values
+                    updateFirebaseValue('enabled', false);
+                    updateFirebaseValue('effect', 0);
+                    updateFirebaseValue('speed', 50);
+                    updateFirebaseValue('color', 'FF0000');
+                    updateFirebaseValue('auto_darkness_control', false);
+                    updateFirebaseValue('lux_threshold', 10.0);
+                    updateFirebaseValue('timer_enabled', true);
+                    updateFirebaseValue('timer_on', '09:00');
+                    updateFirebaseValue('timer_off', '17:00');
+                    
+                    alert('Device reset to factory defaults!');
+                }
+            });
+        }
+
+        // Initialize the application
+        function initializeApp() {
+            // Initialize event listeners
+            initializeEventListeners();
+            
+            // Try to load last used device ID
+            const lastDeviceId = localStorage.getItem('lastDeviceId');
+            if (lastDeviceId) {
+                currentDeviceId.textContent = lastDeviceId;
+                connectToDevice(lastDeviceId);
+            }
+        }
+
+        // Start the application when DOM is loaded
+        document.addEventListener('DOMContentLoaded', initializeApp);
+    </script>
+</body>
+</html>

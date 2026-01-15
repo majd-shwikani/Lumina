@@ -79,14 +79,41 @@ void setupVEML7700() {
   Serial.println("VEML7700 light sensor initialized successfully");
 }
 
+// Update this section in sensors.cpp
+
 void updateSensorData() {
   if (sensorAvailable) {
-    currentLux = veml.readLux();
+    float newLux = veml.readLux();
+    
+    // SANITY CHECK: The VEML7700 often returns 30,000+ or 65,000+ when it 
+    // encounters an I2C error or sensor saturation from the LEDs.
+    // We only accept values that make sense for an indoor environment.
+    if (newLux >= 0 && newLux < 10000.0) {
+      // Apply a smoothing filter (Low Pass Filter) 
+      // This makes the transition 30% new data and 70% old data to prevent jumps
+      currentLux = (newLux * 0.3) + (currentLux * 0.7);
+    } else {
+      // If the sensor goes "crazy", we ignore the reading and keep the last good value
+      // Serial.printf("⚠️ Glitch detected (%.2f lux). Ignoring.\n", newLux);
+    }
   }
 }
 
+// Improved logic to prevent "Optical Feedback" (LEDs turning themselves off)
 bool shouldTurnOffDueToDarkness() {
-  return currentLux < luxThreshold;
+  // Use a hysteresis buffer:
+  // If LEDs are OFF, they turn ON at 'luxThreshold' (e.g., 1.0)
+  // If LEDs are ON, they only turn OFF if lux is 'luxThreshold + 8.0'
+  float effectiveThreshold = luxThreshold;
+
+  if (stripEnabled) {
+    // Adding 8.0 lux allows the LEDs to be bright without the sensor 
+    // thinking the sun came out.
+    effectiveThreshold = luxThreshold + 8.0; 
+  }
+
+  // Return true if it is dark enough to warrant LEDs being ON
+  return currentLux < effectiveThreshold;
 }
 
 // ============================================================================
