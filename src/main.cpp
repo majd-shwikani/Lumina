@@ -48,6 +48,7 @@ volatile bool stripEnabled = true;
 volatile bool autoDarknessControl = true;
 volatile bool turnedOffByDarkness = false;
 bool defaultDataCreated = false;
+volatile bool manuallyTurnedOff = false;
 
 // ============================================================================
 // AUTOMATION CONTROL VARIABLES
@@ -95,7 +96,7 @@ String basePath;
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmware.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/version.txt";
 
-const char* currentFirmwareVersion = "1.1.2";
+const char* currentFirmwareVersion = "1.1.3";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000; // Check every 10 minutes
 unsigned long lastUpdateCheck = 0;
 
@@ -730,16 +731,29 @@ void streamCallback(FirebaseStream data) {
     Serial.printf("Lux threshold changed to: %.2f\n", luxThreshold);
   }
   // Enabled state change
-  else if (dataPath == "/enabled") {
-    bool newState = data.boolData();
-    stripEnabled = newState;
-    turnedOffByDarkness = false;
-    Serial.printf("Strip %s\n", stripEnabled ? "enabled" : "disabled");
-    if (!stripEnabled) {
-      strip.clear();
-      strip.show();
-    }
+else if (dataPath == "/enabled") {
+  bool newState = data.boolData();
+  stripEnabled = newState;
+  turnedOffByDarkness = false;
+  
+  // Track manual user action
+  if (newState == false) {
+    manuallyTurnedOff = true;
+    Serial.println("⚠️  MANUAL OFF: LEDs locked off until manually re-enabled");
+  } else {
+    manuallyTurnedOff = false;
+    Serial.println("✓ Manual ON: Automation can now control LEDs");
   }
+  
+  Serial.printf("Strip %s\n", stripEnabled ? "enabled" : "disabled");
+  
+  if (!stripEnabled) {
+    // Force turn off LEDs immediately
+    strip.clear();
+    strip.show();
+    Serial.println("LEDs manually turned off from Firebase");
+  }
+}
   // Timer enabled change
   else if (dataPath == "/timer_enabled") {
     timerEnabled = data.boolData();
@@ -981,15 +995,26 @@ void ledTask(void *parameter) {
 // ============================================================================
 // REWRITTEN AUTOMATION TASK
 // ============================================================================
+// ============================================================================
+// CORRECTED AUTOMATION TASK
+// ============================================================================
+// ============================================================================
+// CORRECTED AUTOMATION TASK WITH PRESENCE OVERRIDE
+// ============================================================================
+// ============================================================================
+// AUTOMATION TASK WITH COMBINED PRESENCE + DARKNESS LOGIC
+// ============================================================================
+// ============================================================================
+// AUTOMATION TASK WITH PROPER MANUAL OVERRIDE
+// ============================================================================
 void automationtask(void *parameter) {
   const TickType_t xDelay = 100 / portTICK_PERIOD_MS;
   static unsigned long lastStateChangeTime = 0;
-  const unsigned long CHANGE_LOCKOUT_MS = 3000; // Wait 3 seconds before allowing another change
+  const unsigned long CHANGE_LOCKOUT_MS = 3000;
   
-  // Wait for system to fully initialize
   vTaskDelay(3000 / portTICK_PERIOD_MS);
   
-  Serial.println("Automation Task: Active with Anti-Flicker Logic");
+  Serial.println("Automation Task: Manual override enabled");
 
   for(;;) {
     // 1. Update sensor readings
@@ -998,66 +1023,94 @@ void automationtask(void *parameter) {
     }
     radar.read();
     bool presenceDetected = radar.presenceDetected();
-    lastPresence = presenceDetected; // Update global for effects
+    lastPresence = presenceDetected;
 
-    // 2. Determine intended state based on rules
+    // 2. CRITICAL: Check if user manually turned off LEDs through Firebase
+    // If manuallyTurnedOff is true, NEVER turn LEDs back on automatically
+    if (manuallyTurnedOff) {
+      // User has explicitly turned off LEDs through Firebase
+      if (stripEnabled) {
+        // This should not happen, but ensure LEDs are off
+        stripEnabled = false;
+        strip.clear();
+        strip.show();
+        Serial.println("⚠️  LEDs forced OFF due to manual override lock");
+      }
+      vTaskDelay(xDelay);
+      continue; // Skip all automation logic
+    }
+
+    // 3. Only run automation if LEDs are not manually locked off
+    // Determine intended state based on COMBINED rules
     bool targetState = false;
     String reason = "";
 
-    // Logic Tree
-    if (!presenceDetectionEnabled) {
-      // Rule: Presence ignored, only light matters
-      if (autoDarknessControl) {
-        // Use Hysteresis: If ON, stay ON until it's very bright. If OFF, stay OFF until very dark.
-        if (stripEnabled) {
-          // Turn OFF only if it gets quite bright (e.g., threshold + 10 lux)
-          targetState = (currentLux < luxThreshold);
-          reason = "Darkness check (Hysteresis High)";
-        } else {
-          // Turn ON only if it gets truly dark
-          targetState = (currentLux < luxThreshold);
-          reason = "Darkness check (Threshold Low)";
-        }
+    // COMBINED LOGIC: 
+    // - If presence detection is ON: require presence
+    // - If auto darkness is ON: require darkness
+    // - Both conditions must be met (AND logic)
+    
+    bool presenceCondition = true;  // Default: presence not required
+    bool darknessCondition = true;   // Default: darkness not required
+    
+    // Check presence condition
+    if (presenceDetectionEnabled) {
+      presenceCondition = presenceDetected;
+    }
+    
+    // Check darkness condition (with hysteresis)
+    if (autoDarknessControl) {
+      if (stripEnabled) {
+        // LEDs are ON - use hysteresis (need to be brighter to turn off)
+        darknessCondition = (currentLux < luxThreshold);
       } else {
-        targetState = true; 
-        reason = "Manual override (Always ON)";
-      }
-    } else {
-      // Rule: Presence is required
-      if (!presenceDetected) {
-        targetState = false;
-        reason = "No presence";
-      } else {
-        // Presence detected, now check light
-        if (!autoDarknessControl) {
-          targetState = true;
-          reason = "Presence detected (Darkness control OFF)";
-        } else {
-          // Use Hysteresis to prevent LED light from triggering a shutoff
-          if (stripEnabled) {
-            targetState = (currentLux < luxThreshold); // Higher buffer when LEDs are on
-            reason = "Presence + Light Hysteresis";
-          } else {
-            targetState = (currentLux < luxThreshold);
-            reason = "Presence + Darkness check";
-          }
-        }
+        // LEDs are OFF - turn on only when dark
+        darknessCondition = (currentLux < luxThreshold);
       }
     }
+    
+    // COMBINE CONDITIONS
+    if (presenceDetectionEnabled && autoDarknessControl) {
+      // BOTH conditions must be true
+      targetState = presenceCondition && darknessCondition;
+      if (targetState) {
+        reason = "Presence + Darkness";
+      } else if (!presenceCondition) {
+        reason = "No presence";
+      } else {
+        reason = "Too bright";
+      }
+    }
+    else if (presenceDetectionEnabled && !autoDarknessControl) {
+      // Only presence matters
+      targetState = presenceCondition;
+      reason = presenceCondition ? "Presence detected" : "No presence";
+    }
+    else if (!presenceDetectionEnabled && autoDarknessControl) {
+      // Only darkness matters
+      targetState = darknessCondition;
+      reason = darknessCondition ? "Dark enough" : "Too bright";
+    }
+    else {
+      // Neither enabled - always ON
+      targetState = true;
+      reason = "Always ON";
+    }
 
-    // 3. Apply state change with Lockout Timer
-    // Only allow a change if targetState is different AND we haven't changed recently
+    // 4. Apply state change with Lockout Timer
     if (targetState != stripEnabled) {
       if (millis() - lastStateChangeTime > CHANGE_LOCKOUT_MS) {
         stripEnabled = targetState;
         lastStateChangeTime = millis();
         
         if (stripEnabled) {
-          Serial.printf("\n💡 LEDs ON: %s (Lux: %.2f)\n", reason.c_str(), currentLux);
+          Serial.printf("\n💡 LEDs ON: %s (Presence: %s, Lux: %.2f)\n", 
+                       reason.c_str(), presenceDetected ? "Yes" : "No", currentLux);
         } else {
           strip.clear();
           strip.show();
-          Serial.printf("\n🌙 LEDs OFF: %s (Lux: %.2f)\n", reason.c_str(), currentLux);
+          Serial.printf("\n🌙 LEDs OFF: %s (Presence: %s, Lux: %.2f)\n", 
+                       reason.c_str(), presenceDetected ? "Yes" : "No", currentLux);
         }
       }
     }
@@ -1065,7 +1118,6 @@ void automationtask(void *parameter) {
     vTaskDelay(xDelay);
   }
 }
-
 // Sensor data task - reads and reports sensor data to Firebase
 void sensorDataTask(void *parameter) {
   const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // 2 second interval
@@ -1162,9 +1214,23 @@ bool checkTimeMatch(const char* scheduledTime) {
 
 void updateTimerState(bool state) {
   esp_task_wdt_reset();
+  
+  // Check if LEDs are manually locked off
+  if (manuallyTurnedOff) {
+    Serial.println("⚠️  Timer cannot turn on LEDs - manually locked off");
+    return;
+  }
+  
   String enabledPath = basePath + "/enabled";
   if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), state)) {
     stripEnabled = state;
+    
+    // If timer is turning ON LEDs, reset manual lock
+    if (state) {
+      manuallyTurnedOff = false;
+      Serial.println("Timer turned ON LEDs - manual lock cleared");
+    }
+    
     Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
     
     if (!state) {
@@ -1181,15 +1247,33 @@ void updateTimerState(bool state) {
 // LED CONTROL FUNCTION
 // ============================================================================
 
+// ============================================================================
+// LED CONTROL FUNCTION (UPDATED)
+// ============================================================================
+
 void updateLEDs() {
-  // If strip is disabled for any reason, turn off LEDs
-  if (!stripEnabled) {
+  static bool lastStripEnabled = true; // Track previous state
+  
+  // Check if strip was just disabled
+  if (!stripEnabled && lastStripEnabled) {
+    // Strip was just disabled - clear immediately
     strip.clear();
     strip.show();
+    lastStripEnabled = false;
     return;
   }
   
-  // Run selected animation effect
+  // If strip is disabled, keep LEDs off
+  if (!stripEnabled) {
+    return;
+  }
+  
+  // If strip was just enabled (from previously disabled state)
+  if (stripEnabled && !lastStripEnabled) {
+    lastStripEnabled = true;
+  }
+  
+  // Run selected animation effect only if enabled
   switch(currentEffect) {
     // Original effects (0-21)
     case 0: effectRainbow(); break;
@@ -1232,7 +1316,6 @@ void updateLEDs() {
   }
   strip.show();
 }
-
 // ============================================================================
 // GITHUB OTA UPDATE FUNCTIONS
 // ============================================================================
