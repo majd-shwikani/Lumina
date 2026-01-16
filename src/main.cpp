@@ -790,19 +790,22 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setString(&fbdoUpload, colorPath.c_str(), "FF0000");
   }
   
-  String enabledPath = basePath + "/enabled";
-  if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
+String enabledPath = basePath + "/enabled";
+if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
     stripEnabled = fbdoUpload.boolData();
     Serial.printf("      Enabled: %s\n", stripEnabled ? "true" : "false");
+    
+    // CRITICAL FIX: If Firebase says disabled, set manuallyTurnedOff
     if (!stripEnabled) {
-      strip.clear();
-      strip.show();
+        manuallyTurnedOff = true;  // Add this line
+        strip.clear();
+        strip.show();
     }
-  } else {
+} else {
     Serial.printf("      ⚠️  Failed to read enabled state: %s\n", fbdoUpload.errorReason().c_str());
     stripEnabled = true;
     Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), stripEnabled);
-  }
+}
   
   String autoDarknessPath = basePath + "/auto_darkness_control";
   if (Firebase.RTDB.getBool(&fbdoUpload, autoDarknessPath.c_str())) {
@@ -930,27 +933,28 @@ void streamCallback(FirebaseStream data) {
     luxThreshold = data.floatData();
     Serial.printf("   Lux threshold changed to: %.2f\n", luxThreshold);
   }
-  else if (dataPath == "/enabled") {
+// In streamCallback(), around line 750, modify the "/enabled" handler:
+else if (dataPath == "/enabled") {
     bool newState = data.boolData();
     stripEnabled = newState;
     turnedOffByDarkness = false;
     
     if (newState == false) {
-      manuallyTurnedOff = true;
-      Serial.println("   ⚠️  MANUAL OFF: LEDs locked off until manually re-enabled");
+        manuallyTurnedOff = true;  // Ensure this is set
+        Serial.println("   ⚠️  MANUAL OFF: LEDs locked off until manually re-enabled");
     } else {
-      manuallyTurnedOff = false;
-      Serial.println("   ✅ Manual ON: Automation can now control LEDs");
+        manuallyTurnedOff = false;
+        Serial.println("   ✅ Manual ON: Automation can now control LEDs");
     }
     
     Serial.printf("   Strip %s\n", stripEnabled ? "enabled" : "disabled");
     
     if (!stripEnabled) {
-      strip.clear();
-      strip.show();
-      Serial.println("   LEDs turned off");
+        strip.clear();
+        strip.show();
+        Serial.println("   LEDs turned off");
     }
-  }
+}
   else if (dataPath == "/timer_enabled") {
     timerEnabled = data.boolData();
     Serial.printf("   Timer %s\n", timerEnabled ? "enabled" : "disabled");
