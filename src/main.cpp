@@ -1303,6 +1303,7 @@ void sensorDataTask(void *parameter) {
     }
     
     sensorTaskStack = uxTaskGetStackHighWaterMark(NULL);
+    esp_task_wdt_reset();
     vTaskDelay(xDelay);
   }
 }

@@ -1,4 +1,5 @@
 #include "sensors.h"
+#include <esp_task_wdt.h>
 
 // ============================================================================
 // LIGHT SENSOR OBJECTS AND VARIABLES
@@ -82,6 +83,7 @@ void setupVEML7700() {
 // Update this section in sensors.cpp
 
 void updateSensorData() {
+  esp_task_wdt_reset();
   if (sensorAvailable) {
     float newLux = veml.readLux();
     
