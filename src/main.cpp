@@ -28,6 +28,11 @@
 #include "web_config_portal.h"
 
 // ============================================================================
+// CRITICAL FIX 1: Thread synchronization primitives
+// ============================================================================
+portMUX_TYPE stripMux = portMUX_INITIALIZER_UNLOCKED;
+
+// ============================================================================
 // DEBUGGING AND SYSTEM MONITORING
 // ============================================================================
 
@@ -41,6 +46,16 @@ UBaseType_t automationTaskStack = 0;
 UBaseType_t sensorTaskStack = 0;
 UBaseType_t timerTaskStack = 0;
 UBaseType_t mqttTaskStack = 0;
+UBaseType_t otaTaskStack = 0;
+
+// Task handles for stack monitoring
+TaskHandle_t firebaseTaskHandle = NULL;
+TaskHandle_t ledTaskHandle = NULL;
+TaskHandle_t automationTaskHandle = NULL;
+TaskHandle_t sensorTaskHandle = NULL;
+TaskHandle_t timerTaskHandle = NULL;
+TaskHandle_t mqttTaskHandle = NULL;
+TaskHandle_t otaTaskHandle = NULL;
 
 // Crash detection variables
 unsigned long lastLoopTime = 0;
@@ -118,7 +133,7 @@ String basePath;
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmware.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/version.txt";
 
-const char* currentFirmwareVersion = "1.1.4";
+const char* currentFirmwareVersion = "1.1.5";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
 unsigned long lastUpdateCheck = 0;
 
@@ -158,136 +173,172 @@ const char* getResetReason(int cpu) {
 }
 
 void printSystemStats() {
-  Serial.println("\n╔════════════════════════════════════════════════════════════════╗");
-  Serial.println("║              SYSTEM HEALTH & DIAGNOSTICS REPORT                ║");
-  Serial.println("╠════════════════════════════════════════════════════════════════╣");
+  Serial.println("\n╔══════════════════════════════════════════════════════════════════════╗");
+  Serial.println("║              SYSTEM HEALTH & DIAGNOSTICS REPORT                      ║");
+  Serial.println("╠══════════════════════════════════════════════════════════════════════╣");
   
   // Reset Reason
-  Serial.println("║ RESET INFORMATION:");
-  Serial.printf("║   CPU0 Reset Reason: %s\n", getResetReason(0));
-  Serial.printf("║   CPU1 Reset Reason: %s\n", getResetReason(1));
-  Serial.println("║");
+  Serial.println("║ RESET INFORMATION:                                                   ║");
+  Serial.printf("║   CPU0: %-59s ║\n", getResetReason(0));
+  Serial.printf("║   CPU1: %-59s ║\n", getResetReason(1));
+  Serial.println("║                                                                      ║");
   
   // Memory Stats
-  Serial.println("║ MEMORY STATUS:");
-  Serial.printf("║   Free Heap: %d bytes (%.1f KB)\n", ESP.getFreeHeap(), ESP.getFreeHeap() / 1024.0);
-  Serial.printf("║   Heap Size: %d bytes (%.1f KB)\n", ESP.getHeapSize(), ESP.getHeapSize() / 1024.0);
-  Serial.printf("║   Min Free Heap: %d bytes (%.1f KB)\n", ESP.getMinFreeHeap(), ESP.getMinFreeHeap() / 1024.0);
-  Serial.printf("║   Free PSRAM: %d bytes (%.1f KB)\n", ESP.getFreePsram(), ESP.getFreePsram() / 1024.0);
-  Serial.printf("║   Heap Usage: %.1f%%\n", 100.0 - (ESP.getFreeHeap() * 100.0 / ESP.getHeapSize()));
-  Serial.println("║");
+  Serial.println("║ MEMORY STATUS:                                                       ║");
+  Serial.printf("║   Free Heap:     %7d bytes (%6.1f KB)                          ║\n", 
+                ESP.getFreeHeap(), ESP.getFreeHeap() / 1024.0);
+  Serial.printf("║   Heap Size:     %7d bytes (%6.1f KB)                          ║\n", 
+                ESP.getHeapSize(), ESP.getHeapSize() / 1024.0);
+  Serial.printf("║   Min Free Heap: %7d bytes (%6.1f KB)                          ║\n", 
+                ESP.getMinFreeHeap(), ESP.getMinFreeHeap() / 1024.0);
+  Serial.printf("║   Free PSRAM:    %7d bytes (%6.1f KB)                          ║\n", 
+                ESP.getFreePsram(), ESP.getFreePsram() / 1024.0);
+  Serial.printf("║   Heap Usage:    %5.1f%%                                            ║\n", 
+                100.0 - (ESP.getFreeHeap() * 100.0 / ESP.getHeapSize()));
+  Serial.println("║                                                                      ║");
   
   // Task Stack Usage
-  Serial.println("║ TASK STACK HIGH WATER MARKS (bytes remaining):");
-  Serial.printf("║   Firebase Task: %d bytes\n", firebaseTaskStack * sizeof(StackType_t));
-  Serial.printf("║   LED Task: %d bytes\n", ledTaskStack * sizeof(StackType_t));
-  Serial.printf("║   Automation Task: %d bytes\n", automationTaskStack * sizeof(StackType_t));
-  Serial.printf("║   Sensor Task: %d bytes\n", sensorTaskStack * sizeof(StackType_t));
-  Serial.printf("║   Timer Task: %d bytes\n", timerTaskStack * sizeof(StackType_t));
-  Serial.printf("║   MQTT Task: %d bytes\n", mqttTaskStack * sizeof(StackType_t));
-  Serial.println("║");
+  Serial.println("║ TASK STACK HIGH WATER MARKS (bytes remaining):                       ║");
+  Serial.printf("║   Firebase Task:   %5d bytes (%5.1f KB)                          ║\n", 
+                firebaseTaskStack * sizeof(StackType_t), 
+                (firebaseTaskStack * sizeof(StackType_t)) / 1024.0);
+  Serial.printf("║   LED Task:        %5d bytes (%5.1f KB)                          ║\n", 
+                ledTaskStack * sizeof(StackType_t), 
+                (ledTaskStack * sizeof(StackType_t)) / 1024.0);
+  Serial.printf("║   Automation Task: %5d bytes (%5.1f KB)                          ║\n", 
+                automationTaskStack * sizeof(StackType_t), 
+                (automationTaskStack * sizeof(StackType_t)) / 1024.0);
+  Serial.printf("║   Sensor Task:     %5d bytes (%5.1f KB)                          ║\n", 
+                sensorTaskStack * sizeof(StackType_t), 
+                (sensorTaskStack * sizeof(StackType_t)) / 1024.0);
+  Serial.printf("║   Timer Task:      %5d bytes (%5.1f KB)                          ║\n", 
+                timerTaskStack * sizeof(StackType_t), 
+                (timerTaskStack * sizeof(StackType_t)) / 1024.0);
+  Serial.printf("║   MQTT Task:       %5d bytes (%5.1f KB)                          ║\n", 
+                mqttTaskStack * sizeof(StackType_t), 
+                (mqttTaskStack * sizeof(StackType_t)) / 1024.0);
+  Serial.printf("║   OTA Task:        %5d bytes (%5.1f KB)                          ║\n", 
+                otaTaskStack * sizeof(StackType_t), 
+                (otaTaskStack * sizeof(StackType_t)) / 1024.0);
+  Serial.println("║                                                                      ║");
   
   // System Status
-  Serial.println("║ SYSTEM STATUS:");
-  Serial.printf("║   Uptime: %lu seconds (%.1f minutes)\n", millis() / 1000, millis() / 60000.0);
-  Serial.printf("║   CPU Frequency: %d MHz\n", ESP.getCpuFreqMHz());
-  Serial.printf("║   Flash Size: %d bytes (%.1f MB)\n", ESP.getFlashChipSize(), ESP.getFlashChipSize() / (1024.0 * 1024.0));
-  Serial.printf("║   Flash Speed: %d Hz\n", ESP.getFlashChipSpeed());
-  Serial.printf("║   SDK Version: %s\n", ESP.getSdkVersion());
-  Serial.printf("║   Chip Model: %s\n", ESP.getChipModel());
-  Serial.printf("║   Chip Revision: %d\n", ESP.getChipRevision());
-  Serial.printf("║   Loop Counter: %lu\n", loopCounter);
-  Serial.println("║");
+  Serial.println("║ SYSTEM STATUS:                                                       ║");
+  Serial.printf("║   Uptime:          %6lu seconds (%6.1f minutes)                  ║\n", 
+                millis() / 1000, millis() / 60000.0);
+  Serial.printf("║   CPU Frequency:   %d MHz                                           ║\n", 
+                ESP.getCpuFreqMHz());
+  Serial.printf("║   Flash Size:      %7d bytes (%5.1f MB)                       ║\n", 
+                ESP.getFlashChipSize(), ESP.getFlashChipSize() / (1024.0 * 1024.0));
+  Serial.printf("║   Flash Speed:     %d Hz                                      ║\n", 
+                ESP.getFlashChipSpeed());
+  Serial.printf("║   SDK Version:     %-45s ║\n", ESP.getSdkVersion());
+  Serial.printf("║   Chip Model:      %-45s ║\n", ESP.getChipModel());
+  Serial.printf("║   Chip Revision:   %d                                                ║\n", 
+                ESP.getChipRevision());
+  Serial.printf("║   Loop Counter:    %-45lu ║\n", loopCounter);
+  Serial.println("║                                                                      ║");
   
   // Network Status
-  Serial.println("║ NETWORK STATUS:");
-  Serial.printf("║   WiFi Connected: %s\n", WiFi.status() == WL_CONNECTED ? "YES" : "NO");
+  Serial.println("║ NETWORK STATUS:                                                      ║");
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("║   IP Address: %s\n", WiFi.localIP().toString().c_str());
-    Serial.printf("║   RSSI: %d dBm\n", WiFi.RSSI());
-    Serial.printf("║   MAC Address: %s\n", WiFi.macAddress().c_str());
+    Serial.println("║   WiFi:            CONNECTED                                         ║");
+    Serial.printf("║   IP Address:      %-45s ║\n", WiFi.localIP().toString().c_str());
+    Serial.printf("║   Signal (RSSI):   %d dBm                                           ║\n", 
+                  WiFi.RSSI());
+    Serial.printf("║   MAC Address:     %-45s ║\n", WiFi.macAddress().c_str());
+  } else {
+    Serial.println("║   WiFi:            DISCONNECTED                                      ║");
   }
-  Serial.printf("║   Firebase Connected: %s\n", firebaseConnected ? "YES" : "NO");
-  Serial.printf("║   MQTT Connected: %s\n", mqttConnected ? "YES" : "NO");
-  Serial.println("║");
+  Serial.printf("║   Firebase:        %-45s ║\n", firebaseConnected ? "CONNECTED" : "DISCONNECTED");
+  Serial.printf("║   MQTT:            %-45s ║\n", mqttConnected ? "CONNECTED" : "DISCONNECTED");
+  Serial.println("║                                                                      ║");
   
   // Device Status
-  Serial.println("║ DEVICE STATUS:");
-  Serial.printf("║   Device ID: %s\n", deviceID.c_str());
-  Serial.printf("║   LED Count: %d\n", ledCount);
-  Serial.printf("║   Strip Enabled: %s\n", stripEnabled ? "YES" : "NO");
-  Serial.printf("║   Current Effect: %d\n", currentEffect);
-  Serial.printf("║   Effect Speed: %d ms\n", effectSpeed);
-  Serial.printf("║   Brightness: %d\n", strip.getBrightness());
-  Serial.printf("║   Manually Off: %s\n", manuallyTurnedOff ? "YES" : "NO");
-  Serial.println("║");
+  Serial.println("║ DEVICE STATUS:                                                       ║");
+  Serial.printf("║   Device ID:       %-45s ║\n", deviceID.c_str());
+  Serial.printf("║   LED Count:       %-45d ║\n", ledCount);
+  Serial.printf("║   Strip Enabled:   %-45s ║\n", stripEnabled ? "YES" : "NO");
+  Serial.printf("║   Current Effect:  %-45d ║\n", currentEffect);
+  Serial.printf("║   Effect Speed:    %d ms                                             ║\n", 
+                effectSpeed);
+  Serial.printf("║   Brightness:      %-45d ║\n", strip.getBrightness());
+  Serial.printf("║   Manually Off:    %-45s ║\n", manuallyTurnedOff ? "YES" : "NO");
+  Serial.println("║                                                                      ║");
   
   // Sensor Status
-  Serial.println("║ SENSOR STATUS:");
-  Serial.printf("║   Light Sensor Available: %s\n", sensorAvailable ? "YES" : "NO");
+  Serial.println("║ SENSOR STATUS:                                                       ║");
+  Serial.printf("║   Light Sensor:    %-45s ║\n", sensorAvailable ? "AVAILABLE" : "NOT AVAILABLE");
   if (sensorAvailable) {
-    Serial.printf("║   Current Lux: %.2f\n", currentLux);
-    Serial.printf("║   Lux Threshold: %.2f\n", luxThreshold);
+    Serial.printf("║   Current Lux:     %-45.2f ║\n", currentLux);
+    Serial.printf("║   Lux Threshold:   %-45.2f ║\n", luxThreshold);
   }
-  Serial.printf("║   Presence Detection: %s\n", presenceDetectionEnabled ? "ENABLED" : "DISABLED");
-  Serial.printf("║   Presence Detected: %s\n", lastPresence ? "YES" : "NO");
-  Serial.printf("║   Auto Darkness Control: %s\n", autoDarknessControl ? "ENABLED" : "DISABLED");
-  Serial.println("║");
+  Serial.printf("║   Presence Detect: %-45s ║\n", 
+                presenceDetectionEnabled ? "ENABLED" : "DISABLED");
+  Serial.printf("║   Presence Now:    %-45s ║\n", lastPresence ? "DETECTED" : "NOT DETECTED");
+  Serial.printf("║   Auto Darkness:   %-45s ║\n", 
+                autoDarknessControl ? "ENABLED" : "DISABLED");
+  Serial.println("║                                                                      ║");
   
   // Audio Status
-  Serial.println("║ AUDIO STATUS:");
-  Serial.printf("║   Calibration Complete: %s\n", calibrationComplete ? "YES" : "NO");
-  Serial.printf("║   Noise Floor: %.2f\n", noiseFloor);
-  Serial.printf("║   Gain Multiplier: %.2f\n", gainMultiplier);
-  Serial.printf("║   Global Audio Level: %.2f\n", globalAudioLevel);
-  Serial.printf("║   Beat Detected: %s\n", beatDetected ? "YES" : "NO");
-  Serial.println("║");
+  Serial.println("║ AUDIO STATUS:                                                        ║");
+  Serial.printf("║   Calibration:     %-45s ║\n", 
+                calibrationComplete ? "COMPLETE" : "PENDING");
+  Serial.printf("║   Noise Floor:     %-45.2f ║\n", noiseFloor);
+  Serial.printf("║   Gain Multiplier: %-45.2f ║\n", gainMultiplier);
+  Serial.printf("║   Audio Level:     %-45.2f ║\n", globalAudioLevel);
+  Serial.printf("║   Beat Detected:   %-45s ║\n", beatDetected ? "YES" : "NO");
+  Serial.println("║                                                                      ║");
   
   // Warning Checks
-  Serial.println("║ HEALTH WARNINGS:");
+  Serial.println("║ HEALTH WARNINGS:                                                     ║");
   bool warningsFound = false;
   
   if (ESP.getFreeHeap() < 30000) {
-    Serial.println("║   ⚠️  WARNING: Low heap memory!");
+    Serial.println("║   ⚠️  WARNING: Low heap memory!                                      ║");
     warningsFound = true;
   }
   if (firebaseTaskStack < 500) {
-    Serial.println("║   ⚠️  WARNING: Firebase task stack critically low!");
+    Serial.println("║   ⚠️  WARNING: Firebase task stack critically low!                   ║");
     warningsFound = true;
   }
   if (ledTaskStack < 500) {
-    Serial.println("║   ⚠️  WARNING: LED task stack critically low!");
+    Serial.println("║   ⚠️  WARNING: LED task stack critically low!                        ║");
     warningsFound = true;
   }
   if (automationTaskStack < 200) {
-    Serial.println("║   ⚠️  WARNING: Automation task stack critically low!");
+    Serial.println("║   ⚠️  WARNING: Automation task stack critically low!                 ║");
     warningsFound = true;
   }
   if (sensorTaskStack < 500) {
-    Serial.println("║   ⚠️  WARNING: Sensor task stack critically low!");
+    Serial.println("║   ⚠️  WARNING: Sensor task stack critically low!                     ║");
     warningsFound = true;
   }
   if (timerTaskStack < 300) {
-    Serial.println("║   ⚠️  WARNING: Timer task stack critically low!");
+    Serial.println("║   ⚠️  WARNING: Timer task stack critically low!                      ║");
     warningsFound = true;
   }
   if (mqttTaskStack < 500) {
-    Serial.println("║   ⚠️  WARNING: MQTT task stack critically low!");
+    Serial.println("║   ⚠️  WARNING: MQTT task stack critically low!                       ║");
+    warningsFound = true;
+  }
+  if (otaTaskStack < 500) {
+    Serial.println("║   ⚠️  WARNING: OTA task stack critically low!                        ║");
     warningsFound = true;
   }
   if (!firebaseConnected) {
-    Serial.println("║   ⚠️  WARNING: Firebase disconnected!");
+    Serial.println("║   ⚠️  WARNING: Firebase disconnected!                                ║");
     warningsFound = true;
   }
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("║   ⚠️  WARNING: WiFi disconnected!");
+    Serial.println("║   ⚠️  WARNING: WiFi disconnected!                                    ║");
     warningsFound = true;
   }
   if (!warningsFound) {
-    Serial.println("║   ✅ All systems nominal");
+    Serial.println("║   ✅ All systems nominal                                             ║");
   }
   
-  Serial.println("╚════════════════════════════════════════════════════════════════╝\n");
+  Serial.println("╚══════════════════════════════════════════════════════════════════════╝\n");
 }
 
 // ============================================================================
@@ -318,6 +369,7 @@ void ledTask(void *parameter);
 void automationtask(void *parameter);
 void sensorDataTask(void *parameter);
 void timerTask(void *parameter);
+void otaUpdateTask(void *parameter);
 
 // ============================================================================
 // SETUP FUNCTION
@@ -328,10 +380,10 @@ void setup() {
   delay(1000);
   
   Serial.println("\n\n");
-  Serial.println("╔════════════════════════════════════════════════════════════════╗");
+  Serial.println("╔═══════════════════════════════════════════════════════════════╗");
   Serial.println("║                    LUMINA LED CONTROLLER                       ║");
   Serial.println("║                     Firmware v" + String(currentFirmwareVersion) + "                          ║");
-  Serial.println("╚════════════════════════════════════════════════════════════════╝");
+  Serial.println("╚═══════════════════════════════════════════════════════════════╝");
   Serial.println();
   
   // Print reset reason immediately
@@ -365,14 +417,14 @@ void setup() {
   }
   
   // Print loaded configuration
-  Serial.println("\n╔════════════════════════════════════════════════════════════════╗");
+  Serial.println("\n╔═══════════════════════════════════════════════════════════════╗");
   Serial.println("║                  DEVICE CONFIGURATION                          ║");
-  Serial.println("╠════════════════════════════════════════════════════════════════╣");
+  Serial.println("╠═══════════════════════════════════════════════════════════════╣");
   Serial.printf("║   Device ID: %-48s ║\n", deviceID.c_str());
   Serial.printf("║   Base Path: %-47s ║\n", basePath.c_str());
   Serial.printf("║   LED Count: %-47d ║\n", ledCount);
   Serial.printf("║   WiFi SSID: %-47s ║\n", wifiSSID.c_str());
-  Serial.println("╚════════════════════════════════════════════════════════════════╝\n");
+  Serial.println("╚═══════════════════════════════════════════════════════════════╝\n");
   
   // Initialize NeoPixel strip with configured count
   Serial.println("💡 Initializing LED strip...");
@@ -446,17 +498,17 @@ void setup() {
   
   // ========== CREATE FREERTOS TASKS ==========
   
-  // Firebase management task (core 0)
+  // Firebase management task (core 0) - INCREASED STACK
   xTaskCreatePinnedToCore(
     firebaseTask,
     "FirebaseTask",
-    15000,
+    20000,  // Increased from 15000
     NULL,
     1,
-    NULL,
+    &firebaseTaskHandle,  // Save handle
     0
   );
-  Serial.println("      ✅ Firebase task created (Core 0, 15KB stack)");
+  Serial.println("      ✅ Firebase task created (Core 0, 20KB stack)");
 
   // LED animation task (core 1)
   xTaskCreatePinnedToCore(
@@ -465,7 +517,7 @@ void setup() {
     15000,
     NULL,
     1,
-    NULL,
+    &ledTaskHandle,  // Save handle
     1
   );
   Serial.println("      ✅ LED task created (Core 1, 15KB stack)");
@@ -477,7 +529,7 @@ void setup() {
     15000,
     NULL,
     1,
-    NULL,
+    &sensorTaskHandle,  // Save handle
     0
   );
   Serial.println("      ✅ Sensor task created (Core 0, 15KB stack)");
@@ -489,7 +541,7 @@ void setup() {
     4000,
     NULL,
     0,
-    NULL,
+    &automationTaskHandle,  // Save handle
     0
   );
   Serial.println("      ✅ Automation task created (Core 0, 4KB stack)");
@@ -501,7 +553,7 @@ void setup() {
     8000,
     NULL,
     1,
-    NULL,
+    &timerTaskHandle,  // Save handle
     0
   );
   Serial.println("      ✅ Timer task created (Core 0, 8KB stack)");
@@ -513,15 +565,27 @@ void setup() {
     15000,
     NULL,
     1,
-    NULL,
+    &mqttTaskHandle,  // Save handle
     0
   );
   Serial.println("      ✅ MQTT task created (Core 0, 15KB stack)");
+
+  // CRITICAL FIX 4: OTA update task (core 0) - moved from main loop
+  xTaskCreatePinnedToCore(
+    otaUpdateTask,
+    "OTAUpdateTask",
+    16000,  // Larger stack for HTTP operations
+    NULL,
+    0,      // Lower priority
+    &otaTaskHandle,  // Save handle
+    0
+  );
+  Serial.println("      ✅ OTA Update task created (Core 0, 16KB stack)");
   
-  Serial.println("\n╔════════════════════════════════════════════════════════════════╗");
+  Serial.println("\n╔═══════════════════════════════════════════════════════════════╗");
   Serial.println("║              🎉 ALL SYSTEMS INITIALIZED 🎉                     ║");
   Serial.println("║         System monitoring active every 10 seconds              ║");
-  Serial.println("╚════════════════════════════════════════════════════════════════╝\n");
+  Serial.println("╚═══════════════════════════════════════════════════════════════╝\n");
 }
 
 // ============================================================================
@@ -561,17 +625,30 @@ void loop() {
   if (millis() - lastSystemStatsReport > SYSTEM_STATS_INTERVAL) {
     lastSystemStatsReport = millis();
     
-    // Update stack high water marks for all tasks
-    firebaseTaskStack = uxTaskGetStackHighWaterMark(NULL);
+    // Update stack high water marks for all tasks using their handles
+    if (firebaseTaskHandle != NULL) {
+      firebaseTaskStack = uxTaskGetStackHighWaterMark(firebaseTaskHandle);
+    }
+    if (ledTaskHandle != NULL) {
+      ledTaskStack = uxTaskGetStackHighWaterMark(ledTaskHandle);
+    }
+    if (automationTaskHandle != NULL) {
+      automationTaskStack = uxTaskGetStackHighWaterMark(automationTaskHandle);
+    }
+    if (sensorTaskHandle != NULL) {
+      sensorTaskStack = uxTaskGetStackHighWaterMark(sensorTaskHandle);
+    }
+    if (timerTaskHandle != NULL) {
+      timerTaskStack = uxTaskGetStackHighWaterMark(timerTaskHandle);
+    }
+    if (mqttTaskHandle != NULL) {
+      mqttTaskStack = uxTaskGetStackHighWaterMark(mqttTaskHandle);
+    }
+    if (otaTaskHandle != NULL) {
+      otaTaskStack = uxTaskGetStackHighWaterMark(otaTaskHandle);
+    }
     
     printSystemStats();
-  }
-  
-  // Check for GitHub OTA updates periodically
-  if (WiFi.status() == WL_CONNECTED && millis() - lastUpdateCheck > UPDATE_CHECK_INTERVAL) {
-    lastUpdateCheck = millis();
-    Serial.println("🔍 Checking for firmware updates...");
-    checkForGitHubUpdate();
   }
 
   // Monitor loop health
@@ -790,22 +867,27 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setString(&fbdoUpload, colorPath.c_str(), "FF0000");
   }
   
-String enabledPath = basePath + "/enabled";
-if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
+  // CRITICAL FIX 2: Set manuallyTurnedOff correctly on boot
+  String enabledPath = basePath + "/enabled";
+  if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
     stripEnabled = fbdoUpload.boolData();
     Serial.printf("      Enabled: %s\n", stripEnabled ? "true" : "false");
     
-    // CRITICAL FIX: If Firebase says disabled, set manuallyTurnedOff
+    // CRITICAL: If disabled at boot, set manual lock
     if (!stripEnabled) {
-        manuallyTurnedOff = true;  // Add this line
-        strip.clear();
-        strip.show();
+      manuallyTurnedOff = true;
+      Serial.println("      ⚠️  Device booted with LEDs disabled - manual lock active");
+      strip.clear();
+      strip.show();
+    } else {
+      manuallyTurnedOff = false;
     }
-} else {
+  } else {
     Serial.printf("      ⚠️  Failed to read enabled state: %s\n", fbdoUpload.errorReason().c_str());
     stripEnabled = true;
+    manuallyTurnedOff = false;
     Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), stripEnabled);
-}
+  }
   
   String autoDarknessPath = basePath + "/auto_darkness_control";
   if (Firebase.RTDB.getBool(&fbdoUpload, autoDarknessPath.c_str())) {
@@ -933,28 +1015,37 @@ void streamCallback(FirebaseStream data) {
     luxThreshold = data.floatData();
     Serial.printf("   Lux threshold changed to: %.2f\n", luxThreshold);
   }
-// In streamCallback(), around line 750, modify the "/enabled" handler:
-else if (dataPath == "/enabled") {
+  // CRITICAL FIX 1: Thread-safe access to stripEnabled
+  else if (dataPath == "/enabled") {
     bool newState = data.boolData();
+    
+    // Use critical section for thread-safe access
+    portENTER_CRITICAL(&stripMux);
     stripEnabled = newState;
+    portEXIT_CRITICAL(&stripMux);
+    
     turnedOffByDarkness = false;
     
     if (newState == false) {
-        manuallyTurnedOff = true;  // Ensure this is set
-        Serial.println("   ⚠️  MANUAL OFF: LEDs locked off until manually re-enabled");
+      portENTER_CRITICAL(&stripMux);
+      manuallyTurnedOff = true;
+      portEXIT_CRITICAL(&stripMux);
+      Serial.println("   ⚠️  MANUAL OFF: LEDs locked off until manually re-enabled");
     } else {
-        manuallyTurnedOff = false;
-        Serial.println("   ✅ Manual ON: Automation can now control LEDs");
+      portENTER_CRITICAL(&stripMux);
+      manuallyTurnedOff = false;
+      portEXIT_CRITICAL(&stripMux);
+      Serial.println("   ✅ Manual ON: Automation can now control LEDs");
     }
     
     Serial.printf("   Strip %s\n", stripEnabled ? "enabled" : "disabled");
     
     if (!stripEnabled) {
-        strip.clear();
-        strip.show();
-        Serial.println("   LEDs turned off");
+      strip.clear();
+      strip.show();
+      Serial.println("   LEDs turned off");
     }
-}
+  }
   else if (dataPath == "/timer_enabled") {
     timerEnabled = data.boolData();
     Serial.printf("   Timer %s\n", timerEnabled ? "enabled" : "disabled");
@@ -1155,8 +1246,6 @@ void firebaseTask(void *parameter) {
       connectToWiFi();
     }
     
-    firebaseTaskStack = uxTaskGetStackHighWaterMark(NULL);
-    
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
@@ -1167,7 +1256,6 @@ void ledTask(void *parameter) {
   for(;;) {
     esp_task_wdt_reset();
     updateLEDs();
-    ledTaskStack = uxTaskGetStackHighWaterMark(NULL);
     vTaskDelay(effectSpeed / portTICK_PERIOD_MS);
   }
 }
@@ -1192,12 +1280,18 @@ void automationtask(void *parameter) {
     lastPresence = presenceDetected;
 
     if (manuallyTurnedOff) {
-      if (stripEnabled) {
+      bool currentEnabled;
+      portENTER_CRITICAL(&stripMux);
+      currentEnabled = stripEnabled;
+      portEXIT_CRITICAL(&stripMux);
+      
+      if (currentEnabled) {
+        portENTER_CRITICAL(&stripMux);
         stripEnabled = false;
+        portEXIT_CRITICAL(&stripMux);
         strip.clear();
         strip.show();
       }
-      automationTaskStack = uxTaskGetStackHighWaterMark(NULL);
       vTaskDelay(xDelay);
       continue;
     }
@@ -1213,7 +1307,12 @@ void automationtask(void *parameter) {
     }
     
     if (autoDarknessControl) {
-      if (stripEnabled) {
+      bool currentEnabled;
+      portENTER_CRITICAL(&stripMux);
+      currentEnabled = stripEnabled;
+      portEXIT_CRITICAL(&stripMux);
+      
+      if (currentEnabled) {
         darknessCondition = (currentLux < luxThreshold);
       } else {
         darknessCondition = (currentLux < luxThreshold);
@@ -1243,12 +1342,22 @@ void automationtask(void *parameter) {
       reason = "Always ON";
     }
 
-    if (targetState != stripEnabled) {
+    bool currentEnabled;
+    portENTER_CRITICAL(&stripMux);
+    currentEnabled = stripEnabled;
+    portEXIT_CRITICAL(&stripMux);
+
+    // CRITICAL FIX 7: Thread-safe state changes
+    if (targetState != currentEnabled) {
       if (millis() - lastStateChangeTime > CHANGE_LOCKOUT_MS) {
+        // Use critical section
+        portENTER_CRITICAL(&stripMux);
         stripEnabled = targetState;
+        portEXIT_CRITICAL(&stripMux);
+        
         lastStateChangeTime = millis();
         
-        if (stripEnabled) {
+        if (targetState) {
           Serial.printf("\n💡 LEDs ON: %s (Presence: %s, Lux: %.2f)\n", 
                        reason.c_str(), presenceDetected ? "Yes" : "No", currentLux);
         } else {
@@ -1260,7 +1369,6 @@ void automationtask(void *parameter) {
       }
     }
 
-    automationTaskStack = uxTaskGetStackHighWaterMark(NULL);
     vTaskDelay(xDelay);
   }
 }
@@ -1435,10 +1543,9 @@ void sensorDataTask(void *parameter) {
     
     // ========== STACK MONITORING ==========
     esp_task_wdt_reset(); // Reset before stack check
-    sensorTaskStack = uxTaskGetStackHighWaterMark(NULL);
     
-    // Warn if stack is getting low
-    if (sensorTaskStack < 1000) {
+    // Warn if stack is getting low (check from main loop will update this)
+    if (sensorTaskStack < 1000 && sensorTaskStack > 0) {
       Serial.printf("⚠️  [SensorTask] Stack running low: %d bytes remaining\n", 
                    sensorTaskStack * sizeof(StackType_t));
     }
@@ -1483,7 +1590,30 @@ void timerTask(void *parameter) {
       }
     }
     
-    timerTaskStack = uxTaskGetStackHighWaterMark(NULL);
+    vTaskDelay(xDelay);
+  }
+}
+
+// CRITICAL FIX 3: OTA update task - moved from main loop
+void otaUpdateTask(void *parameter) {
+  Serial.println("🔄 OTA Update Task started on Core " + String(xPortGetCoreID()));
+  
+  const TickType_t xDelay = UPDATE_CHECK_INTERVAL / portTICK_PERIOD_MS;
+  
+  // Wait 30 seconds after boot before first check
+  vTaskDelay(30000 / portTICK_PERIOD_MS);
+  
+  for(;;) {
+    esp_task_wdt_reset();
+    
+    if (WiFi.status() == WL_CONNECTED && firebaseConnected) {
+      Serial.println("🔍 Checking for firmware updates...");
+      checkForGitHubUpdate();
+    } else {
+      Serial.println("⚠️  Skipping update check - network not ready");
+    }
+    
+    esp_task_wdt_reset();
     vTaskDelay(xDelay);
   }
 }
@@ -1503,17 +1633,21 @@ bool checkTimeMatch(const char* scheduledTime) {
 void updateTimerState(bool state) {
   esp_task_wdt_reset();
   
-  if (manuallyTurnedOff) {
+  if (manuallyTurnedOff && state) {
     Serial.println("⚠️  Timer cannot turn on LEDs - manually locked off");
     return;
   }
   
   String enabledPath = basePath + "/enabled";
   if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), state)) {
+    portENTER_CRITICAL(&stripMux);
     stripEnabled = state;
+    portEXIT_CRITICAL(&stripMux);
     
     if (state) {
+      portENTER_CRITICAL(&stripMux);
       manuallyTurnedOff = false;
+      portEXIT_CRITICAL(&stripMux);
       Serial.println("Timer turned ON LEDs - manual lock cleared");
     }
     
@@ -1532,18 +1666,23 @@ void updateTimerState(bool state) {
 void updateLEDs() {
   static bool lastStripEnabled = true;
   
-  if (!stripEnabled && lastStripEnabled) {
+  bool currentEnabled;
+  portENTER_CRITICAL(&stripMux);
+  currentEnabled = stripEnabled;
+  portEXIT_CRITICAL(&stripMux);
+  
+  if (!currentEnabled && lastStripEnabled) {
     strip.clear();
     strip.show();
     lastStripEnabled = false;
     return;
   }
   
-  if (!stripEnabled) {
+  if (!currentEnabled) {
     return;
   }
   
-  if (stripEnabled && !lastStripEnabled) {
+  if (currentEnabled && !lastStripEnabled) {
     lastStripEnabled = true;
   }
   
@@ -1587,6 +1726,7 @@ void updateLEDs() {
   strip.show();
 }
 
+// CRITICAL FIX 6: Add NULL pointer check in checkForGitHubUpdate
 void checkForGitHubUpdate() {
   Serial.println("🔍 Checking for GitHub firmware update...");
   if (WiFi.status() != WL_CONNECTED) {
@@ -1594,9 +1734,18 @@ void checkForGitHubUpdate() {
     return;
   }
 
+  // Add watchdog reset
+  esp_task_wdt_reset();
+
   String latestVersion = fetchLatestVersion();
-  if (latestVersion == "") {
+  if (latestVersion == "" || latestVersion.length() == 0) {
     Serial.println("   ❌ Failed to fetch latest version from GitHub");
+    return;
+  }
+
+  // Add NULL safety
+  if (currentFirmwareVersion == NULL || strlen(currentFirmwareVersion) == 0) {
+    Serial.println("   ❌ Current firmware version is invalid");
     return;
   }
 
@@ -1648,7 +1797,7 @@ String fetchLatestVersion() {
 }
 
 void downloadAndApplyFirmware() {
-  Serial.println("📥 Downloading firmware from GitHub...");
+  Serial.println("🔥 Downloading firmware from GitHub...");
   
   HTTPClient http;
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -1699,6 +1848,8 @@ bool startGitHubOTAUpdate(WiFiClient* client, int contentLength) {
   unsigned long lastDataTime = millis();
 
   while (written < contentLength) {
+    esp_task_wdt_reset(); // Keep watchdog happy during update
+    
     if (client->available()) {
       uint8_t buffer[128];
       size_t len = client->read(buffer, sizeof(buffer));
