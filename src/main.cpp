@@ -1269,41 +1269,184 @@ void sensorDataTask(void *parameter) {
   Serial.println("📊 Sensor Data Task started on Core " + String(xPortGetCoreID()));
   
   const TickType_t xDelay = 2000 / portTICK_PERIOD_MS;
+  const unsigned long FIREBASE_OPERATION_TIMEOUT = 10000; // 10 seconds max per Firebase operation
+  const unsigned long NETWORK_CHECK_TIMEOUT = 5000; // 5 seconds to verify network health
+  
+  // Tracking variables for presence detection
+  static bool lastPresenceSent = false;
+  static unsigned long lastPresenceSend = 0;
+  static unsigned long lastNetworkCheck = 0;
+  
+  // Operation timing tracking
+  unsigned long operationStart = 0;
+  unsigned long operationDuration = 0;
+  
+  // Consecutive failure tracking
+  int consecutiveFailures = 0;
+  const int MAX_CONSECUTIVE_FAILURES = 5;
   
   for(;;) {
+    // ========== WATCHDOG RESET - START OF LOOP ==========
     esp_task_wdt_reset();
     
-    if (firebaseConnected) {
-      if (sensorAvailable) {
-        updateSensorData();
-        
-        String luxPath = basePath + "/lux";
-        
-        if (Firebase.RTDB.setFloat(&fbdoUpload, luxPath.c_str(), currentLux)) {
-          // Silent success
-        } else {
-          Serial.printf("⚠️  Failed to send lux data: %s\n", fbdoUpload.errorReason().c_str());
-        }
+    // ========== NETWORK HEALTH CHECK ==========
+    // Periodically verify network connectivity to avoid hanging on dead connections
+    if (millis() - lastNetworkCheck > NETWORK_CHECK_TIMEOUT) {
+      lastNetworkCheck = millis();
+      
+      if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("⚠️  [SensorTask] WiFi disconnected - skipping Firebase operations");
+        firebaseConnected = false;
+        esp_task_wdt_reset();
+        vTaskDelay(xDelay);
+        continue;
       }
       
-      radar.read();
-      static bool lastPresenceSent = false;
-      static unsigned long lastPresenceSend = 0;
-      bool present = radar.presenceDetected();
-      
-      if (present != lastPresenceSent || (millis() - lastPresenceSend) > 5000) {
-        String presencePath = basePath + "/presence";
-        if (Firebase.RTDB.setBool(&fbdoUpload, presencePath.c_str(), present)) {
-          lastPresenceSent = present;
-          lastPresenceSend = millis();
-        } else {
-          Serial.printf("⚠️  Failed to send presence: %s\n", fbdoUpload.errorReason().c_str());
-        }
+      if (!Firebase.ready()) {
+        Serial.println("⚠️  [SensorTask] Firebase not ready - skipping operations");
+        firebaseConnected = false;
+        esp_task_wdt_reset();
+        vTaskDelay(xDelay);
+        continue;
       }
     }
     
+    // ========== LIGHT SENSOR DATA COLLECTION ==========
+    if (sensorAvailable) {
+      esp_task_wdt_reset(); // Reset before sensor read
+      
+      operationStart = millis();
+      updateSensorData();
+      operationDuration = millis() - operationStart;
+      
+      if (operationDuration > 2000) {
+        Serial.printf("⚠️  [SensorTask] updateSensorData took %lu ms\n", operationDuration);
+      }
+    }
+    
+    // ========== RADAR PRESENCE DETECTION ==========
+    esp_task_wdt_reset(); // Reset before radar read
+    
+    operationStart = millis();
+    radar.read();
+    bool present = radar.presenceDetected();
+    operationDuration = millis() - operationStart;
+    
+    if (operationDuration > 1000) {
+      Serial.printf("⚠️  [SensorTask] radar.read() took %lu ms\n", operationDuration);
+    }
+    
+    // ========== FIREBASE OPERATIONS ==========
+    if (firebaseConnected && WiFi.status() == WL_CONNECTED) {
+      
+      // --- LUX DATA UPLOAD ---
+      if (sensorAvailable) {
+        esp_task_wdt_reset(); // Reset before Firebase operation
+        
+        String luxPath = basePath + "/lux";
+        operationStart = millis();
+        
+        bool luxSuccess = Firebase.RTDB.setFloat(&fbdoUpload, luxPath.c_str(), currentLux);
+        operationDuration = millis() - operationStart;
+        
+        if (luxSuccess) {
+          consecutiveFailures = 0; // Reset failure counter on success
+          
+          // Log if operation was slow
+          if (operationDuration > 3000) {
+            Serial.printf("⚠️  [SensorTask] Lux upload took %lu ms (slow but successful)\n", operationDuration);
+          }
+        } else {
+          consecutiveFailures++;
+          Serial.printf("⚠️  [SensorTask] Failed to send lux data (%d/%d): %s\n", 
+                       consecutiveFailures, MAX_CONSECUTIVE_FAILURES, 
+                       fbdoUpload.errorReason().c_str());
+          
+          // If too many consecutive failures, mark Firebase as disconnected
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            Serial.println("❌ [SensorTask] Too many consecutive failures - marking Firebase as disconnected");
+            firebaseConnected = false;
+            consecutiveFailures = 0;
+          }
+        }
+        
+        // Check for timeout
+        if (operationDuration > FIREBASE_OPERATION_TIMEOUT) {
+          Serial.printf("❌ [SensorTask] Lux upload TIMEOUT (%lu ms) - may need to reset Firebase connection\n", 
+                       operationDuration);
+          firebaseConnected = false;
+        }
+      }
+      
+      // --- PRESENCE DATA UPLOAD ---
+      esp_task_wdt_reset(); // Reset before presence upload
+      
+      // Only upload presence if it changed OR if it's been more than 5 seconds
+      bool shouldUploadPresence = (present != lastPresenceSent) || 
+                                   ((millis() - lastPresenceSend) > 5000);
+      
+      if (shouldUploadPresence && firebaseConnected) {
+        String presencePath = basePath + "/presence";
+        operationStart = millis();
+        
+        bool presenceSuccess = Firebase.RTDB.setBool(&fbdoUpload, presencePath.c_str(), present);
+        operationDuration = millis() - operationStart;
+        
+        if (presenceSuccess) {
+          lastPresenceSent = present;
+          lastPresenceSend = millis();
+          consecutiveFailures = 0; // Reset failure counter
+          
+          // Log if operation was slow
+          if (operationDuration > 3000) {
+            Serial.printf("⚠️  [SensorTask] Presence upload took %lu ms (slow but successful)\n", 
+                         operationDuration);
+          }
+        } else {
+          consecutiveFailures++;
+          Serial.printf("⚠️  [SensorTask] Failed to send presence (%d/%d): %s\n",
+                       consecutiveFailures, MAX_CONSECUTIVE_FAILURES,
+                       fbdoUpload.errorReason().c_str());
+          
+          // If too many consecutive failures, mark Firebase as disconnected
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            Serial.println("❌ [SensorTask] Too many consecutive failures - marking Firebase as disconnected");
+            firebaseConnected = false;
+            consecutiveFailures = 0;
+          }
+        }
+        
+        // Check for timeout
+        if (operationDuration > FIREBASE_OPERATION_TIMEOUT) {
+          Serial.printf("❌ [SensorTask] Presence upload TIMEOUT (%lu ms) - may need to reset Firebase connection\n",
+                       operationDuration);
+          firebaseConnected = false;
+        }
+      }
+      
+    } else {
+      // Firebase not connected - skip uploads
+      if (!firebaseConnected) {
+        // Silent - already logged elsewhere
+      } else if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("⚠️  [SensorTask] WiFi disconnected - skipping Firebase uploads");
+      }
+    }
+    
+    // ========== STACK MONITORING ==========
+    esp_task_wdt_reset(); // Reset before stack check
     sensorTaskStack = uxTaskGetStackHighWaterMark(NULL);
+    
+    // Warn if stack is getting low
+    if (sensorTaskStack < 1000) {
+      Serial.printf("⚠️  [SensorTask] Stack running low: %d bytes remaining\n", 
+                   sensorTaskStack * sizeof(StackType_t));
+    }
+    
+    // ========== FINAL WATCHDOG RESET ==========
     esp_task_wdt_reset();
+    
+    // ========== TASK DELAY ==========
     vTaskDelay(xDelay);
   }
 }
