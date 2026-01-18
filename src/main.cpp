@@ -37,7 +37,7 @@ portMUX_TYPE stripMux = portMUX_INITIALIZER_UNLOCKED;
 // ============================================================================
 
 unsigned long lastSystemStatsReport = 0;
-const unsigned long SYSTEM_STATS_INTERVAL = 10000; // 10 seconds
+const unsigned long SYSTEM_STATS_INTERVAL = 30000; // 30 seconds
 
 // Task stack high water marks
 UBaseType_t firebaseTaskStack = 0;
@@ -135,6 +135,7 @@ const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikan
 
 const char* currentFirmwareVersion = "1.1.5";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
+//const unsigned long UPDATE_CHECK_INTERVAL = 10 * 1000;
 unsigned long lastUpdateCheck = 0;
 
 // ============================================================================
@@ -502,37 +503,37 @@ void setup() {
   xTaskCreatePinnedToCore(
     firebaseTask,
     "FirebaseTask",
-    20000,  // Increased from 15000
+    4000,  
     NULL,
     1,
     &firebaseTaskHandle,  // Save handle
     0
   );
-  Serial.println("      ✅ Firebase task created (Core 0, 20KB stack)");
+  Serial.println("      ✅ Firebase task created (Core 0, 4KB stack)");
 
   // LED animation task (core 1)
   xTaskCreatePinnedToCore(
     ledTask,
     "LEDTask",
-    15000,
+    4000,
     NULL,
     1,
     &ledTaskHandle,  // Save handle
     1
   );
-  Serial.println("      ✅ LED task created (Core 1, 15KB stack)");
+  Serial.println("      ✅ LED task created (Core 1, 4KB stack)");
 
   // Sensor data reporting task (core 0)
   xTaskCreatePinnedToCore(
     sensorDataTask,
     "SensorDataTask",
-    15000,
+    12000,
     NULL,
     1,
     &sensorTaskHandle,  // Save handle
     0
   );
-  Serial.println("      ✅ Sensor task created (Core 0, 15KB stack)");
+  Serial.println("      ✅ Sensor task created (Core 0, 8KB stack)");
 
   // Light-based automation task (core 0)
   xTaskCreatePinnedToCore(
@@ -550,37 +551,36 @@ void setup() {
   xTaskCreatePinnedToCore(
     timerTask,
     "TimerTask",
-    8000,
+    4000,
     NULL,
     1,
     &timerTaskHandle,  // Save handle
     0
   );
-  Serial.println("      ✅ Timer task created (Core 0, 8KB stack)");
+  Serial.println("      ✅ Timer task created (Core 0, 4KB stack)");
 
   // MQTT management task (core 0)
   xTaskCreatePinnedToCore(
     mqttTask,
     "MQTTTask",
-    15000,
+    8000,
     NULL,
     1,
     &mqttTaskHandle,  // Save handle
     0
   );
-  Serial.println("      ✅ MQTT task created (Core 0, 15KB stack)");
+  Serial.println("      ✅ MQTT task created (Core 0, 4KB stack)");
 
-  // CRITICAL FIX 4: OTA update task (core 0) - moved from main loop
   xTaskCreatePinnedToCore(
     otaUpdateTask,
     "OTAUpdateTask",
-    16000,  // Larger stack for HTTP operations
+    7000,  
     NULL,
     0,      // Lower priority
     &otaTaskHandle,  // Save handle
     0
   );
-  Serial.println("      ✅ OTA Update task created (Core 0, 16KB stack)");
+  Serial.println("      ✅ OTA Update task created (Core 0, 7KB stack)");
   
   Serial.println("\n╔═══════════════════════════════════════════════════════════════╗");
   Serial.println("║              🎉 ALL SYSTEMS INITIALIZED 🎉                     ║");
