@@ -93,8 +93,7 @@ extern volatile bool lastPresence;
 extern volatile bool presenceDetectionEnabled;
 extern volatile bool lastPresenceState;
 extern unsigned long lastPresenceReport;
-extern const int RADAR_RX_PIN;
-extern const int RADAR_TX_PIN;
+// RADAR pins are now defined in config.h
 
 // ============================================================================
 // TIMER SETTINGS
@@ -122,9 +121,9 @@ extern const unsigned long UPDATE_CHECK_INTERVAL;
 extern unsigned long lastUpdateCheck;
 
 // ============================================================================
-// BUTTON PRESS DETECTION
+// BUTTON PRESS DETECTION - Button pin is now defined in config.h
 // ============================================================================
-#define BUTTON_PIN 19
+// #define BUTTON_PIN 19  // Moved to config.h
 extern unsigned long buttonPressStart;
 extern bool buttonActive;
 

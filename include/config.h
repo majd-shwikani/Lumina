@@ -1,12 +1,29 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// ============================================================================
+// PIN DEFINITIONS
+// ============================================================================
 
-// Your GitHub Repository details
-//#define GITHUB_USER "majd-shwikani"
-//#define GITHUB_REPO "Lumina" 
-//#define FIRMWARE_FILENAME "firmware.bin"
-//#define FIRMWARE_VERSION "1.0.0" // Current version of the firmware on this device
+// NeoPixel LED strip
+#define LED_PIN 26
+
+// Button for configuration/reset
+#define BUTTON_PIN 19
+
+// Radar sensor (LD2410)
+#define RADAR_RX_PIN 16
+#define RADAR_TX_PIN 17
+
+// Audio/Microphone pins
+// I2S Configuration (for ICS43434 microphone)
+#define I2S_WS_PIN   25    // Word select/LRCLK
+#define I2S_SD_PIN   32    // Serial data/DOUT  
+#define I2S_SCK_PIN  33    // Serial clock/BCLK
+#define I2S_PORT     I2S_NUM_0
+
+// Analog Configuration (for MAX9814 microphone)
+#define ANALOG_MIC_PIN 27
 
 // Firebase configuration
 #define FIREBASE_HOST "test-dbd7a-default-rtdb.firebaseio.com"
@@ -32,11 +49,6 @@
 #define GMT_OFFSET_SEC GMT_OFFSET_SEC_WINTER
 #define DAYLIGHT_OFFSET_SEC DAYLIGHT_OFFSET_SEC_WINTER
 
-// NeoPixel configuration
-#define LED_PIN 26
-
-#endif
-
 // Configuration data structure
 struct ConfigData {
     char wifiSSID[32];
@@ -47,3 +59,5 @@ struct ConfigData {
 
 // Declare global configData variable (extern means it's defined elsewhere)
 extern ConfigData configData;
+
+#endif

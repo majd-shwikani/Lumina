@@ -23,7 +23,7 @@ TaskHandle_t otaTaskHandle = NULL;
 unsigned long lastLoopTime = 0;
 unsigned long loopCounter = 0;
 bool systemHealthy = true;
-Adafruit_NeoPixel strip(1, LED_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip(1, LED_PIN, NEO_GRB + NEO_KHZ800);  // Using LED_PIN from config.h
 FirebaseData fbdoStream;
 FirebaseData fbdoUpload;
 FirebaseAuth auth;
@@ -47,8 +47,7 @@ volatile bool lastPresence = false;
 volatile bool presenceDetectionEnabled = true;
 volatile bool lastPresenceState = false;
 unsigned long lastPresenceReport = 0;
-const int RADAR_RX_PIN = 16;
-const int RADAR_TX_PIN = 17;
+// RADAR_RX_PIN and RADAR_TX_PIN are now defined in config.h
 char timerOnTime[6] = "09:00";
 char timerOffTime[6] = "17:00";
 bool timerEnabled = true;

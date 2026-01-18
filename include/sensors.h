@@ -7,6 +7,7 @@
 #include <driver/i2s.h>
 #include <arduinoFFT.h>
 #include <Adafruit_NeoPixel.h>
+#include "config.h"
 
 // ============================================================================
 // LIGHT SENSOR CONFIGURATION
@@ -27,14 +28,6 @@ extern volatile float luxThreshold;
 // Active microphone selection
 extern volatile int activeMicrophone;
 
-// I2S Configuration (for ICS43434)
-#define I2S_WS   25
-#define I2S_SD   32  
-#define I2S_SCK  33
-#define I2S_PORT I2S_NUM_0
-
-// Analog Configuration (for MAX9814)
-#define ANALOG_MIC_PIN 27
 
 // Audio FFT Configuration
 #define SAMPLE_RATE 16000
