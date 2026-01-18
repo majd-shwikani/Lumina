@@ -1,6 +1,7 @@
-#ifndef WEB_CONFIG_PORTAL_H
-#define WEB_CONFIG_PORTAL_H
+#include "web_config_portal.h"
+#include <Arduino.h>
 
+// Include necessary headers that were in the .h file
 #include <WiFi.h>
 #include <WebServer.h>
 #include <SPIFFS.h>
@@ -337,7 +338,6 @@ void handleRoot() {
 }
 
 // Handle configuration save
-// Handle configuration save
 void handleSave() {
   if (server.method() != HTTP_POST) {
     server.send(405, "text/plain", "Method Not Allowed");
@@ -449,24 +449,22 @@ void startConfigPortal() {
   Serial.println("HTTP server started");
 
   // Blink built-in LED to indicate config mode (GPIO2 for most ESP32 boards)
-pinMode(2, OUTPUT);
+  pinMode(2, OUTPUT);
 
-// Main loop for config portal
-unsigned long lastBlink = 0;
-bool ledState = false;
+  // Main loop for config portal
+  unsigned long lastBlink = 0;
+  bool ledState = false;
 
-while (true) {
-  server.handleClient();
-  
-  // Blink LED every 500ms in config mode
-  if (millis() - lastBlink > 500) {
-    ledState = !ledState;
-    digitalWrite(2, ledState);
-    lastBlink = millis();
+  while (true) {
+    server.handleClient();
+    
+    // Blink LED every 500ms in config mode
+    if (millis() - lastBlink > 500) {
+      ledState = !ledState;
+      digitalWrite(2, ledState);
+      lastBlink = millis();
+    }
+    
+    delay(10);
   }
-  
-  delay(10);
 }
-}
-
-#endif
