@@ -92,11 +92,6 @@ bool checkTimeMatch(const char* scheduledTime) {
 void updateTimerState(bool state) {
   esp_task_wdt_reset();
   
-  if (manuallyTurnedOff && state) {
-    Serial.println("⚠️  Timer cannot turn on LEDs - manually locked off");
-    return;
-  }
-  
   String enabledPath = basePath + "/enabled";
   if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), state)) {
     portENTER_CRITICAL(&stripMux);
@@ -111,11 +106,6 @@ void updateTimerState(bool state) {
     }
     
     Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
-    
-    if (!state) {
-      strip.clear();
-      strip.show();
-    }
   } else {
     Serial.printf("Failed to update enabled state: %s\n", fbdoUpload.errorReason().c_str());
   }
@@ -303,8 +293,6 @@ void automationtask(void *parameter) {
         portENTER_CRITICAL(&stripMux);
         stripEnabled = false;
         portEXIT_CRITICAL(&stripMux);
-        strip.clear();
-        strip.show();
       }
       vTaskDelay(xDelay);
       continue;
@@ -375,8 +363,6 @@ void automationtask(void *parameter) {
           Serial.printf("\n💡 LEDs ON: %s (Presence: %s, Lux: %.2f)\n", 
                        reason.c_str(), presenceDetected ? "Yes" : "No", currentLux);
         } else {
-          strip.clear();
-          strip.show();
           Serial.printf("\n🌙 LEDs OFF: %s (Presence: %s, Lux: %.2f)\n", 
                        reason.c_str(), presenceDetected ? "Yes" : "No", currentLux);
         }

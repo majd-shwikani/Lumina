@@ -107,6 +107,8 @@ void normalizeAudioLevels();
 void calibrateMicrophone();
 void performAutoGainControl();
 void checkAndRecalibrate();
+void saveMicCalibration();
+bool loadMicCalibration();
 
 // Utility Functions
 uint32_t frequencyToColor(double freq);

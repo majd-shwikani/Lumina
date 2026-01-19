@@ -1,5 +1,7 @@
 #include "sensors.h"
 #include <esp_task_wdt.h>
+#include "FS.h"
+#include "SPIFFS.h"
 
 // ============================================================================
 // LIGHT SENSOR OBJECTS AND VARIABLES
@@ -186,6 +188,7 @@ void selectMicrophone(int micType) {
 }
 
 void setupFrequencyDetection() {
+  loadMicCalibration();
   selectMicrophone(MIC_I2S_ICS43434);
 }
 
@@ -217,6 +220,62 @@ void readAnalogSamples() {
 // ============================================================================
 // MICROPHONE CALIBRATION FUNCTIONS
 // ============================================================================
+
+void saveMicCalibration() {
+  File file = SPIFFS.open("/mic_calibration.dat", "w");
+  if (!file) {
+    Serial.println("Failed to open calibration file for writing.");
+    return;
+  }
+
+  if (file.println(noiseFloor) && file.println(gainMultiplier)) {
+    Serial.println("Microphone calibration data saved to SPIFFS.");
+  } else {
+    Serial.println("Failed to write calibration data to SPIFFS.");
+  }
+  file.close();
+}
+
+bool loadMicCalibration() {
+  if (SPIFFS.exists("/mic_calibration.dat")) {
+    File file = SPIFFS.open("/mic_calibration.dat", "r");
+    if (!file) {
+      Serial.println("Failed to open calibration file for reading.");
+      return false;
+    }
+
+    if (file.available()) {
+      String noiseFloorStr = file.readStringUntil('\n');
+      String gainMultiplierStr = file.readStringUntil('\n');
+      file.close();
+
+      double loadedNoiseFloor = noiseFloorStr.toDouble();
+      double loadedGainMultiplier = gainMultiplierStr.toDouble();
+
+      if (loadedNoiseFloor > 0 && loadedGainMultiplier > 0) {
+        noiseFloor = loadedNoiseFloor;
+        gainMultiplier = loadedGainMultiplier;
+        calibrationComplete = true;
+        Serial.println("Successfully loaded microphone calibration from SPIFFS.");
+        Serial.printf("  - Noise Floor: %.2f\n", noiseFloor);
+        Serial.printf("  - Gain Multiplier: %.2f\n", gainMultiplier);
+        return true;
+      } else {
+        Serial.println("Calibration data from SPIFFS appears invalid. Starting new calibration.");
+        SPIFFS.remove("/mic_calibration.dat"); // Remove bad file
+        return false;
+      }
+    } else {
+      Serial.println("Calibration file is empty. Starting new calibration.");
+      file.close();
+      return false;
+    }
+  }
+
+  Serial.println("No calibration file found. A new calibration will be performed.");
+  return false;
+}
+
 
 void calibrateMicrophone() {
   if (calibrationStartTime == 0) {
@@ -301,6 +360,7 @@ void calibrateMicrophone() {
     
     lastCalibrationTime = millis();
     triggerMicCalibration = false;
+    saveMicCalibration();
   }
 }
 
