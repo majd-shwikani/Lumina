@@ -203,7 +203,13 @@ void statsTask(void *parameter) {
       }
       
       // Send to Firebase with minimal timeout
-      bool success = Firebase.RTDB.setJSON(&fbdoUpload, statsPath.c_str(), &json);
+      bool success = false;
+try {
+    success = Firebase.RTDB.setJSON(&fbdoUpload, statsPath.c_str(), &json);
+} catch (...) {
+    Serial.println("⚠️  [StatsTask] CAUGHT Firebase exception - continuing...");
+    success = false;
+}
       
       if (!success) {
         // Don't spam errors - just log occasionally
@@ -452,7 +458,13 @@ void sensorDataTask(void *parameter) {
         String luxPath = basePath + "/lux";
         operationStart = millis();
         
-        bool luxSuccess = Firebase.RTDB.setFloat(&fbdoUpload, luxPath.c_str(), currentLux);
+        bool luxSuccess = false;
+try {
+    luxSuccess = Firebase.RTDB.setFloat(&fbdoUpload, luxPath.c_str(), currentLux);
+} catch (...) {
+    Serial.println("⚠️  [SensorTask] CAUGHT Firebase exception - continuing...");
+    luxSuccess = false;
+}
         operationDuration = millis() - operationStart;
         
         if (luxSuccess) {
@@ -490,7 +502,13 @@ void sensorDataTask(void *parameter) {
         String presencePath = basePath + "/presence";
         operationStart = millis();
         
-        bool presenceSuccess = Firebase.RTDB.setBool(&fbdoUpload, presencePath.c_str(), present);
+        bool presenceSuccess = false;
+try {
+    presenceSuccess = Firebase.RTDB.setBool(&fbdoUpload, presencePath.c_str(), present);
+} catch (...) {
+    Serial.println("⚠️  [SensorTask] CAUGHT Firebase exception - continuing...");
+    presenceSuccess = false;
+}
         operationDuration = millis() - operationStart;
         
         if (presenceSuccess) {
