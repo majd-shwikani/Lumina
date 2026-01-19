@@ -136,6 +136,9 @@ void printSystemStats() {
   Serial.printf("║   OTA Task:        %5d bytes (%5.1f KB)                          ║\n", 
                 otaTaskStack * sizeof(StackType_t), 
                 (otaTaskStack * sizeof(StackType_t)) / 1024.0);
+  Serial.printf("║   Stats Task:      %5d bytes (%5.1f KB)                          ║\n",  // NEW
+                statsTaskStack * sizeof(StackType_t), 
+                (statsTaskStack * sizeof(StackType_t)) / 1024.0);
   Serial.println("║                                                                      ║");
   
   Serial.println("║ SYSTEM STATUS:                                                       ║");
@@ -201,6 +204,17 @@ void printSystemStats() {
   Serial.printf("║   Beat Detected:   %-45s ║\n", beatDetected ? "YES" : "NO");
   Serial.println("║                                                                      ║");
   
+  Serial.println("║ TASK STATUS:                                                         ║");
+  Serial.printf("║   Firebase Task:   %-45s ║\n", firebaseTaskHandle ? "RUNNING" : "STOPPED");
+  Serial.printf("║   LED Task:        %-45s ║\n", ledTaskHandle ? "RUNNING" : "STOPPED");
+  Serial.printf("║   Automation Task: %-45s ║\n", automationTaskHandle ? "RUNNING" : "STOPPED");
+  Serial.printf("║   Sensor Task:     %-45s ║\n", sensorTaskHandle ? "RUNNING" : "STOPPED");
+  Serial.printf("║   Timer Task:      %-45s ║\n", timerTaskHandle ? "RUNNING" : "STOPPED");
+  Serial.printf("║   MQTT Task:       %-45s ║\n", mqttTaskHandle ? "RUNNING" : "STOPPED");
+  Serial.printf("║   OTA Task:        %-45s ║\n", otaTaskHandle ? "RUNNING" : "STOPPED");
+  Serial.printf("║   Stats Task:      %-45s ║\n", statsTaskHandle ? "RUNNING" : "STOPPED");  // NEW
+  Serial.println("║                                                                      ║");
+  
   Serial.println("║ HEALTH WARNINGS:                                                     ║");
   bool warningsFound = false;
   
@@ -236,12 +250,48 @@ void printSystemStats() {
     Serial.println("║   ⚠️  WARNING: OTA task stack critically low!                        ║");
     warningsFound = true;
   }
+  if (statsTaskStack < 300) {  // NEW: Stats task stack warning
+    Serial.println("║   ⚠️  WARNING: Stats task stack critically low!                       ║");
+    warningsFound = true;
+  }
   if (!firebaseConnected) {
     Serial.println("║   ⚠️  WARNING: Firebase disconnected!                                ║");
     warningsFound = true;
   }
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("║   ⚠️  WARNING: WiFi disconnected!                                    ║");
+    warningsFound = true;
+  }
+  if (!firebaseTaskHandle) {
+    Serial.println("║   ⚠️  WARNING: Firebase task not running!                            ║");
+    warningsFound = true;
+  }
+  if (!ledTaskHandle) {
+    Serial.println("║   ⚠️  WARNING: LED task not running!                                 ║");
+    warningsFound = true;
+  }
+  if (!sensorTaskHandle) {
+    Serial.println("║   ⚠️  WARNING: Sensor task not running!                              ║");
+    warningsFound = true;
+  }
+  if (!automationTaskHandle) {
+    Serial.println("║   ⚠️  WARNING: Automation task not running!                          ║");
+    warningsFound = true;
+  }
+  if (!timerTaskHandle) {
+    Serial.println("║   ⚠️  WARNING: Timer task not running!                               ║");
+    warningsFound = true;
+  }
+  if (!mqttTaskHandle) {
+    Serial.println("║   ⚠️  WARNING: MQTT task not running!                                ║");
+    warningsFound = true;
+  }
+  if (!otaTaskHandle) {
+    Serial.println("║   ⚠️  WARNING: OTA task not running!                                 ║");
+    warningsFound = true;
+  }
+  if (!statsTaskHandle) {  // NEW: Stats task warning
+    Serial.println("║   ⚠️  WARNING: Stats task not running!                               ║");
     warningsFound = true;
   }
   if (!warningsFound) {

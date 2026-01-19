@@ -1,6 +1,12 @@
 #include "globals.h"
 
 // ============================================================================
+// VARIABLE DEFINITIONS - ADDED TO FIX LINKER ERRORS
+// ============================================================================
+UBaseType_t statsTaskStack = 0;
+TaskHandle_t statsTaskHandle = NULL;
+
+// ============================================================================
 // LED UPDATE FUNCTION
 // ============================================================================
 
@@ -114,6 +120,112 @@ void updateTimerState(bool state) {
     Serial.printf("Failed to update enabled state: %s\n", fbdoUpload.errorReason().c_str());
   }
   esp_task_wdt_reset();
+}
+
+// ============================================================================
+// STATS TASK - NEW FUNCTION
+// ============================================================================
+
+String formatUptime(unsigned long milliseconds) {
+  unsigned long seconds = milliseconds / 1000;
+  unsigned long minutes = seconds / 60;
+  unsigned long hours = minutes / 60;
+  unsigned long days = hours / 24;
+  
+  if (days > 0) {
+    return String(days) + "d " + String(hours % 24) + "h";
+  } else if (hours > 0) {
+    return String(hours) + "h " + String(minutes % 60) + "m";
+  } else if (minutes > 0) {
+    return String(minutes) + "m " + String(seconds % 60) + "s";
+  } else {
+    return String(seconds) + "s";
+  }
+}
+
+void statsTask(void *parameter) {
+  Serial.println("📊 Stats Task started on Core " + String(xPortGetCoreID()));
+  
+  const TickType_t xDelay = 10000 / portTICK_PERIOD_MS; // Send every 10 seconds
+  unsigned long startTime = millis();
+  
+  for(;;) {
+    esp_task_wdt_reset();
+    
+    if (firebaseConnected && WiFi.status() == WL_CONNECTED) {
+      // Wait for sensor task to finish if it's sending data
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+      
+      String statsPath = basePath + "/stats";
+      
+      // Get memory stats - USE ESP32 STANDARD FUNCTIONS TO MATCH SERIAL MONITOR
+      uint32_t freeHeap = ESP.getFreeHeap();  // This matches serial monitor
+      uint32_t totalHeap = ESP.getHeapSize();
+      uint32_t minFreeHeap = ESP.getMinFreeHeap();
+      
+      // Calculate heap usage percentage
+      uint32_t usedHeap = totalHeap - freeHeap;
+      float heapUsagePercent = (usedHeap * 100.0) / totalHeap;
+      
+      // Also get PSRAM stats if available
+      #ifdef BOARD_HAS_PSRAM
+        uint32_t psramSize = ESP.getPsramSize();
+        uint32_t freePsram = ESP.getFreePsram();
+        uint32_t minPsram = ESP.getMinFreePsram();
+      #else
+        uint32_t psramSize = 0;
+        uint32_t freePsram = 0;
+        uint32_t minPsram = 0;
+      #endif
+      
+      // Format the message based on system health
+      String systemStatus = systemHealthy ? "ALL SYSTEMS NOMINAL" : "SYSTEM WARNINGS";
+      
+      // Create JSON object for stats
+      FirebaseJson json;
+      json.set("uptime", formatUptime(millis() - startTime));
+      json.set("status", systemStatus);
+      json.set("heap_usage_percent", heapUsagePercent);
+      json.set("free_heap", freeHeap);
+      json.set("free_heap_kb", freeHeap / 1024);
+      json.set("min_free_heap", minFreeHeap);
+      json.set("total_heap", totalHeap);
+      json.set("total_heap_kb", totalHeap / 1024);
+      json.set("wifi_rssi", WiFi.RSSI());
+      json.set("loop_counter", loopCounter);
+      json.set("firmware_version", currentFirmwareVersion);
+      
+      // Add PSRAM stats if available
+      if (psramSize > 0) {
+        json.set("psram_size", psramSize);
+        json.set("free_psram", freePsram);
+        json.set("min_free_psram", minPsram);
+      }
+      
+      // Send to Firebase with minimal timeout
+      bool success = Firebase.RTDB.setJSON(&fbdoUpload, statsPath.c_str(), &json);
+      
+      if (!success) {
+        // Don't spam errors - just log occasionally
+        static unsigned long lastErrorLog = 0;
+        if (millis() - lastErrorLog > 60000) {
+          Serial.printf("⚠️  [StatsTask] Failed to send stats: %s\n", 
+                       fbdoUpload.errorReason().c_str());
+          lastErrorLog = millis();
+        }
+      } else {
+        // Optional: Log when stats are sent successfully (debug only)
+        // Serial.printf("📊 Stats sent: %d free, %d total, %.1f%% used\n", 
+        //               freeHeap, totalHeap, heapUsagePercent);
+      }
+    } else {
+      // Network not ready, wait longer
+      vTaskDelay(5000 / portTICK_PERIOD_MS);
+    }
+    
+    esp_task_wdt_reset();
+    vTaskDelay(xDelay);
+  }
 }
 
 // ============================================================================

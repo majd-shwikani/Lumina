@@ -43,6 +43,7 @@ extern UBaseType_t sensorTaskStack;
 extern UBaseType_t timerTaskStack;
 extern UBaseType_t mqttTaskStack;
 extern UBaseType_t otaTaskStack;
+extern UBaseType_t statsTaskStack;
 extern TaskHandle_t firebaseTaskHandle;
 extern TaskHandle_t ledTaskHandle;
 extern TaskHandle_t automationTaskHandle;
@@ -50,6 +51,7 @@ extern TaskHandle_t sensorTaskHandle;
 extern TaskHandle_t timerTaskHandle;
 extern TaskHandle_t mqttTaskHandle;
 extern TaskHandle_t otaTaskHandle;
+extern TaskHandle_t statsTaskHandle;
 extern unsigned long lastLoopTime;
 extern unsigned long loopCounter;
 extern bool systemHealthy;
@@ -157,5 +159,7 @@ void automationtask(void *parameter);
 void sensorDataTask(void *parameter);
 void timerTask(void *parameter);
 void otaUpdateTask(void *parameter);
+void statsTask(void *parameter);
+String formatUptime(unsigned long milliseconds);
 
 #endif // GLOBALS_H

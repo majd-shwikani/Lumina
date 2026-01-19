@@ -135,6 +135,9 @@ void setup() {
   xTaskCreatePinnedToCore(otaUpdateTask, "OTAUpdateTask", 7000, NULL, 0, &otaTaskHandle, 0);
   Serial.println("      ✅ OTA Update task created (Core 0, 7KB stack)");
   
+  xTaskCreatePinnedToCore(statsTask, "StatsTask", 7000, NULL, 0, &statsTaskHandle, 0);
+  Serial.println("      ✅ Stats task created (Core 0, 4KB stack)");
+  
   Serial.println("\n╔═══════════════════════════════════════════════════════════════╗");
   Serial.println("║              🎉 ALL SYSTEMS INITIALIZED 🎉                     ║");
   Serial.println("║         System monitoring active every 10 seconds              ║");
@@ -195,6 +198,9 @@ void loop() {
     }
     if (otaTaskHandle != NULL) {
       otaTaskStack = uxTaskGetStackHighWaterMark(otaTaskHandle);
+    }
+    if (statsTaskHandle != NULL) {
+      statsTaskStack = uxTaskGetStackHighWaterMark(statsTaskHandle);
     }
     
     printSystemStats();
