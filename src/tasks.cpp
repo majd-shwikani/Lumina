@@ -1,10 +1,9 @@
 #include "globals.h"
 
 // ============================================================================
-// VARIABLE DEFINITIONS - ADDED TO FIX LINKER ERRORS
+// VARIABLE DEFINITIONS
 // ============================================================================
-UBaseType_t statsTaskStack = 0;
-TaskHandle_t statsTaskHandle = NULL;
+// Note: statsTaskStack and statsTaskHandle removed - merged into sensor task
 
 // ============================================================================
 // LED UPDATE FUNCTION
@@ -113,7 +112,7 @@ void updateTimerState(bool state) {
 }
 
 // ============================================================================
-// STATS TASK - NEW FUNCTION
+// UPTIME FORMATTER - MOVED FROM STATS TASK
 // ============================================================================
 
 String formatUptime(unsigned long milliseconds) {
@@ -130,97 +129,6 @@ String formatUptime(unsigned long milliseconds) {
     return String(minutes) + "m " + String(seconds % 60) + "s";
   } else {
     return String(seconds) + "s";
-  }
-}
-
-void statsTask(void *parameter) {
-  Serial.println("📊 Stats Task started on Core " + String(xPortGetCoreID()));
-  
-  const TickType_t xDelay = 10000 / portTICK_PERIOD_MS; // Send every 10 seconds
-  unsigned long startTime = millis();
-  
-  for(;;) {
-    esp_task_wdt_reset();
-    
-    if (firebaseConnected && WiFi.status() == WL_CONNECTED) {
-      // Wait for sensor task to finish if it's sending data
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-      
-      String statsPath = basePath + "/stats";
-      
-      // Get memory stats - USE ESP32 STANDARD FUNCTIONS TO MATCH SERIAL MONITOR
-      uint32_t freeHeap = ESP.getFreeHeap();  // This matches serial monitor
-      uint32_t totalHeap = ESP.getHeapSize();
-      uint32_t minFreeHeap = ESP.getMinFreeHeap();
-      
-      // Calculate heap usage percentage
-      uint32_t usedHeap = totalHeap - freeHeap;
-      float heapUsagePercent = (usedHeap * 100.0) / totalHeap;
-      
-      // Also get PSRAM stats if available
-      #ifdef BOARD_HAS_PSRAM
-        uint32_t psramSize = ESP.getPsramSize();
-        uint32_t freePsram = ESP.getFreePsram();
-        uint32_t minPsram = ESP.getMinFreePsram();
-      #else
-        uint32_t psramSize = 0;
-        uint32_t freePsram = 0;
-        uint32_t minPsram = 0;
-      #endif
-      
-      // Format the message based on system health
-      String systemStatus = systemHealthy ? "ALL SYSTEMS NOMINAL" : "SYSTEM WARNINGS";
-      
-      // Create JSON object for stats
-      FirebaseJson json;
-      json.set("uptime", formatUptime(millis() - startTime));
-      json.set("status", systemStatus);
-      json.set("heap_usage_percent", heapUsagePercent);
-      json.set("free_heap", freeHeap);
-      json.set("free_heap_kb", freeHeap / 1024);
-      json.set("min_free_heap", minFreeHeap);
-      json.set("total_heap", totalHeap);
-      json.set("total_heap_kb", totalHeap / 1024);
-      json.set("wifi_rssi", WiFi.RSSI());
-      json.set("loop_counter", loopCounter);
-      json.set("firmware_version", currentFirmwareVersion);
-      
-      // Add PSRAM stats if available
-      if (psramSize > 0) {
-        json.set("psram_size", psramSize);
-        json.set("free_psram", freePsram);
-        json.set("min_free_psram", minPsram);
-      }
-      
-      // Send to Firebase with minimal timeout
-      bool success = false;
-try {
-    success = Firebase.RTDB.setJSON(&fbdoUpload, statsPath.c_str(), &json);
-} catch (...) {
-    Serial.println("⚠️  [StatsTask] CAUGHT Firebase exception - continuing...");
-    success = false;
-}
-      
-      if (!success) {
-        // Don't spam errors - just log occasionally
-        static unsigned long lastErrorLog = 0;
-        if (millis() - lastErrorLog > 60000) {
-          Serial.printf("⚠️  [StatsTask] Failed to send stats: %s\n", 
-                       fbdoUpload.errorReason().c_str());
-          lastErrorLog = millis();
-        }
-      } else {
-        // Optional: Log when stats are sent successfully (debug only)
-        // Serial.printf("📊 Stats sent: %d free, %d total, %.1f%% used\n", 
-        //               freeHeap, totalHeap, heapUsagePercent);
-      }
-    } else {
-      // Network not ready, wait longer
-      vTaskDelay(5000 / portTICK_PERIOD_MS);
-    }
-    
-    esp_task_wdt_reset();
-    vTaskDelay(xDelay);
   }
 }
 
@@ -373,16 +281,20 @@ void automationtask(void *parameter) {
   }
 }
 
+// ============================================================================
+// SENSOR DATA TASK - NOW INCLUDES STATS COLLECTION
+// ============================================================================
+
 void sensorDataTask(void *parameter) {
-  Serial.println("📊 Sensor Data Task started on Core " + String(xPortGetCoreID()));
+  Serial.println("📊 Sensor+Stats Task started on Core " + String(xPortGetCoreID()));
+  Serial.println("   📡 Sending combined data every 2 seconds to /sensor_stats");
   
-  const TickType_t xDelay = 2000 / portTICK_PERIOD_MS;
+  const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // Every 2 seconds
   const unsigned long FIREBASE_OPERATION_TIMEOUT = 10000;
   const unsigned long NETWORK_CHECK_TIMEOUT = 5000;
   
-  static bool lastPresenceSent = false;
-  static unsigned long lastPresenceSend = 0;
   static unsigned long lastNetworkCheck = 0;
+  static unsigned long taskStartTime = millis(); // For uptime calculation
   
   unsigned long operationStart = 0;
   unsigned long operationDuration = 0;
@@ -393,6 +305,9 @@ void sensorDataTask(void *parameter) {
   for(;;) {
     esp_task_wdt_reset();
     
+    // ========================================================================
+    // 1. CHECK NETWORK CONNECTION (every 5 seconds)
+    // ========================================================================
     if (millis() - lastNetworkCheck > NETWORK_CHECK_TIMEOUT) {
       lastNetworkCheck = millis();
       
@@ -413,121 +328,124 @@ void sensorDataTask(void *parameter) {
       }
     }
     
+    // ========================================================================
+    // 2. COLLECT SENSOR DATA (always do this - other tasks depend on it)
+    // ========================================================================
     if (sensorAvailable) {
       esp_task_wdt_reset();
-      
-      operationStart = millis();
-      updateSensorData();
-      operationDuration = millis() - operationStart;
-      
-      if (operationDuration > 2000) {
-        Serial.printf("⚠️  [SensorTask] updateSensorData took %lu ms\n", operationDuration);
-      }
+      updateSensorData(); // Reads currentLux
     }
     
     esp_task_wdt_reset();
-    
-    operationStart = millis();
     radar.read();
     bool present = radar.presenceDetected();
-    operationDuration = millis() - operationStart;
+    lastPresence = present; // Update global for automation task
     
-    if (operationDuration > 1000) {
-      Serial.printf("⚠️  [SensorTask] radar.read() took %lu ms\n", operationDuration);
-    }
-    
+    // ========================================================================
+    // 3. SEND COMBINED DATA TO FIREBASE (if connected)
+    // ========================================================================
     if (firebaseConnected && WiFi.status() == WL_CONNECTED) {
+      esp_task_wdt_reset();
+      operationStart = millis();
       
-      if (sensorAvailable) {
-        esp_task_wdt_reset();
+      // ----------------------------------------------------------------------
+      // 3A. COLLECT SYSTEM STATS
+      // ----------------------------------------------------------------------
+      uint32_t freeHeap = ESP.getFreeHeap();
+      uint32_t totalHeap = ESP.getHeapSize();
+      uint32_t minFreeHeap = ESP.getMinFreeHeap();
+      uint32_t usedHeap = totalHeap - freeHeap;
+      float heapUsagePercent = (usedHeap * 100.0) / totalHeap;
+      
+      // Get PSRAM stats if available
+      #ifdef BOARD_HAS_PSRAM
+        uint32_t psramSize = ESP.getPsramSize();
+        uint32_t freePsram = ESP.getFreePsram();
+      #else
+        uint32_t psramSize = 0;
+        uint32_t freePsram = 0;
+      #endif
+      
+      String systemStatus = systemHealthy ? "ALL SYSTEMS NOMINAL" : "SYSTEM WARNINGS";
+      
+      // ----------------------------------------------------------------------
+      // 3B. CREATE COMBINED JSON WITH SENSORS AND STATS
+      // ----------------------------------------------------------------------
+      FirebaseJson json;
+      FirebaseJson sensors;
+      FirebaseJson stats;
+      
+      // Add sensor data
+      sensors.set("lux", currentLux);
+      sensors.set("presence", present);
+      
+      // Add system stats
+      stats.set("uptime", formatUptime(millis() - taskStartTime));
+      stats.set("status", systemStatus);
+      stats.set("heap_usage_percent", heapUsagePercent);
+      stats.set("free_heap_kb", freeHeap / 1024);
+      stats.set("min_free_heap", minFreeHeap);
+      stats.set("total_heap_kb", totalHeap / 1024);
+      stats.set("wifi_rssi", WiFi.RSSI());
+      stats.set("loop_counter", loopCounter);
+      stats.set("firmware_version", currentFirmwareVersion);
+      
+      if (psramSize > 0) {
+        stats.set("psram_size_kb", psramSize / 1024);
+        stats.set("free_psram_kb", freePsram / 1024);
+        stats.set("min_free_psram", ESP.getMinFreePsram());
+      }
+      
+      // Combine into main JSON with your specified structure
+      json.set("sensors", sensors);
+      json.set("stats", stats);
+      
+      // ----------------------------------------------------------------------
+      // 3C. SEND SINGLE FIREBASE UPDATE EVERY 2 SECONDS
+      // ----------------------------------------------------------------------
+      String combinedPath = basePath + "/sensor_stats";
+      bool success = false;
+      
+      try {
+        success = Firebase.RTDB.setJSON(&fbdoUpload, combinedPath.c_str(), &json);
+      } catch (...) {
+        Serial.println("⚠️  [SensorTask] CAUGHT Firebase exception - continuing...");
+        success = false;
+      }
+      
+      operationDuration = millis() - operationStart;
+      
+      if (success) {
+        consecutiveFailures = 0;
         
-        String luxPath = basePath + "/lux";
-        operationStart = millis();
+        // Optional debug - uncomment to see when data is sent
+        // Serial.printf("✅ [SensorTask] Combined data sent in %lu ms\n", operationDuration);
         
-        bool luxSuccess = false;
-try {
-    luxSuccess = Firebase.RTDB.setFloat(&fbdoUpload, luxPath.c_str(), currentLux);
-} catch (...) {
-    Serial.println("⚠️  [SensorTask] CAUGHT Firebase exception - continuing...");
-    luxSuccess = false;
-}
-        operationDuration = millis() - operationStart;
-        
-        if (luxSuccess) {
-          consecutiveFailures = 0;
-          
-          if (operationDuration > 3000) {
-            Serial.printf("⚠️  [SensorTask] Lux upload took %lu ms (slow but successful)\n", operationDuration);
-          }
-        } else {
-          consecutiveFailures++;
-          Serial.printf("⚠️  [SensorTask] Failed to send lux data (%d/%d): %s\n", 
-                       consecutiveFailures, MAX_CONSECUTIVE_FAILURES, 
-                       fbdoUpload.errorReason().c_str());
-          
-          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            Serial.println("❌ [SensorTask] Too many consecutive failures - marking Firebase as disconnected");
-            firebaseConnected = false;
-            consecutiveFailures = 0;
-          }
+        if (operationDuration > 3000) {
+          Serial.printf("⚠️  [SensorTask] Combined upload took %lu ms (slow but successful)\n", operationDuration);
         }
+      } else {
+        consecutiveFailures++;
+        Serial.printf("⚠️  [SensorTask] Failed to send combined data (%d/%d): %s\n", 
+                     consecutiveFailures, MAX_CONSECUTIVE_FAILURES, 
+                     fbdoUpload.errorReason().c_str());
         
-        if (operationDuration > FIREBASE_OPERATION_TIMEOUT) {
-          Serial.printf("❌ [SensorTask] Lux upload TIMEOUT (%lu ms) - may need to reset Firebase connection\n", 
-                       operationDuration);
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          Serial.println("❌ [SensorTask] Too many consecutive failures - marking Firebase as disconnected");
           firebaseConnected = false;
+          consecutiveFailures = 0;
         }
       }
       
-      esp_task_wdt_reset();
-      
-      bool shouldUploadPresence = (present != lastPresenceSent) || 
-                                   ((millis() - lastPresenceSend) > 5000);
-      
-      if (shouldUploadPresence && firebaseConnected) {
-        String presencePath = basePath + "/presence";
-        operationStart = millis();
-        
-        bool presenceSuccess = false;
-try {
-    presenceSuccess = Firebase.RTDB.setBool(&fbdoUpload, presencePath.c_str(), present);
-} catch (...) {
-    Serial.println("⚠️  [SensorTask] CAUGHT Firebase exception - continuing...");
-    presenceSuccess = false;
-}
-        operationDuration = millis() - operationStart;
-        
-        if (presenceSuccess) {
-          lastPresenceSent = present;
-          lastPresenceSend = millis();
-          consecutiveFailures = 0;
-          
-          if (operationDuration > 3000) {
-            Serial.printf("⚠️  [SensorTask] Presence upload took %lu ms (slow but successful)\n", 
-                         operationDuration);
-          }
-        } else {
-          consecutiveFailures++;
-          Serial.printf("⚠️  [SensorTask] Failed to send presence (%d/%d): %s\n",
-                       consecutiveFailures, MAX_CONSECUTIVE_FAILURES,
-                       fbdoUpload.errorReason().c_str());
-          
-          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            Serial.println("❌ [SensorTask] Too many consecutive failures - marking Firebase as disconnected");
-            firebaseConnected = false;
-            consecutiveFailures = 0;
-          }
-        }
-        
-        if (operationDuration > FIREBASE_OPERATION_TIMEOUT) {
-          Serial.printf("❌ [SensorTask] Presence upload TIMEOUT (%lu ms) - may need to reset Firebase connection\n",
-                       operationDuration);
-          firebaseConnected = false;
-        }
+      if (operationDuration > FIREBASE_OPERATION_TIMEOUT) {
+        Serial.printf("❌ [SensorTask] Combined upload TIMEOUT (%lu ms) - may need to reset Firebase connection\n", 
+                     operationDuration);
+        firebaseConnected = false;
       }
       
     } else {
       if (!firebaseConnected) {
+        // Firebase not connected - wait and retry
       } else if (WiFi.status() != WL_CONNECTED) {
         Serial.println("⚠️  [SensorTask] WiFi disconnected - skipping Firebase uploads");
       }
@@ -535,13 +453,22 @@ try {
     
     esp_task_wdt_reset();
     
-    if (sensorTaskStack < 1000 && sensorTaskStack > 0) {
-      Serial.printf("⚠️  [SensorTask] Stack running low: %d bytes remaining\n", 
-                   sensorTaskStack * sizeof(StackType_t));
+    // ========================================================================
+    // 4. MONITOR TASK STACK USAGE
+    // ========================================================================
+    if (sensorTaskHandle != NULL) {
+      sensorTaskStack = uxTaskGetStackHighWaterMark(sensorTaskHandle);
+      if (sensorTaskStack < 1000 && sensorTaskStack > 0) {
+        Serial.printf("⚠️  [SensorTask] Stack running low: %d bytes remaining\n", 
+                     sensorTaskStack * sizeof(StackType_t));
+      }
     }
     
     esp_task_wdt_reset();
     
+    // ========================================================================
+    // 5. DELAY FOR NEXT CYCLE (2 seconds)
+    // ========================================================================
     vTaskDelay(xDelay);
   }
 }
@@ -603,3 +530,7 @@ void otaUpdateTask(void *parameter) {
     vTaskDelay(xDelay);
   }
 }
+
+// ============================================================================
+// NOTE: statsTask() function has been REMOVED - merged into sensorDataTask()
+// ============================================================================

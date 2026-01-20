@@ -13,6 +13,7 @@ UBaseType_t sensorTaskStack = 0;
 UBaseType_t timerTaskStack = 0;
 UBaseType_t mqttTaskStack = 0;
 UBaseType_t otaTaskStack = 0;
+// statsTaskStack removed - merged into sensor task
 TaskHandle_t firebaseTaskHandle = NULL;
 TaskHandle_t ledTaskHandle = NULL;
 TaskHandle_t automationTaskHandle = NULL;
@@ -20,6 +21,7 @@ TaskHandle_t sensorTaskHandle = NULL;
 TaskHandle_t timerTaskHandle = NULL;
 TaskHandle_t mqttTaskHandle = NULL;
 TaskHandle_t otaTaskHandle = NULL;
+// statsTaskHandle removed - merged into sensor task
 unsigned long lastLoopTime = 0;
 unsigned long loopCounter = 0;
 bool systemHealthy = true;
@@ -136,9 +138,7 @@ void printSystemStats() {
   Serial.printf("║   OTA Task:        %5d bytes (%5.1f KB)                          ║\n", 
                 otaTaskStack * sizeof(StackType_t), 
                 (otaTaskStack * sizeof(StackType_t)) / 1024.0);
-  Serial.printf("║   Stats Task:      %5d bytes (%5.1f KB)                          ║\n",  // NEW
-                statsTaskStack * sizeof(StackType_t), 
-                (statsTaskStack * sizeof(StackType_t)) / 1024.0);
+  // Stats task stack display removed - merged into sensor task
   Serial.println("║                                                                      ║");
   
   Serial.println("║ SYSTEM STATUS:                                                       ║");
@@ -212,7 +212,7 @@ void printSystemStats() {
   Serial.printf("║   Timer Task:      %-45s ║\n", timerTaskHandle ? "RUNNING" : "STOPPED");
   Serial.printf("║   MQTT Task:       %-45s ║\n", mqttTaskHandle ? "RUNNING" : "STOPPED");
   Serial.printf("║   OTA Task:        %-45s ║\n", otaTaskHandle ? "RUNNING" : "STOPPED");
-  Serial.printf("║   Stats Task:      %-45s ║\n", statsTaskHandle ? "RUNNING" : "STOPPED");  // NEW
+  // Stats task status display removed - merged into sensor task
   Serial.println("║                                                                      ║");
   
   Serial.println("║ HEALTH WARNINGS:                                                     ║");
@@ -250,10 +250,7 @@ void printSystemStats() {
     Serial.println("║   ⚠️  WARNING: OTA task stack critically low!                        ║");
     warningsFound = true;
   }
-  if (statsTaskStack < 300) {  // NEW: Stats task stack warning
-    Serial.println("║   ⚠️  WARNING: Stats task stack critically low!                       ║");
-    warningsFound = true;
-  }
+  // Stats task stack warning removed - merged into sensor task
   if (!firebaseConnected) {
     Serial.println("║   ⚠️  WARNING: Firebase disconnected!                                ║");
     warningsFound = true;
@@ -290,10 +287,7 @@ void printSystemStats() {
     Serial.println("║   ⚠️  WARNING: OTA task not running!                                 ║");
     warningsFound = true;
   }
-  if (!statsTaskHandle) {  // NEW: Stats task warning
-    Serial.println("║   ⚠️  WARNING: Stats task not running!                               ║");
-    warningsFound = true;
-  }
+  // Stats task not running warning removed - merged into sensor task
   if (!warningsFound) {
     Serial.println("║   ✅ All systems nominal                                             ║");
   }

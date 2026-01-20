@@ -121,7 +121,7 @@ void setup() {
   Serial.println("      ✅ LED task created (Core 1, 4KB stack)");
 
   xTaskCreatePinnedToCore(sensorDataTask, "SensorDataTask", 12000, NULL, 1, &sensorTaskHandle, 0);
-  Serial.println("      ✅ Sensor task created (Core 0, 8KB stack)");
+  Serial.println("      ✅ Sensor task created (Core 0, 12KB stack)");
 
   xTaskCreatePinnedToCore(automationtask, "AutomationTask", 4000, NULL, 0, &automationTaskHandle, 0);
   Serial.println("      ✅ Automation task created (Core 0, 4KB stack)");
@@ -135,12 +135,11 @@ void setup() {
   xTaskCreatePinnedToCore(otaUpdateTask, "OTAUpdateTask", 7000, NULL, 0, &otaTaskHandle, 0);
   Serial.println("      ✅ OTA Update task created (Core 0, 7KB stack)");
   
-  xTaskCreatePinnedToCore(statsTask, "StatsTask", 7000, NULL, 0, &statsTaskHandle, 0);
-  Serial.println("      ✅ Stats task created (Core 0, 4KB stack)");
+  // Stats task removed - merged into sensorDataTask
   
   Serial.println("\n╔═══════════════════════════════════════════════════════════════╗");
   Serial.println("║              🎉 ALL SYSTEMS INITIALIZED 🎉                     ║");
-  Serial.println("║         System monitoring active every 10 seconds              ║");
+  Serial.println("║       Combined sensor+stats data sent every 2 seconds          ║");
   Serial.println("╚═══════════════════════════════════════════════════════════════╝\n");
 }
 
@@ -199,9 +198,7 @@ void loop() {
     if (otaTaskHandle != NULL) {
       otaTaskStack = uxTaskGetStackHighWaterMark(otaTaskHandle);
     }
-    if (statsTaskHandle != NULL) {
-      statsTaskStack = uxTaskGetStackHighWaterMark(statsTaskHandle);
-    }
+    // statsTaskStack removed
     
     printSystemStats();
   }
