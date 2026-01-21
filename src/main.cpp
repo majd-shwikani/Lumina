@@ -53,7 +53,7 @@ void setup() {
   strip.updateLength(ledCount);
   strip.begin();
   strip.show();
-  strip.setBrightness(100);
+  strip.setBrightness(255);
   Serial.printf("   ✅ %d LEDs initialized\n", ledCount);
   
   Serial.println("⏱️  Initializing watchdog timer (30s)...");
@@ -104,13 +104,8 @@ void setup() {
   }
   
   Serial.println("📡 [8/9] Initializing radar sensor...");
-  Serial1.begin(256000, SERIAL_8N1, RADAR_RX_PIN, RADAR_TX_PIN);
-  if (radar.begin(Serial1)) {
-    Serial.println("      ✅ LD2410 radar initialized");
-  } else {
-    Serial.println("      ⚠️  LD2410 radar initialization failed");
-  }
-  radar.debug(Serial);
+  pinMode(RADAR_OUTPUT, INPUT);
+  Serial.println("      ✅ LD2410 radar presence detection on GPIO " + String(RADAR_OUTPUT));
   
   Serial.println("⚙️  [9/9] Creating FreeRTOS tasks...");
   

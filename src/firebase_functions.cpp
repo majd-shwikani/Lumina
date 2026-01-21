@@ -190,10 +190,10 @@ void readInitialFirebaseData() {
 }
 
 void streamCallback(FirebaseStream data) {
-  Serial.printf("📡 Firebase Stream - Path: %s, Type: %s, Value: %s\n",
-                data.dataPath().c_str(),
-                data.dataType().c_str(),
-                data.stringData().c_str());
+  //Serial.printf("📡 Firebase Stream - Path: %s, Type: %s, Value: %s\n",
+                //data.dataPath().c_str(),
+               // data.dataType().c_str(),
+                //data.stringData().c_str());
 
   String dataPath = data.dataPath().c_str();
 

@@ -14,6 +14,7 @@
 // Radar sensor (LD2410)
 #define RADAR_RX_PIN 16
 #define RADAR_TX_PIN 17
+#define RADAR_OUTPUT 23
 
 // Audio/Microphone pins
 // I2S Configuration (for ICS43434 microphone)

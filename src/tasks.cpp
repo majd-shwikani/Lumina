@@ -179,6 +179,10 @@ void automationtask(void *parameter) {
   static unsigned long lastStateChangeTime = 0;
   const unsigned long CHANGE_LOCKOUT_MS = 3000;
   
+  static bool lastPresenceDetected = false;
+  static bool lastTargetState = false;
+  static unsigned long lastLogTime = 0;
+  
   vTaskDelay(3000 / portTICK_PERIOD_MS);
 
   for(;;) {
@@ -187,8 +191,7 @@ void automationtask(void *parameter) {
     if (sensorAvailable) {
       updateSensorData();
     }
-    radar.read();
-    bool presenceDetected = radar.presenceDetected();
+    bool presenceDetected = (digitalRead(RADAR_OUTPUT) == HIGH);
     lastPresence = presenceDetected;
 
     if (manuallyTurnedOff) {
@@ -256,6 +259,14 @@ void automationtask(void *parameter) {
     portENTER_CRITICAL(&stripMux);
     currentEnabled = stripEnabled;
     portEXIT_CRITICAL(&stripMux);
+
+    if (presenceDetected != lastPresenceDetected || targetState != lastTargetState || (millis() - lastLogTime > 5000)) {
+      Serial.printf("[Automation] State: presence: %d, presenceEnabled: %d, darknessEnabled: %d, lux: %.2f | Target: %d, Current: %d, Reason: %s\n",
+          presenceDetected, presenceDetectionEnabled, autoDarknessControl, currentLux, targetState, currentEnabled, reason.c_str());
+      lastPresenceDetected = presenceDetected;
+      lastTargetState = targetState;
+      lastLogTime = millis();
+    }
 
     // CRITICAL FIX 7: Thread-safe state changes
     if (targetState != currentEnabled) {
@@ -337,8 +348,7 @@ void sensorDataTask(void *parameter) {
     }
     
     esp_task_wdt_reset();
-    radar.read();
-    bool present = radar.presenceDetected();
+    bool present = (digitalRead(RADAR_OUTPUT) == HIGH);
     lastPresence = present; // Update global for automation task
     
     // ========================================================================
