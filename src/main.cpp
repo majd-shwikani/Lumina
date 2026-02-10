@@ -50,10 +50,10 @@ void setup() {
   Serial.println("╚═══════════════════════════════════════════════════════════════╝\n");
   
   Serial.println("💡 Initializing LED strip...");
-  strip.updateLength(ledCount);
-  strip.begin();
-  strip.show();
-  strip.setBrightness(255);
+  leds = new CRGB[ledCount];
+  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, ledCount);
+  FastLED.setBrightness(255);
+  FastLED.show();
   Serial.printf("   ✅ %d LEDs initialized\n", ledCount);
   
   Serial.println("⏱️  Initializing watchdog timer (30s)...");

@@ -6,7 +6,7 @@
 #include <Adafruit_VEML7700.h>
 #include <driver/i2s.h>
 #include <arduinoFFT.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 #include "config.h"
 
 // ============================================================================
@@ -80,8 +80,8 @@ extern volatile float beatEnergy;
 // Smoothing variables
 extern double smoothedBandMagnitudes[NUM_FREQ_BANDS];
 
-// NeoPixel reference
-extern Adafruit_NeoPixel strip;
+// FastLED reference
+extern CRGB *leds;
 extern volatile bool stripEnabled;
 
 // ============================================================================

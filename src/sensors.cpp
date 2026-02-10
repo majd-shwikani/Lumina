@@ -550,7 +550,8 @@ uint32_t frequencyToColor(double freq) {
   if (normalizedFreq > 1.0) normalizedFreq = 1.0;
   
   uint8_t hue = (uint8_t)(normalizedFreq * 255);
-  return strip.ColorHSV(hue * 256, 255, 255);
+  CRGB color = CHSV(hue, 255, 255);
+  return ((uint32_t)color.r << 16) | ((uint32_t)color.g << 8) | color.b;
 }
 
 double getAudioLevelSmoothed(int index, double currentValue) {

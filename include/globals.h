@@ -6,7 +6,7 @@
 #include <Firebase_ESP_Client.h>
 #include <ArduinoOTA.h>
 #include <Wire.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 #include <Adafruit_VEML7700.h>
 #include <esp_task_wdt.h>
 #include <SPIFFS.h>
@@ -59,7 +59,7 @@ extern bool systemHealthy;
 // ============================================================================
 // GLOBAL OBJECTS
 // ============================================================================
-extern Adafruit_NeoPixel strip;
+extern CRGB *leds;
 extern FirebaseData fbdoStream;
 extern FirebaseData fbdoUpload;
 extern FirebaseAuth auth;

@@ -18,8 +18,8 @@ void updateLEDs() {
   portEXIT_CRITICAL(&stripMux);
   
   if (!currentEnabled && lastStripEnabled) {
-    strip.clear();
-    strip.show();
+    FastLED.clear();
+    FastLED.show();
     lastStripEnabled = false;
     return;
   }
@@ -69,7 +69,7 @@ void updateLEDs() {
     
     default: effectRainbow(); break;
   }
-  strip.show();
+  FastLED.show();
 }
 
 // ============================================================================

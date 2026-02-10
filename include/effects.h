@@ -1,13 +1,13 @@
 #ifndef EFFECTS_H
 #define EFFECTS_H
 
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 
 // ============================================================================
 // EXTERNAL VARIABLE DECLARATIONS
 // ============================================================================
 
-extern Adafruit_NeoPixel strip;
+extern CRGB *leds;
 extern volatile uint32_t effectColor;
 extern volatile uint32_t effectSpeed;
 
@@ -86,12 +86,7 @@ void effectAudioRipples();         // 32: Sound creates ripples
 // ============================================================================
 
 uint32_t Wheel(byte WheelPos);
-uint32_t HeatColor(uint8_t temperature);
-uint8_t qsub8(uint8_t i, uint8_t j);
-uint8_t qadd8(uint8_t i, uint8_t j);
-uint8_t random8();
-uint8_t random8(uint8_t lim);
-uint8_t random8(uint8_t min, uint8_t max);
+uint32_t EffectHeatColor(uint8_t temperature);
 uint32_t colorBlend(uint32_t color1, uint32_t color2, uint8_t blend);
 void setAllLeds(uint32_t color);
 

@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Firebase_ESP_Client.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 #include "mqtt_integration.h"
 #include "config.h"
 #include <SPIFFS.h>
@@ -606,7 +606,7 @@ void mqttPublishState() {
   DynamicJsonDocument stateDoc(1024);
 
   stateDoc["state"] = stripEnabled ? "ON" : "OFF";
-  stateDoc["brightness"] = strip.getBrightness();
+  stateDoc["brightness"] = FastLED.getBrightness();
   stateDoc["color_mode"] = "rgb";
   
   if (currentEffect >= 0 && currentEffect < NUM_EFFECTS) {
@@ -678,8 +678,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     } else if (strcmp(message, "OFF") == 0) {
       stripEnabled = false;
       Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/enabled").c_str(), false);
-      strip.clear();
-      strip.show();
+      FastLED.clear();
+      FastLED.show();
     }
     lastMQTTStatePublish = 0;
     mqttPublishState();
@@ -688,7 +688,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   else if (topicStr.endsWith("/brightness/cmd")) {
     int brightness = atoi(message);
     brightness = constrain(brightness, 0, 255);
-    strip.setBrightness(brightness);
+    FastLED.setBrightness(brightness);
     lastMQTTStatePublish = 0;
     mqttPublishState();
   }

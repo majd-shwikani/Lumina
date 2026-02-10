@@ -25,7 +25,7 @@ TaskHandle_t otaTaskHandle = NULL;
 unsigned long lastLoopTime = 0;
 unsigned long loopCounter = 0;
 bool systemHealthy = true;
-Adafruit_NeoPixel strip(1, LED_PIN, NEO_GRB + NEO_KHZ800);  // Using LED_PIN from config.h
+CRGB *leds = nullptr;
 FirebaseData fbdoStream;
 FirebaseData fbdoUpload;
 FirebaseAuth auth;
@@ -178,7 +178,7 @@ void printSystemStats() {
   Serial.printf("║   Current Effect:  %-45d ║\n", currentEffect);
   Serial.printf("║   Effect Speed:    %d ms                                             ║\n", 
                 effectSpeed);
-  Serial.printf("║   Brightness:      %-45d ║\n", strip.getBrightness());
+  Serial.printf("║   Brightness:      %-45d ║\n", FastLED.getBrightness());
   Serial.printf("║   Manually Off:    %-45s ║\n", manuallyTurnedOff ? "YES" : "NO");
   Serial.println("║                                                                      ║");
   
@@ -410,8 +410,8 @@ void setupOTA() {
         type = "filesystem";
       }
       Serial.println("🔄 OTA Update Start: " + type);
-      strip.clear();
-      strip.show();
+      FastLED.clear();
+      FastLED.show();
     })
     .onEnd([]() {
       Serial.println("\n✅ OTA Update Complete");

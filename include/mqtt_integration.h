@@ -10,7 +10,7 @@
 #include <WiFiClient.h>
 #include <ArduinoJson.h>
 #include <Firebase_ESP_Client.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 
 // Forward declarations for external globals
 extern volatile int currentEffect;
@@ -22,7 +22,7 @@ extern bool timerEnabled;
 extern String basePath;
 extern String deviceID;
 extern FirebaseData fbdoUpload;
-extern Adafruit_NeoPixel strip;
+extern CRGB *leds;
 extern volatile bool sensorAvailable;
 extern volatile double globalAudioLevel;
 extern volatile float currentLux;

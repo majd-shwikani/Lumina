@@ -78,8 +78,8 @@ void readInitialFirebaseData() {
     if (!stripEnabled) {
       manuallyTurnedOff = true;
       Serial.println("      ⚠️  Device booted with LEDs disabled - manual lock active");
-      strip.clear();
-      strip.show();
+      FastLED.clear();
+      FastLED.show();
     } else {
       manuallyTurnedOff = false;
     }
@@ -242,8 +242,8 @@ void streamCallback(FirebaseStream data) {
     Serial.printf("   Strip %s\n", stripEnabled ? "enabled" : "disabled");
     
     if (!stripEnabled) {
-      strip.clear();
-      strip.show();
+      FastLED.clear();
+      FastLED.show();
       Serial.println("   LEDs turned off");
     }
   }
@@ -511,8 +511,8 @@ void downloadAndApplyFirmware() {
     Serial.printf("   Firmware size: %d bytes (%.2f KB)\n", contentLength, contentLength / 1024.0);
 
     if (contentLength > 0) {
-      strip.clear();
-      strip.show();
+      FastLED.clear();
+      FastLED.show();
       Serial.println("   💡 LEDs turned off for OTA process...");
 
       WiFiClient* stream = http.getStreamPtr();
