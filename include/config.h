@@ -6,7 +6,7 @@
 // ============================================================================
 
 // NeoPixel LED strip
-#define LED_PIN 26
+#define LED_PIN 17
 
 // Button for configuration/reset
 #define BUTTON_PIN 19
