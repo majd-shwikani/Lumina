@@ -1,5 +1,5 @@
 // ============================================================================
-// mqtt_integration.cpp - FIXED VERSION (COMPLETE)
+// mqtt.cpp - MQTT Integration
 // ============================================================================
 
 #include <Arduino.h>
@@ -10,31 +10,22 @@
 #include "config.h"
 #include <SPIFFS.h>
 
-// Global MQTT objects
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
-MQTTConfig mqttConfig = {0};
-volatile bool mqttConnected = false;
-String deviceTopic = "";
+// Global MQTT objects (Defined in main.cpp)
+extern WiFiClient espClient;
+extern PubSubClient mqttClient;
+extern MQTTConfig mqttConfig;
+extern volatile bool mqttConnected;
+extern String deviceTopic;
 
-// MQTT state tracking
-unsigned long lastMQTTStatePublish = 0;
-const unsigned long MQTT_STATE_PUBLISH_INTERVAL = 5000;
-unsigned long lastMQTTSensorPublish = 0;
-const unsigned long MQTT_SENSOR_PUBLISH_INTERVAL = 2000;
+// MQTT state tracking (Defined in main.cpp)
+extern unsigned long lastMQTTStatePublish;
+extern unsigned long MQTT_STATE_PUBLISH_INTERVAL;
+extern unsigned long lastMQTTSensorPublish;
+extern unsigned long MQTT_SENSOR_PUBLISH_INTERVAL;
 
-// Centralized Effect List
-const char* EFFECT_NAMES[] = {
-    "Rainbow", "Meteor Shower", "Digital Rain", "Pulsing Spheres", "Binary Clock",
-    "Vortex", "DNA Helix", "Audio Visualizer", "Lava Lamp", "Radar Sweep",
-    "Quantum Particles", "Neural Network", "Galaxy Spin", "Crystal Growth",
-    "Lightning Storm", "Ocean Depth", "Northern Lights", "Time Tunnel",
-    "Cyber City", "Solar Flare", "Fire Simulation", "Solid Color",
-    "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom",
-    "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer",
-    "Cascading Frequency", "Energy Orbits", "Audio Ripples"
-};
-const int NUM_EFFECTS = sizeof(EFFECT_NAMES) / sizeof(EFFECT_NAMES[0]);
+// Centralized Effect List (Defined in main.cpp)
+extern const char* EFFECT_NAMES[];
+extern const int NUM_EFFECTS;
 
 // ============================================================================
 // LOAD/SAVE MQTT CONFIG FROM SPIFFS
@@ -587,7 +578,7 @@ void publishHomeAssistantDiscovery() {
     delay(200);
   }
 
-  Serial.println("=== Discovery Complete ===\n");
+  Serial.println("\n=== Discovery Complete ===\n");
 }
 
 // ============================================================================

@@ -3,67 +3,10 @@
 #include "FS.h"
 #include "SPIFFS.h"
 
-// ============================================================================
-// LIGHT SENSOR OBJECTS AND VARIABLES
-// ============================================================================
-Adafruit_VEML7700 veml = Adafruit_VEML7700();
-volatile float currentLux = 0;
-volatile bool sensorAvailable = false;
-volatile float luxThreshold = 1.0;
-
-// ============================================================================
-// AUDIO SENSOR OBJECTS AND VARIABLES
-// ============================================================================
-
-// Microphone Selection
-volatile int activeMicrophone = MIC_I2S_ICS43434;
-
-// ============================================================================
-// AUTO-CALIBRATION AND GAIN CONTROL VARIABLES
-// ============================================================================
-
-volatile bool calibrationComplete = false;
-volatile double noiseFloor = 100.0;
-volatile double gainMultiplier = INITIAL_GAIN_MULTIPLIER;
-unsigned long lastCalibrationTime = 0;
-
-// Manual calibration trigger from Firebase
-volatile bool triggerMicCalibration = false;
-volatile bool isCalibrating = false;
-
-// Calibration buffers
-double calibrationSamples[256] = {0};
-int calibrationSampleCount = 0;
-unsigned long calibrationStartTime = 0;
-
-// ============================================================================
-// FFT OBJECTS AND BUFFERS
-// ============================================================================
-
-int16_t raw_samples[BUFFER_LEN];
-ArduinoFFT<double> FFT = ArduinoFFT<double>();
-double vReal[N_SAMPLES];
-double vImag[N_SAMPLES];
-
-// Frequency Band Analysis
-double bandMagnitudes[NUM_FREQ_BANDS] = {0};
-double bandMaxima[NUM_FREQ_BANDS] = {0};
-double frequencyResponse[N_SAMPLES] = {0};
-
-// Audio Analysis Variables
-volatile double detectedFrequency = 0;
-volatile double frequencyMagnitude = 0;
-volatile double globalAudioLevel = 0;
-volatile double bassLevel = 0;
-volatile double midLevel = 0;
-volatile double trebleLevel = 0;
-volatile bool beatDetected = false;
-volatile float beatEnergy = 0;
-
-// Audio Smoothing
-double smoothedBandMagnitudes[NUM_FREQ_BANDS] = {0};
-unsigned long lastAudioUpdate = 0;
-const unsigned long AUDIO_UPDATE_INTERVAL = 20;
+// Globals are now defined in main.cpp and declared in sensors.h
+extern unsigned long calibrationStartTime;
+extern int calibrationSampleCount;
+extern double calibrationSamples[256];
 
 // ============================================================================
 // LIGHT SENSOR INITIALIZATION

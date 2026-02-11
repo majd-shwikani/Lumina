@@ -98,6 +98,21 @@ extern unsigned long lastPresenceReport;
 // RADAR pins are now defined in config.h
 
 // ============================================================================
+// AUDIO CALIBRATION VARIABLES
+// ============================================================================
+extern double calibrationSamples[256];
+extern int calibrationSampleCount;
+extern unsigned long calibrationStartTime;
+
+// ============================================================================
+// MQTT STATE TRACKING
+// ============================================================================
+extern unsigned long lastMQTTStatePublish;
+extern unsigned long MQTT_STATE_PUBLISH_INTERVAL;
+extern unsigned long lastMQTTSensorPublish;
+extern unsigned long MQTT_SENSOR_PUBLISH_INTERVAL;
+
+// ============================================================================
 // TIMER SETTINGS
 // ============================================================================
 extern char timerOnTime[6];
