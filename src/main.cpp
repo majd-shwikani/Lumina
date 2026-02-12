@@ -112,7 +112,7 @@ void setup() {
   xTaskCreatePinnedToCore(firebaseTask, "FirebaseTask", 4000, NULL, 1, &firebaseTaskHandle, 0);
   Serial.println("      ✅ Firebase task created (Core 0, 4KB stack)");
 
-  xTaskCreatePinnedToCore(ledTask, "LEDTask", 4000, NULL, 1, &ledTaskHandle, 1);
+  xTaskCreatePinnedToCore(ledTask, "LEDTask", 4000, NULL, 1, &ledTaskHandle, 0);
   Serial.println("      ✅ LED task created (Core 1, 4KB stack)");
 
   xTaskCreatePinnedToCore(sensorDataTask, "SensorDataTask", 12000, NULL, 1, &sensorTaskHandle, 0);
