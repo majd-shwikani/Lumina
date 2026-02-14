@@ -9,7 +9,7 @@
 #define LED_PIN 17
 
 // Button for configuration/reset
-#define BUTTON_PIN 19
+#define BUTTON_PIN 4
 
 // Radar sensor (LD2410)
 #define RADAR_RX_PIN 16

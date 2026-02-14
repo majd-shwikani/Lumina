@@ -187,6 +187,7 @@ void readInitialFirebaseData() {
   }
   
   Serial.println("   ✅ Initial data loaded");
+  broadcastGatewayState();
 }
 
 void streamCallback(FirebaseStream data) {
@@ -296,6 +297,9 @@ void streamCallback(FirebaseStream data) {
     Serial.println("\n🎤 MICROPHONE CALIBRATION TRIGGERED VIA FIREBASE");
     triggerMicCalibration = true;
   }
+  
+  // Mirror changes to ESP-NOW receivers
+  broadcastGatewayState();
 }
 
 void streamTimeoutCallback(bool timeout) {

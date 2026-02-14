@@ -70,6 +70,9 @@ void setup() {
   connectToWiFi();
   Serial.println("      ✅ WiFi initialized");
   
+  Serial.println("📡 [1.5/9] Initializing ESP-NOW Gateway...");
+  setupEspNowGateway();
+  
   Serial.println("🕐 [2/9] Synchronizing time...");
   setupTime();
   Serial.println("      ✅ Time synchronized");
@@ -130,8 +133,6 @@ void setup() {
   xTaskCreatePinnedToCore(otaUpdateTask, "OTAUpdateTask", 7000, NULL, 0, &otaTaskHandle, 0);
   Serial.println("      ✅ OTA Update task created (Core 0, 7KB stack)");
   
-  // Stats task removed - merged into sensorDataTask
-  
   Serial.println("\n╔═══════════════════════════════════════════════════════════════╗");
   Serial.println("║              🎉 ALL SYSTEMS INITIALIZED 🎉                     ║");
   Serial.println("║       Combined sensor+stats data sent every 2 seconds          ║");
@@ -169,6 +170,12 @@ void loop() {
     buttonActive = false;
   }
   
+  static unsigned long lastBroadcastTime = 0;
+  if (millis() - lastBroadcastTime > 5000) {
+    lastBroadcastTime = millis();
+    broadcastGatewayState();
+  }
+  
   if (millis() - lastSystemStatsReport > SYSTEM_STATS_INTERVAL) {
     lastSystemStatsReport = millis();
     
@@ -193,7 +200,6 @@ void loop() {
     if (otaTaskHandle != NULL) {
       otaTaskStack = uxTaskGetStackHighWaterMark(otaTaskHandle);
     }
-    // statsTaskStack removed
     
     printSystemStats();
   }

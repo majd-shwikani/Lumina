@@ -3,6 +3,8 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
 #include <Firebase_ESP_Client.h>
 #include <ArduinoOTA.h>
 #include <Wire.h>
@@ -24,7 +26,17 @@
 #include "effects.h"
 #include "sensors.h"
 #include "mqtt_integration.h"
-#include "web_config_portal.h"
+
+// ============================================================================
+// ESP-NOW STRUCTURES (Must match Receiver exactly)
+// ============================================================================
+typedef struct {
+    char msgType[20];   // "LUMINA_DISCOVERY", "LUMINA_OFFER", "LUMINA_CMD"
+    int effect;
+    uint32_t speed;
+    uint32_t color;
+    bool enabled;
+} LuminaMessage;
 
 // ============================================================================
 // CRITICAL FIX 1: Thread synchronization primitives
@@ -43,7 +55,6 @@ extern UBaseType_t sensorTaskStack;
 extern UBaseType_t timerTaskStack;
 extern UBaseType_t mqttTaskStack;
 extern UBaseType_t otaTaskStack;
-// statsTaskStack removed - merged into sensor task
 extern TaskHandle_t firebaseTaskHandle;
 extern TaskHandle_t ledTaskHandle;
 extern TaskHandle_t automationTaskHandle;
@@ -51,7 +62,6 @@ extern TaskHandle_t sensorTaskHandle;
 extern TaskHandle_t timerTaskHandle;
 extern TaskHandle_t mqttTaskHandle;
 extern TaskHandle_t otaTaskHandle;
-// statsTaskHandle removed - merged into sensor task
 extern unsigned long lastLoopTime;
 extern unsigned long loopCounter;
 extern bool systemHealthy;
@@ -95,7 +105,6 @@ extern volatile bool lastPresence;
 extern volatile bool presenceDetectionEnabled;
 extern volatile bool lastPresenceState;
 extern unsigned long lastPresenceReport;
-// RADAR pins are now defined in config.h
 
 // ============================================================================
 // TIMER SETTINGS
@@ -123,9 +132,8 @@ extern const unsigned long UPDATE_CHECK_INTERVAL;
 extern unsigned long lastUpdateCheck;
 
 // ============================================================================
-// BUTTON PRESS DETECTION - Button pin is now defined in config.h
+// BUTTON PRESS DETECTION
 // ============================================================================
-// #define BUTTON_PIN 19  // Moved to config.h
 extern unsigned long buttonPressStart;
 extern bool buttonActive;
 
@@ -137,6 +145,7 @@ void printSystemStats();
 void initSPIFFS();
 bool loadConfig();
 bool shouldStartConfigPortal();
+void startConfigPortal();
 void connectToWiFi();
 void setupTime();
 void setupOTA();
@@ -156,9 +165,14 @@ void downloadAndApplyFirmware();
 void firebaseTask(void *parameter);
 void ledTask(void *parameter);
 void automationtask(void *parameter);
-void sensorDataTask(void *parameter); // Now includes stats collection
+void sensorDataTask(void *parameter);
 void timerTask(void *parameter);
 void otaUpdateTask(void *parameter);
-String formatUptime(unsigned long milliseconds); // Kept for sensorDataTask
+String formatUptime(unsigned long milliseconds);
+
+// ESP-NOW Gateway Functions
+void setupEspNowGateway();
+void broadcastGatewayState();
+void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len);
 
 #endif // GLOBALS_H

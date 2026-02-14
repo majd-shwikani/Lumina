@@ -8,6 +8,7 @@
 #include <FastLED.h>
 #include "mqtt_integration.h"
 #include "config.h"
+#include "globals.h"
 #include <SPIFFS.h>
 
 // Global MQTT objects
@@ -820,6 +821,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/mic_calibration").c_str(), true);
     triggerMicCalibration = true;
   }
+
+  // Mirror changes to ESP-NOW receivers
+  broadcastGatewayState();
 }
 
 // ============================================================================
