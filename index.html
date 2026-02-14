@@ -236,7 +236,7 @@
 
         .toggle-container {
             display: flex;
-            justify-content: space-between;
+            justify-space-between;
             align-items: center;
             margin-bottom: 20px;
         }
@@ -294,6 +294,7 @@
         .dropdown-container {
             position: relative;
             margin-top: 15px;
+            margin-bottom: 20px; 
         }
 
         .dropdown-header {
@@ -327,10 +328,6 @@
         }
 
         .dropdown-list {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
             background: rgba(30, 30, 46, 0.95);
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-top: none;
@@ -338,12 +335,13 @@
             max-height: 0;
             overflow: hidden;
             transition: max-height 0.3s ease;
-            z-index: 10;
+            z-index: 10; 
             backdrop-filter: blur(10px);
+            margin-top: -1px; 
         }
 
         .dropdown-list.show {
-            max-height: 200px;
+            max-height: 250px;
             overflow-y: auto;
         }
 
@@ -409,8 +407,9 @@
         .color-picker-container {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 10px; 
             margin-top: 15px;
+            flex-wrap: wrap; 
         }
 
         .color-preview {
@@ -418,10 +417,12 @@
             height: 40px;
             border-radius: 8px;
             border: 2px solid rgba(255, 255, 255, 0.3);
+            flex-shrink: 0; 
         }
 
         .color-input {
-            flex: 1;
+            flex: 1; 
+            min-width: 80px; 
             padding: 10px;
             border-radius: 8px;
             border: 1px solid rgba(255, 255, 255, 0.2);
@@ -431,12 +432,13 @@
         }
 
         input[type="color"] {
-            width: 60px;
+            width: 50px; 
             height: 40px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 8px;
             background: rgba(255, 255, 255, 0.1);
             cursor: pointer;
+            flex-shrink: 0; 
         }
 
         input[type="color"]::-webkit-color-swatch {
@@ -479,11 +481,16 @@
         .btn-secondary:hover {
             background: rgba(255, 255, 255, 0.2);
         }
-
+        
         .action-buttons {
             display: flex;
             gap: 15px;
             margin-top: 20px;
+        }
+        
+        .action-buttons .btn {
+            flex: 1;
+            justify-content: center; 
         }
 
         .info-text {
@@ -492,7 +499,50 @@
             color: var(--gray);
         }
 
-        .lux-display {
+        .timer-input-container {
+            display: flex;
+            align-items: center; 
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .timer-input-container label {
+            min-width: 80px; 
+            font-size: 1rem;
+            white-space: nowrap;
+        }
+        
+        .input-time {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--light);
+            font-size: 1rem;
+        }
+
+        .settings-link {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: var(--light);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: var(--transition);
+        }
+
+        .settings-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .presence-display {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -502,36 +552,40 @@
             border-radius: 8px;
         }
 
-        .lux-display .label {
+        .presence-display .label {
             font-size: 1rem;
         }
 
-        .lux-display .value {
+        .presence-display .value {
             font-weight: bold;
             color: var(--success);
             font-size: 1.1rem;
         }
 
-        .lux-input-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-top: 15px;
+        .card-compact {
+            grid-row: span 1;
+            align-self: start;
         }
 
-        .lux-input-container label {
-            font-size: 1rem;
-            white-space: nowrap;
+        /* Multi-Device Node Buttons */
+        .node-btn {
+            opacity: 0.7;
+            border: 1px solid transparent;
+            min-width: 120px;
         }
 
-        .lux-input {
-            flex: 1;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--light);
-            font-size: 1rem;
+        .node-btn.active {
+            opacity: 1;
+            border-color: var(--success);
+            box-shadow: 0 0 10px rgba(76, 201, 240, 0.3);
+            background: rgba(76, 201, 240, 0.1);
+        }
+
+        .node-status {
+            font-size: 0.7rem;
+            display: block;
+            margin-top: 2px;
+            color: var(--gray);
         }
 
         footer {
@@ -542,6 +596,12 @@
             font-size: 0.9rem;
         }
 
+        @media (max-width: 1200px) {
+            .card-grid {
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            }
+        }
+        
         @media (max-width: 768px) {
             .card-grid {
                 grid-template-columns: 1fr;
@@ -559,6 +619,14 @@
             .action-buttons {
                 flex-direction: column;
             }
+            
+            .settings-link {
+                position: relative;
+                top: 0;
+                right: 0;
+                margin-bottom: 15px;
+                justify-content: center;
+            }
         }
 
         @media (max-width: 480px) {
@@ -573,11 +641,23 @@
             .action-buttons {
                 flex-direction: column;
             }
+            
+            .color-picker-container {
+                gap: 15px;
+                justify-content: space-between; 
+            }
+            
+            .color-input {
+                flex: 1 1 100%;
+            }
+            
+            input[type="color"], .color-preview {
+                flex-basis: auto; 
+            }
         }
     </style>
 </head>
 <body>
-    <!-- LED Background -->
     <div class="led-background">
         <div class="led-strip"></div>
         <div class="led-strip"></div>
@@ -590,7 +670,7 @@
         <header>
             <h1><i class="fas fa-lightbulb"></i> Lumina Control</h1>
             <p class="subtitle">Advanced LED Lighting Management System</p>
-            <a href="settings.html" class="btn btn-secondary" style="position:absolute; top:20px; right:20px;">
+            <a href="settings.html" class="settings-link">
                 <i class="fas fa-cog"></i> Settings
             </a>
         </header>
@@ -598,11 +678,35 @@
         <div class="status-bar">
             <div class="status-item">
                 <div class="status-indicator" id="connectionStatus"></div>
-                <span id="statusText">Connecting to Firebase...</span>
+                <span id="statusText">Connecting to device...</span>
             </div>
             <div class="status-item">
-                <i class="fas fa-sun"></i>
-                <span>Ambient Light: <span id="luxValue">--</span> lux</span>
+                <i class="fas fa-microchip"></i>
+                <span>Gateway: <span id="currentDeviceId">friend1_leds</span></span>
+            </div>
+        </div>
+
+        <!-- NEW: Device Registry & Routing -->
+        <div class="card" style="margin-bottom: 25px;">
+            <div class="card-header">
+                <i class="fas fa-network-wired"></i>
+                <h2>Device Registry & Routing</h2>
+            </div>
+            <div class="toggle-container">
+                <span class="toggle-label"><i class="fas fa-sync-alt"></i> Sync All Devices (Global Sync)</span>
+                <label class="toggle">
+                    <input type="checkbox" id="syncAllToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div id="nodeList" class="action-buttons" style="flex-wrap: wrap; gap: 10px; justify-content: flex-start;">
+                <button class="btn btn-secondary node-btn active" data-target="local">
+                    <div>
+                        <i class="fas fa-server"></i> Gateway
+                        <span class="node-status">Main Controller</span>
+                    </div>
+                </button>
+                <!-- Dynamic Nodes Go Here -->
             </div>
         </div>
 
@@ -610,7 +714,7 @@
             <div class="card">
                 <div class="card-header">
                     <i class="fas fa-power-off"></i>
-                    <h2>Power Control</h2>
+                    <h2>Power & Timer</h2>
                 </div>
                 <div class="toggle-container">
                     <span class="toggle-label">LED Strip Power</span>
@@ -619,45 +723,24 @@
                         <span class="slider"></span>
                     </label>
                 </div>
-                <div class="toggle-container">
-                    <span class="toggle-label">Auto Darkness Control</span>
+                <hr style="border-color: rgba(255, 255, 255, 0.1); margin: 20px 0;">
+                <div class="toggle-container" style="margin-bottom: 20px;">
+                    <span class="toggle-label">Timer Enabled</span>
                     <label class="toggle">
-                        <input type="checkbox" id="autoDarknessToggle">
+                        <input type="checkbox" id="timerToggle">
                         <span class="slider"></span>
                     </label>
                 </div>
-                
-                <div class="lux-display">
-                    <span class="label">Current Lux Level:</span>
-                    <span class="value" id="currentLuxValue">--</span>
+                <div class="timer-input-container">
+                    <label for="timerOnTimeInput">Time On:</label>
+                    <input type="time" class="input-time" id="timerOnTimeInput" value="09:00">
                 </div>
-                
-                <div class="lux-input-container">
-                    <label for="luxThresholdInput">Lux Threshold:</label>
-                    <input type="number" min="0.1" step="0.1" value="1.0" class="lux-input" id="luxThresholdInput">
-                </div>
-                
-                <p class="info-text">
-                    <i class="fas fa-info-circle"></i> Auto darkness control turns off LEDs when ambient light is below threshold.
-                </p>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-user-check"></i>
-                    <h2>Presence Sensor</h2>
-                </div>
-                <div class="lux-display">
-                    <span class="label">Presence:</span>
-                    <span class="value" id="presenceValue">--</span>
-                </div>
-                <div class="action-buttons">
-                    <button class="btn btn-primary" id="calibrateMicBtn">
-                        <i class="fas fa-microphone"></i> Calibrate Microphone
-                    </button>
+                <div class="timer-input-container">
+                    <label for="timerOffTimeInput">Time Off:</label>
+                    <input type="time" class="input-time" id="timerOffTimeInput" value="17:00">
                 </div>
                 <p class="info-text">
-                    <i class="fas fa-info-circle"></i> Live LD2410 presence detection state.
+                    <i class="fas fa-info-circle"></i> Control power and set schedules for the LED strip.
                 </p>
             </div>
 
@@ -666,29 +749,22 @@
                     <i class="fas fa-palette"></i>
                     <h2>Effects</h2>
                 </div>
-                <p>Select from 22 unique animation effects:</p>
-                
                 <div class="dropdown-container">
                     <div class="dropdown-header" id="dropdownHeader">
-                        <span id="selectedEffect">Rainbow Cycle</span>
+                        <span id="selectedEffect">Selecting Effect...</span>
                         <i class="fas fa-chevron-down dropdown-arrow"></i>
                     </div>
                     <div class="dropdown-list" id="dropdownList">
                         <!-- Effects will be populated by JavaScript -->
                     </div>
                 </div>
-            </div>
 
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-tachometer-alt"></i>
-                    <h2>Speed & Color</h2>
-                </div>
-                
+                <hr style="border-color: rgba(255, 255, 255, 0.1); margin: 20px 0;">
+
                 <div class="slider-container">
                     <div class="slider-label">
                         <span>Animation Speed</span>
-                        <span class="slider-value" id="speedValue">50</span>
+                        <span class="slider-value" id="speedValue">--</span>
                     </div>
                     <input type="range" min="10" max="200" value="50" class="range-slider" id="speedSlider">
                     <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-top: 5px;">
@@ -697,29 +773,44 @@
                     </div>
                 </div>
 
-                <div class="color-picker-container">
+                <div class="color-picker-container" style="margin-top: 20px;">
                     <div class="color-preview" id="colorPreview" style="background-color: #FF0000;"></div>
-                    <input type="color" class="color-input" id="colorPicker" value="#FF0000">
-                    <input type="text" class="color-input" id="colorInput" value="FF0000" placeholder="Hex color (e.g., FF0000)">
+                    <input type="color" id="colorPicker" value="#FF0000" style="padding: 0; border: none; background: transparent; cursor: pointer; width: 40px; height: 40px;">
+                    <button class="btn btn-secondary" id="randomColorBtn" title="Random Color" style="margin-left: 10px; padding: 10px 15px;">
+                        <i class="fas fa-random"></i>
+                    </button>
                 </div>
                 
+                <hr style="border-color: rgba(255, 255, 255, 0.1); margin: 20px 0;">
+
                 <div class="action-buttons">
-                    <button class="btn btn-primary" id="applyColorBtn">
-                        <i class="fas fa-check"></i> Apply Color
-                    </button>
-                    <button class="btn btn-secondary" id="randomColorBtn">
-                        <i class="fas fa-random"></i> Random
+                    <button class="btn btn-primary" id="calibrateMicBtn">
+                        <i class="fas fa-microphone"></i> Calibrate Microphone
                     </button>
                 </div>
                 
                 <p class="info-text">
-                    <i class="fas fa-info-circle"></i> Select "Solid Color" effect and use the color picker to display a static color.
+                    <i class="fas fa-info-circle"></i> Adjust speed, color, and calibrate the microphone for effects. Color is applied automatically.
+                </p>
+            </div>
+
+            <div class="card card-compact">
+                <div class="card-header">
+                    <i class="fas fa-user-check"></i>
+                    <h2>Presence Sensor</h2>
+                </div>
+                <div class="presence-display">
+                    <span class="label">Presence:</span>
+                    <span class="value" id="presenceValue">--</span>
+                </div>
+                 <p class="info-text">
+                    <i class="fas fa-info-circle"></i> Live LD2410 presence detection state.
                 </p>
             </div>
         </div>
 
         <footer>
-            <p>Connected to Firebase Realtime Database</p>
+            <p>Multi-Device Firebase Realtime Database Control</p>
         </footer>
     </div>
 
@@ -740,32 +831,25 @@
         const database = firebase.database();
 
         // DOM Elements
+        const currentDeviceId = document.getElementById('currentDeviceId');
         const connectionStatus = document.getElementById('connectionStatus');
         const statusText = document.getElementById('statusText');
         const powerToggle = document.getElementById('powerToggle');
-        const autoDarknessToggle = document.getElementById('autoDarknessToggle');
         const dropdownHeader = document.getElementById('dropdownHeader');
         const dropdownList = document.getElementById('dropdownList');
         const selectedEffect = document.getElementById('selectedEffect');
         const speedSlider = document.getElementById('speedSlider');
         const speedValue = document.getElementById('speedValue');
         const colorPicker = document.getElementById('colorPicker');
-        const colorInput = document.getElementById('colorInput');
         const colorPreview = document.getElementById('colorPreview');
-        const applyColorBtn = document.getElementById('applyColorBtn');
         const randomColorBtn = document.getElementById('randomColorBtn');
-        const calibrateMicBtn = document.getElementById('calibrateMicBtn');
-        const luxThresholdInput = document.getElementById('luxThresholdInput');
-        const currentLuxValue = document.getElementById('currentLuxValue');
-        const luxValue = document.getElementById('luxValue');
+        const timerToggle = document.getElementById('timerToggle');
+        const timerOnTimeInput = document.getElementById('timerOnTimeInput');
+        const timerOffTimeInput = document.getElementById('timerOffTimeInput');
         const presenceValue = document.getElementById('presenceValue');
-
-        // Device scoping
-        const lastDeviceId = localStorage.getItem('lastDeviceId') || '';
-        const basePath = lastDeviceId ? `/devices/${lastDeviceId}/` : '';
-        if (!basePath) {
-            statusText.textContent = 'Set device ID in Settings';
-        }
+        const calibrateMicBtn = document.getElementById('calibrateMicBtn');
+        const syncAllToggle = document.getElementById('syncAllToggle');
+        const nodeList = document.getElementById('nodeList');
 
         // Effect names matching the ESP32 code
         const effects = [
@@ -781,71 +865,78 @@
 
         // Current state
         let currentState = {
+            deviceId: "friend1_leds",
+            basePath: "/devices/friend1_leds/",
+            currentTarget: "local", // "local" or a MAC address
+            syncAll: false,
+            activeNodes: {},
             effect: 0,
             speed: 50,
             color: "FF0000",
             enabled: false,
-            auto_darkness_control: false,
-            lux_threshold: 1.0
+            timer_enabled: true,
+            timer_on: "09:00",
+            timer_off: "17:00"
         };
 
-        // Initialize the dropdown
-        function initializeDropdown() {
-            dropdownList.innerHTML = '';
-            effects.forEach((effect, index) => {
-                const item = document.createElement('div');
-                item.className = 'dropdown-item';
-                item.textContent = effect;
-                item.dataset.effectId = index;
-                
-                if (index === currentState.effect) {
-                    item.classList.add('active');
-                }
-                
-                item.addEventListener('click', () => {
-                    document.querySelectorAll('.dropdown-item').forEach(el => {
-                        el.classList.remove('active');
-                    });
-                    item.classList.add('active');
-                    selectedEffect.textContent = effect;
-                    updateFirebaseValue('effect', parseInt(item.dataset.effectId));
-                    closeDropdown();
-                });
-                
-                dropdownList.appendChild(item);
-            });
-        }
+        // Firebase listeners reference
+        let firebaseListeners = [];
 
-        // Toggle dropdown
-        function toggleDropdown() {
-            if (dropdownList.classList.contains('show')) {
-                closeDropdown();
+        // Set controls enabled/disabled state
+        function setControlsEnabled(enabled) {
+            const controls = [
+                powerToggle,
+                speedSlider, colorPicker, randomColorBtn,
+                timerToggle, timerOnTimeInput, timerOffTimeInput,
+                calibrateMicBtn, syncAllToggle
+            ];
+            
+            controls.forEach(control => {
+                if (control) control.disabled = !enabled;
+            });
+
+            if (enabled) {
+                dropdownHeader.style.cursor = 'pointer';
+                dropdownHeader.style.opacity = '1';
             } else {
-                openDropdown();
+                dropdownHeader.style.cursor = 'not-allowed';
+                dropdownHeader.style.opacity = '0.6';
+                closeDropdown();
             }
         }
 
-        // Open dropdown
-        function openDropdown() {
-            dropdownList.classList.add('show');
-            dropdownHeader.classList.add('active');
+        // Remove all Firebase listeners
+        function removeFirebaseListeners() {
+            firebaseListeners.forEach(ref => {
+                ref.off();
+            });
+            firebaseListeners = [];
         }
 
-        // Close dropdown
-        function closeDropdown() {
-            dropdownList.classList.remove('show');
-            dropdownHeader.classList.remove('active');
-        }
-
-        // Update Firebase value
+        // Update Firebase value with multi-device routing
         function updateFirebaseValue(path, value) {
-            const fullPath = basePath + path;
-            database.ref(fullPath).set(value)
+            if (!currentState.basePath) return;
+            
+            const updates = {};
+            
+            if (currentState.syncAll) {
+                // Atomic multi-path update
+                updates[currentState.basePath + 'local/' + path] = value;
+                Object.keys(currentState.activeNodes).forEach(mac => {
+                    updates[currentState.basePath + 'receivers/' + mac + '/' + path] = value;
+                });
+            } else {
+                // Targeted single update
+                const target = currentState.currentTarget === 'local' ? 'local/' : `receivers/${currentState.currentTarget}/`;
+                updates[currentState.basePath + target + path] = value;
+            }
+            
+            database.ref().update(updates)
                 .then(() => {
-                    console.log(`Updated ${fullPath} to ${value}`);
+                    console.log(`Updated Firebase path(s) with value: ${value}`);
                 })
                 .catch((error) => {
-                    console.error(`Error updating ${fullPath}:`, error);
+                    console.error(`Error updating Firebase:`, error);
                 });
         }
 
@@ -864,8 +955,138 @@
             return /^[0-9A-F]{6}$/i.test(color);
         }
 
+        // Connect to device
+        function connectToDevice(deviceId) {
+            if (!deviceId || deviceId.trim() === '') {
+                alert('Please enter a device ID');
+                return;
+            }
+
+            // Remove previous listeners
+            removeFirebaseListeners();
+
+            // Set new device ID and base path
+            currentState.deviceId = deviceId.trim();
+            currentState.basePath = `/devices/${currentState.deviceId}/`;
+            
+            // Update UI
+            currentDeviceId.textContent = currentState.deviceId;
+            statusText.textContent = 'Connecting to device...';
+            connectionStatus.className = 'status-indicator';
+            
+            // Enable controls
+            setControlsEnabled(true);
+            
+            // Initialize Firebase listeners for the new device
+            initializeFirebaseListeners();
+            
+            // Save to localStorage for convenience
+            localStorage.setItem('lastDeviceId', currentState.deviceId);
+        }
+
+        // Initialize the dropdown
+        function initializeDropdown() {
+            dropdownList.innerHTML = '';
+            effects.forEach((effect, index) => {
+                const item = document.createElement('div');
+                item.className = 'dropdown-item';
+                item.textContent = effect;
+                item.dataset.effectId = index;
+                
+                if (index === currentState.effect) {
+                    item.classList.add('active');
+                }
+                
+                item.addEventListener('click', () => {
+                    if (!currentState.basePath) return;
+                    
+                    document.querySelectorAll('.dropdown-item').forEach(el => {
+                        el.classList.remove('active');
+                    });
+                    item.classList.add('active');
+                    selectedEffect.textContent = effect;
+                    updateFirebaseValue('effect', parseInt(item.dataset.effectId));
+                    closeDropdown();
+                });
+                
+                dropdownList.appendChild(item);
+            });
+        }
+
+        // Toggle dropdown
+        function toggleDropdown() {
+            if (!currentState.basePath) return;
+            
+            if (dropdownList.classList.contains('show')) {
+                closeDropdown();
+            }
+            else {
+                openDropdown();
+            }
+        }
+
+        // Open dropdown
+        function openDropdown() {
+            dropdownList.classList.add('show');
+            dropdownHeader.classList.add('active');
+        }
+
+        // Close dropdown
+        function closeDropdown() {
+            dropdownList.classList.remove('show');
+            dropdownHeader.classList.remove('active');
+        }
+
+        // Apply Solid Color effect
+        function applySolidColorEffect() {
+            const solidColorEffectId = effects.indexOf("Solid Color");
+            if (solidColorEffectId === -1 || !currentState.basePath) return;
+
+            // Update UI
+            document.querySelectorAll('.dropdown-item').forEach(el => {
+                el.classList.remove('active');
+            });
+            const solidColorItem = document.querySelector(`.dropdown-item[data-effect-id='${solidColorEffectId}']`);
+            if (solidColorItem) {
+                solidColorItem.classList.add('active');
+                selectedEffect.textContent = solidColorItem.textContent;
+            } else {
+                selectedEffect.textContent = 'Solid Color';
+            }
+
+            // Update Firebase if the effect is not already active
+            if (currentState.effect !== solidColorEffectId) {
+                updateFirebaseValue('effect', solidColorEffectId);
+                currentState.effect = solidColorEffectId; // Update local state
+            }
+        }
+
         // Initialize event listeners
         function initializeEventListeners() {
+            // NEW: Sync All Toggle
+            syncAllToggle.addEventListener('change', () => {
+                currentState.syncAll = syncAllToggle.checked;
+                console.log('Global Sync:', currentState.syncAll);
+            });
+
+            // NEW: Node Switching Logic
+            nodeList.addEventListener('click', (e) => {
+                const btn = e.target.closest('.node-btn');
+                if (!btn) return;
+
+                // Update UI
+                document.querySelectorAll('.node-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Update State
+                currentState.currentTarget = btn.dataset.target;
+                console.log('Switched control to:', currentState.currentTarget);
+
+                // Switch data source
+                removeFirebaseListeners();
+                initializeFirebaseListeners();
+            });
+
             // Dropdown header click
             dropdownHeader.addEventListener('click', toggleDropdown);
 
@@ -881,18 +1102,6 @@
                 updateFirebaseValue('enabled', powerToggle.checked);
             });
 
-            // Auto darkness toggle
-            autoDarknessToggle.addEventListener('change', () => {
-                updateFirebaseValue('auto_darkness_control', autoDarknessToggle.checked);
-            });
-
-            // Lux threshold input
-            luxThresholdInput.addEventListener('change', () => {
-                let value = parseFloat(luxThresholdInput.value);
-                luxThresholdInput.value = value.toFixed(1);
-                updateFirebaseValue('lux_threshold', value);
-            });
-
             // Speed slider
             speedSlider.addEventListener('input', () => {
                 speedValue.textContent = speedSlider.value;
@@ -904,166 +1113,229 @@
 
             // Color picker
             colorPicker.addEventListener('input', () => {
-                const color = colorPicker.value.substring(1).toUpperCase(); // Remove # and convert to uppercase
-                colorInput.value = color;
+                const color = colorPicker.value.substring(1).toUpperCase();
                 colorPreview.style.backgroundColor = colorPicker.value;
+                updateFirebaseValue('color', color);
+                applySolidColorEffect();
             });
-
-            // Color input
-            colorInput.addEventListener('input', () => {
-                const color = colorInput.value.toUpperCase();
-                if (isValidHexColor(color)) {
-                    colorPreview.style.backgroundColor = `#${color}`;
-                    colorPicker.value = `#${color}`;
-                }
-            });
-
-            // Apply color button
-            applyColorBtn.addEventListener('click', () => {
-                const color = colorInput.value.toUpperCase();
-                if (isValidHexColor(color)) {
-                    updateFirebaseValue('color', color);
-                } else {
-                    alert('Please enter a valid 6-digit hex color code (e.g., FF0000)');
-                    colorInput.focus();
-                }
-            });
-
+            
             // Random color button
             randomColorBtn.addEventListener('click', () => {
-                const randomColor = getRandomColor();
-                colorInput.value = randomColor;
-                colorPreview.style.backgroundColor = `#${randomColor}`;
-                colorPicker.value = `#${randomColor}`;
-                updateFirebaseValue('color', randomColor);
+                const color = getRandomColor();
+                colorPreview.style.backgroundColor = `#${color}`;
+                colorPicker.value = `#${color}`;
+                updateFirebaseValue('color', color);
+                applySolidColorEffect();
+            });
+
+            // Timer toggle
+            timerToggle.addEventListener('change', () => {
+                updateFirebaseValue('timer_enabled', timerToggle.checked);
+            });
+
+            // Timer on time input
+            timerOnTimeInput.addEventListener('change', () => {
+                updateFirebaseValue('timer_on', timerOnTimeInput.value);
+            });
+
+            // Timer off time input
+            timerOffTimeInput.addEventListener('change', () => {
+                updateFirebaseValue('timer_off', timerOffTimeInput.value);
             });
 
             // Microphone calibration button
             calibrateMicBtn.addEventListener('click', async () => {
                 try {
                     calibrateMicBtn.disabled = true;
-                    calibrateMicBtn.textContent = 'Calibrating...';
-                    if (!basePath) throw new Error('No device selected');
-                    await database.ref(basePath + 'mic_calibration').set(true);
+                    calibrateMicBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Calibrating...';
+                    if (!currentState.basePath) throw new Error('No device selected');
+                    await database.ref(currentState.basePath + 'mic_calibration').set(true);
                     setTimeout(async () => {
-                        await database.ref(basePath + 'mic_calibration').set(false);
+                        await database.ref(currentState.basePath + 'mic_calibration').set(false);
                         calibrateMicBtn.disabled = false;
-                        calibrateMicBtn.textContent = 'Calibrate Microphone';
+                        calibrateMicBtn.innerHTML = '<i class="fas fa-microphone"></i> Calibrate Microphone';
                     }, 20000);
                 } catch (err) {
                     console.error('Mic calibration error:', err);
                     calibrateMicBtn.disabled = false;
-                    calibrateMicBtn.textContent = 'Calibrate Microphone';
+                    calibrateMicBtn.innerHTML = '<i class="fas fa-microphone"></i> Calibrate Microphone';
                 }
             });
         }
 
-        // Listen for Firebase value changes
+        // Initialize Firebase listeners
         function initializeFirebaseListeners() {
-            if (!basePath) return;
-            // Effect
-            database.ref(basePath + 'effect').on('value', (snapshot) => {
-                const effect = snapshot.val();
-                if (effect !== null) {
-                    currentState.effect = effect;
-                    selectedEffect.textContent = effects[effect];
+            if (!currentState.basePath) return;
+
+            // 1. DYNAMIC NODE DISCOVERY LISTENER
+            const discoveryRef = database.ref(currentState.basePath + 'active_nodes');
+            discoveryRef.on('value', (snapshot) => {
+                const nodes = snapshot.val() || {};
+                currentState.activeNodes = nodes;
+                updateNodeListUI(nodes);
+            });
+
+            // 2. TARGETED DATA LISTENER
+            const targetPath = currentState.currentTarget === 'local' ? 'local' : `receivers/${currentState.currentTarget}`;
+            const targetRef = database.ref(currentState.basePath + targetPath);
+
+            // Connection status listener
+            firebaseListeners.push(targetRef);
+            targetRef.on("value", (snapshot) => {
+                if (snapshot.exists()) {
+                    if (statusText.textContent.indexOf('Connected') === -1) {
+                        statusText.textContent = `Connected to ${currentState.currentTarget === 'local' ? 'Gateway' : currentState.currentTarget}`;
+                        connectionStatus.className = 'status-indicator connected';
+                        setControlsEnabled(true);
+                    }
+                } else {
+                    // Fallback for new nodes
+                    statusText.textContent = 'Initializing Node...';
+                    connectionStatus.className = 'status-indicator';
+                }
+            }, (error) => {
+                console.error('Firebase error:', error);
+                statusText.textContent = 'Connection Error';
+                connectionStatus.className = 'status-indicator';
+                setControlsEnabled(false);
+            });
+
+            // Listener for 'enabled'
+            const enabledRef = targetRef.child('enabled');
+            firebaseListeners.push(enabledRef);
+            enabledRef.on('value', (snapshot) => {
+                const val = snapshot.val();
+                if (val !== null && val !== undefined) {
+                    powerToggle.checked = val;
+                    currentState.enabled = val;
+                }
+            });
+
+            // Listener for 'effect'
+            const effectRef = targetRef.child('effect');
+            firebaseListeners.push(effectRef);
+            effectRef.on('value', (snapshot) => {
+                const val = snapshot.val();
+                if (val !== null && val !== undefined) {
+                    currentState.effect = val;
+                    selectedEffect.textContent = effects[val] || 'Unknown Effect';
                     document.querySelectorAll('.dropdown-item').forEach(item => {
-                        item.classList.remove('active');
-                        if (parseInt(item.dataset.effectId) === effect) {
-                            item.classList.add('active');
-                        }
+                        item.classList.toggle('active', parseInt(item.dataset.effectId) === val);
                     });
                 }
             });
 
-            // Speed
-            database.ref(basePath + 'speed').on('value', (snapshot) => {
-                const speed = snapshot.val();
-                if (speed !== null) {
-                    currentState.speed = speed;
-                    speedSlider.value = speed;
-                    speedValue.textContent = speed;
+            // Listener for 'speed'
+            const speedRef = targetRef.child('speed');
+            firebaseListeners.push(speedRef);
+            speedRef.on('value', (snapshot) => {
+                const val = snapshot.val();
+                if (val !== null && val !== undefined) {
+                    speedSlider.value = val;
+                    speedValue.textContent = val;
+                    currentState.speed = val;
                 }
             });
 
-            // Color
-            database.ref(basePath + 'color').on('value', (snapshot) => {
-                const color = snapshot.val();
-                if (color !== null) {
-                    currentState.color = color;
-                    colorInput.value = color;
+            // Listener for 'color'
+            const colorRef = targetRef.child('color');
+            firebaseListeners.push(colorRef);
+            colorRef.on('value', (snapshot) => {
+                const val = snapshot.val();
+                if (val !== null && val !== undefined) {
+                    const color = val.toUpperCase();
                     colorPreview.style.backgroundColor = `#${color}`;
                     colorPicker.value = `#${color}`;
+                    currentState.color = color;
                 }
             });
 
-            // Enabled
-            database.ref(basePath + 'enabled').on('value', (snapshot) => {
-                const enabled = snapshot.val();
-                if (enabled !== null) {
-                    currentState.enabled = enabled;
-                    powerToggle.checked = enabled;
-                }
-            });
+            // Timer settings (Local Gateway only)
+            if (currentState.currentTarget === 'local') {
+                const timerEnabledRef = targetRef.child('timer_enabled');
+                firebaseListeners.push(timerEnabledRef);
+                timerEnabledRef.on('value', (snapshot) => {
+                    const val = snapshot.val();
+                    if (val !== null && val !== undefined) {
+                        timerToggle.checked = val;
+                        currentState.timer_enabled = val;
+                    }
+                });
 
-            // Auto darkness control
-            database.ref(basePath + 'auto_darkness_control').on('value', (snapshot) => {
-                const autoDarkness = snapshot.val();
-                if (autoDarkness !== null) {
-                    currentState.auto_darkness_control = autoDarkness;
-                    autoDarknessToggle.checked = autoDarkness;
-                }
-            });
+                const timerOnRef = targetRef.child('timer_on');
+                firebaseListeners.push(timerOnRef);
+                timerOnRef.on('value', (snapshot) => {
+                    const val = snapshot.val();
+                    if (val !== null && val !== undefined) {
+                        timerOnTimeInput.value = val;
+                        currentState.timer_on = val;
+                    }
+                });
 
-            // Lux threshold
-            database.ref(basePath + 'lux_threshold').on('value', (snapshot) => {
-                const threshold = snapshot.val();
-                if (threshold !== null) {
-                    currentState.lux_threshold = threshold;
-                    luxThresholdInput.value = threshold.toFixed(1);
-                }
-            });
-
-            // Connection status
-            database.ref('.info/connected').on('value', (snapshot) => {
-                if (snapshot.val() === true) {
-                    connectionStatus.className = 'status-indicator connected';
-                    statusText.textContent = lastDeviceId ? `Connected: ${lastDeviceId}` : 'Connected to Firebase';
+                const timerOffRef = targetRef.child('timer_off');
+                firebaseListeners.push(timerOffRef);
+                timerOffRef.on('value', (snapshot) => {
+                    const val = snapshot.val();
+                    if (val !== null && val !== undefined) {
+                        timerOffTimeInput.value = val;
+                        currentState.timer_off = val;
+                    }
+                });
+            }
+            
+            // Presence Sensor (Local Gateway only)
+            const presenceRef = database.ref(currentState.basePath + 'local/sensor_stats/sensors/presence');
+            firebaseListeners.push(presenceRef);
+            presenceRef.on('value', (snapshot) => {
+                const val = snapshot.val();
+                if (val !== null && val !== undefined) {
+                    presenceValue.textContent = val ? 'YES' : 'NO';
                 } else {
-                    connectionStatus.className = 'status-indicator';
-                    statusText.textContent = 'Disconnected from Firebase';
+                    presenceValue.textContent = '--';
                 }
             });
+        }
 
-            // Lux value
-            database.ref(basePath + 'lux').on('value', (snapshot) => {
-                const lux = snapshot.val();
-                if (lux !== null) {
-                    luxValue.textContent = lux.toFixed(2);
-                    currentLuxValue.textContent = lux.toFixed(2);
-                }
-            });
+        // NEW: Function to dynamically update the UI node list
+        function updateNodeListUI(nodes) {
+            const gatewayBtn = nodeList.querySelector('[data-target="local"]');
+            nodeList.innerHTML = '';
+            nodeList.appendChild(gatewayBtn);
 
-            // Presence value
-            database.ref(basePath + 'presence').on('value', (snapshot) => {
-                const presence = snapshot.val();
-                if (presence !== null) {
-                    presenceValue.textContent = presence ? 'YES' : 'NO';
-                }
+            Object.keys(nodes).forEach(mac => {
+                const btn = document.createElement('button');
+                btn.className = `btn btn-secondary node-btn ${currentState.currentTarget === mac ? 'active' : ''}`;
+                btn.dataset.target = mac;
+                btn.innerHTML = `
+                    <div>
+                        <i class="fas fa-lightbulb"></i> Receiver
+                        <span class="node-status">${mac}</span>
+                    </div>
+                `;
+                nodeList.appendChild(btn);
             });
         }
 
         // Initialize the application
         function initializeApp() {
+            // Initialize UI components
             initializeDropdown();
             initializeEventListeners();
-            initializeFirebaseListeners();
+            
+            // Set initial state
+            setControlsEnabled(false);
             
             // Set initial color preview
             colorPreview.style.backgroundColor = `#${currentState.color}`;
+            
+            // Try to load last used device ID
+            const lastDeviceId = localStorage.getItem('lastDeviceId');
+            if (lastDeviceId) {
+                connectToDevice(lastDeviceId);
+            }
         }
 
-        // Start the application when the page loads
+        // Start the application when DOM is loaded
         document.addEventListener('DOMContentLoaded', initializeApp);
     </script>
 </body>

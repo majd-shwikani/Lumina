@@ -4,6 +4,8 @@
 // VARIABLE DEFINITIONS
 // ============================================================================
 // Note: statsTaskStack and statsTaskHandle removed - merged into sensor task
+Receiver receivers[10];
+int receiverCount = 0;
 
 // ============================================================================
 // LED UPDATE FUNCTION
@@ -91,7 +93,7 @@ bool checkTimeMatch(const char* scheduledTime) {
 void updateTimerState(bool state) {
   esp_task_wdt_reset();
   
-  String enabledPath = basePath + "/enabled";
+  String enabledPath = basePath + "/local/enabled";
   if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), state)) {
     portENTER_CRITICAL(&stripMux);
     stripEnabled = state;
@@ -105,6 +107,7 @@ void updateTimerState(bool state) {
     }
     
     Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
+    syncAllMirrors();
   } else {
     Serial.printf("Failed to update enabled state: %s\n", fbdoUpload.errorReason().c_str());
   }
@@ -142,20 +145,45 @@ void firebaseTask(void *parameter) {
   for(;;) {
     esp_task_wdt_reset();
     
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED && Firebase.ready()) {
+      firebaseConnected = true;
       ArduinoOTA.handle();
       
-      if (!Firebase.ready()) {
-        Serial.println("⚠️  Firebase not ready, reconnecting...");
-        firebaseConnected = false;
-        delay(1000);
-      } else {
-        firebaseConnected = true;
+      // 1. Process Receiver Registry Changes
+      if (registryChanged) {
+        bool allSynced = true;
+        for (int i = 0; i < receiverCount; i++) {
+          if (receivers[i].needsFirebaseSync) {
+            String rPath = basePath + "/receivers/" + receivers[i].macStr;
+            FirebaseJson rJson;
+            rJson.set("isMirror", receivers[i].isMirror);
+            rJson.set("effect", receivers[i].effect);
+            rJson.set("speed", receivers[i].speed);
+            rJson.set("color", "FF0000"); // Standard default
+            rJson.set("enabled", receivers[i].enabled);
+            
+            Serial.printf("☁️ [FirebaseTask] Syncing receiver %s to cloud...\n", receivers[i].macStr.c_str());
+            if (Firebase.RTDB.setJSON(&fbdoUpload, rPath.c_str(), &rJson)) {
+              receivers[i].needsFirebaseSync = false;
+            } else {
+              allSynced = false;
+              Serial.printf("⚠️ [FirebaseTask] Failed to sync receiver: %s\n", fbdoUpload.errorReason().c_str());
+            }
+          }
+        }
+        
+        // 2. Update Active Nodes List if needed
+        if (allSynced) {
+          updateActiveNodesInFirebase();
+          registryChanged = false;
+        }
       }
     } else {
       firebaseConnected = false;
-      Serial.println("⚠️  WiFi disconnected in Firebase task, attempting reconnect...");
-      connectToWiFi();
+      if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("⚠️  WiFi disconnected in Firebase task, attempting reconnect...");
+        connectToWiFi();
+      }
     }
     
     vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -285,6 +313,7 @@ void automationtask(void *parameter) {
           Serial.printf("\n🌙 LEDs OFF: %s (Presence: %s, Lux: %.2f)\n", 
                        reason.c_str(), presenceDetected ? "Yes" : "No", currentLux);
         }
+        syncAllMirrors();
       }
     }
 
@@ -413,7 +442,7 @@ void sensorDataTask(void *parameter) {
       // ----------------------------------------------------------------------
       // 3C. SEND SINGLE FIREBASE UPDATE EVERY 2 SECONDS
       // ----------------------------------------------------------------------
-      String combinedPath = basePath + "/sensor_stats";
+      String combinedPath = basePath + "/local/sensor_stats";
       bool success = false;
       
       try {

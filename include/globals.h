@@ -32,11 +32,31 @@
 // ============================================================================
 typedef struct {
     char msgType[20];   // "LUMINA_DISCOVERY", "LUMINA_OFFER", "LUMINA_CMD"
+    uint8_t targetMac[6]; // [0,0,0,0,0,0] for broadcast
     int effect;
     uint32_t speed;
     uint32_t color;
     bool enabled;
 } LuminaMessage;
+
+typedef struct {
+    uint8_t mac[6];
+    String macStr;
+    int effect;
+    uint32_t speed;
+    uint32_t color;
+    bool enabled;
+    bool isMirror;
+    bool registered;
+    bool needsFirebaseSync; // Flag to signal cloud update
+} Receiver;
+
+extern Receiver receivers[10];
+extern int receiverCount;
+extern volatile bool registryChanged; // Global flag for firebase task
+void routeCommandToReceiver(int index);
+void syncAllMirrors();
+void updateActiveNodesInFirebase();
 
 // ============================================================================
 // CRITICAL FIX 1: Thread synchronization primitives

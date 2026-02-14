@@ -66,6 +66,7 @@ bool buttonActive = false;
 // ============================================================================
 // ESP-NOW GATEWAY LOGIC
 // ============================================================================
+volatile bool registryChanged = false;
 
 void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
   if (len < sizeof(LuminaMessage)) return;
@@ -74,8 +75,36 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
   
   // 1. Respond to Discovery requests
   if (strcmp(incoming->msgType, "LUMINA_DISCOVERY") == 0) {
-    Serial.printf("📡 [Gateway] Discovery received from %02X:%02X:%02X:%02X:%02X:%02X - Sending Offer\n",
-                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+             
+    // Check if already in registry
+    bool found = false;
+    for (int i = 0; i < receiverCount; i++) {
+      if (receivers[i].macStr == String(macStr)) {
+        found = true;
+        break;
+      }
+    }
+    
+    if (!found && receiverCount < 10) {
+      memcpy(receivers[receiverCount].mac, mac, 6);
+      receivers[receiverCount].macStr = String(macStr);
+      receivers[receiverCount].registered = true;
+      receivers[receiverCount].isMirror = true;
+      receivers[receiverCount].effect = 0;
+      receivers[receiverCount].speed = 50;
+      receivers[receiverCount].color = 0xFF0000;
+      receivers[receiverCount].enabled = true;
+      receivers[receiverCount].needsFirebaseSync = true; // Mark for task sync
+      receiverCount++;
+      registryChanged = true; // Signal the firebase task
+      Serial.printf("🆕 [Gateway] Discovered new receiver: %s\n", macStr);
+    } else {
+      // If already found, just log it occasionally
+      // Serial.printf("📡 [Gateway] Discovery heartbeat from known node: %s\n", macStr);
+    }
     
     if (!esp_now_is_peer_exist(mac)) {
       esp_now_peer_info_t peerInfo = {};
@@ -87,9 +116,10 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
     
     LuminaMessage offer;
     strcpy(offer.msgType, "LUMINA_OFFER");
+    memset(offer.targetMac, 0, 6);
     esp_now_send(mac, (uint8_t *)&offer, sizeof(offer));
   }
-  // 2. Log if we see commands from others (for debugging mesh-like behavior)
+  // 2. Log if we see commands from others
   else if (strcmp(incoming->msgType, "LUMINA_CMD") == 0) {
     Serial.printf("ℹ️ [Gateway] Observed CMD packet from %02X:%02X... (Effect=%d)\n", 
                   mac[0], mac[1], incoming->effect);
@@ -115,25 +145,77 @@ void setupEspNowGateway() {
   Serial.println("✅ ESP-NOW Gateway Ready");
 }
 
-void broadcastGatewayState() {
+void routeCommandToReceiver(int index) {
+  if (index < 0 || index >= receiverCount) return;
+  
   LuminaMessage msg;
   strcpy(msg.msgType, "LUMINA_CMD");
+  memcpy(msg.targetMac, receivers[index].mac, 6); // Set target MAC
   
-  portENTER_CRITICAL(&stripMux);
-  msg.effect = currentEffect;
-  msg.speed = effectSpeed;
-  msg.color = effectColor;
-  msg.enabled = stripEnabled;
-  portEXIT_CRITICAL(&stripMux);
-  
-  uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)&msg, sizeof(msg));
-  
-  if (result == ESP_OK) {
-    Serial.printf("📡 [Gateway] Sent Broadcast: Eff=%d, Spd=%d, Col=%06X, En=%s\n", 
-                  msg.effect, msg.speed, msg.color, msg.enabled ? "YES" : "NO");
+  if (receivers[index].isMirror) {
+    portENTER_CRITICAL(&stripMux);
+    msg.effect = currentEffect;
+    msg.speed = effectSpeed;
+    msg.color = effectColor;
+    msg.enabled = stripEnabled;
+    portEXIT_CRITICAL(&stripMux);
   } else {
-    Serial.printf("❌ [Gateway] Broadcast Failed! Error: 0x%02X\n", result);
+    msg.effect = receivers[index].effect;
+    msg.speed = receivers[index].speed;
+    msg.color = receivers[index].color;
+    msg.enabled = receivers[index].enabled;
+  }
+  
+  esp_err_t result = esp_now_send(receivers[index].mac, (uint8_t *)&msg, sizeof(msg));
+  if (result == ESP_OK) {
+    Serial.printf("📡 [Gateway] Sent CMD to %s: Eff=%d, En=%s, Mirror=%s\n", 
+                  receivers[index].macStr.c_str(), msg.effect, 
+                  msg.enabled ? "YES" : "NO",
+                  receivers[index].isMirror ? "YES" : "NO");
+  }
+}
+
+void syncAllMirrors() {
+  for (int i = 0; i < receiverCount; i++) {
+    if (receivers[i].isMirror) {
+      routeCommandToReceiver(i);
+    }
+  }
+}
+
+void updateActiveNodesInFirebase() {
+  FirebaseJson json;
+  for (int i = 0; i < receiverCount; i++) {
+    json.set(receivers[i].macStr.c_str(), "online");
+  }
+  
+  String path = basePath + "/active_nodes";
+  if (!Firebase.RTDB.setJSON(&fbdoUpload, path.c_str(), &json)) {
+    Serial.printf("❌ [Gateway] Failed to update active_nodes: %s\n", fbdoUpload.errorReason().c_str());
+  }
+}
+
+void broadcastGatewayState() {
+  // 1. Sync Mirrors (Forces them to match Gateway state)
+  syncAllMirrors();
+
+  // 2. Heartbeat for Standalone Nodes
+  // We send them their own current registered state as a "Keep-Alive"
+  // This ensures they reset their lastGatewayContact timer without switching modes.
+  for (int i = 0; i < receiverCount; i++) {
+    if (!receivers[i].isMirror) {
+      LuminaMessage msg;
+      strcpy(msg.msgType, "LUMINA_CMD");
+      memcpy(msg.targetMac, receivers[i].mac, 6);
+      
+      msg.effect = receivers[i].effect;
+      msg.speed = receivers[i].speed;
+      msg.color = receivers[i].color;
+      msg.enabled = receivers[i].enabled;
+
+      esp_now_send(receivers[i].mac, (uint8_t *)&msg, sizeof(msg));
+      // Serial.printf("💓 [Gateway] Heartbeat sent to Standalone: %s\n", receivers[i].macStr.c_str());
+    }
   }
 }
 
@@ -160,7 +242,8 @@ void printSystemStats() {
   Serial.println("╠══════════════════════════════════════════════════════════════════════╣");
   Serial.printf("║ Free Heap: %7d bytes | Uptime: %lu s                                ║\n", 
                 ESP.getFreeHeap(), millis() / 1000);
-  Serial.printf("║ WiFi Channel: %-2d | Mirror Nodes: Broadcaster                       ║\n", WiFi.channel());
+  Serial.printf("║ WiFi Channel: %-2d | Discovered Receivers: %-2d                        ║\n", 
+                WiFi.channel(), receiverCount);
   Serial.printf("║ Current Effect: %-2d | Speed: %-4d ms | Strip Enabled: %-3s          ║\n", 
                 currentEffect, effectSpeed, stripEnabled ? "YES" : "NO");
   Serial.println("╚══════════════════════════════════════════════════════════════════════╝\n");
