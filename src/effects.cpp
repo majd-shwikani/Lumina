@@ -50,6 +50,12 @@ uint32_t colorBlend(uint32_t color1, uint32_t color2, uint8_t blend) {
   return stripColor(r, g, b);
 }
 
+void setAllLeds(uint32_t color) {
+  for(int i = 0; i < ledCount; i++) {
+    setPixelColor(i, color);
+  }
+}
+
 // Effect 0: Rainbow cycle
 void effectRainbow() {
   static uint16_t j = 0;
@@ -254,6 +260,30 @@ void effectLavaLamp() {
   }
 }
 
+// Effect 9: Radar sweep
+void effectRadarSweep() {
+  static float angle = 0;
+  static uint8_t sweepHistory[256] = {0};
+  
+  for(int i = 0; i < ledCount; i++) {
+    if(sweepHistory[i] > 0) {
+      sweepHistory[i] = sweepHistory[i] * 9 / 10;
+      if(sweepHistory[i] < 5) sweepHistory[i] = 0;
+      setPixelColor(i, 0, sweepHistory[i], 0);
+    } else {
+      setPixelColor(i, 0, (i / 16) % 2 == 0 ? 1 : 0, 0);
+    }
+  }
+  
+  int sweepPos = (angle / (2 * 3.14159)) * ledCount;
+  if(sweepPos < ledCount) {
+    sweepHistory[sweepPos] = 255;
+    setPixelColor(sweepPos, 0, 255, 0);
+  }
+  angle += 0.08;
+  if(angle >= 2 * 3.14159) angle = 0;
+}
+
 // Effect 10: Quantum particles
 void effectQuantumParticles() {
   static float particles[10][3] = {0};
@@ -356,8 +386,8 @@ void effectGalaxySpin() {
 
 // Effect 13: Crystal growth
 void effectCrystalGrowth() {
-  static uint8_t crystals[200] = {0};
-  static uint8_t crystalColors[200] = {0};
+  static uint8_t crystals[256] = {0};
+  static uint8_t crystalColors[256] = {0};
   static uint32_t lastGrowth = 0;
   static uint16_t activeSeeds = 0;
   if(activeSeeds < 5 && random(100) < 10) {
@@ -384,18 +414,18 @@ void effectCrystalGrowth() {
       setPixelColor(i, ((c >> 16) & 0xFF) * crystals[i] / 255, ((c >> 8) & 0xFF) * crystals[i] / 255, (c & 0xFF) * crystals[i] / 255);
     } else setPixelColor(i, 0);
   }
-  if(activeSeeds >= ledCount * 0.8 && random(100) < 5) { memset(crystals, 0, 200); activeSeeds = 0; }
+  if(activeSeeds >= ledCount * 0.8 && random(100) < 5) { memset(crystals, 0, 256); activeSeeds = 0; }
 }
 
 // Effect 14: Lightning storm
 void effectLightningStorm() {
-  static uint8_t lightning[200] = {0};
+  static uint8_t lightning[256] = {0};
   static uint32_t lastStrike = 0;
   static uint8_t strikeActive = 0, flash = 0;
   for(int i = 0; i < ledCount; i++) setPixelColor(i, 10 + random(10), 10 + random(10), 20 + random(10));
   if(!strikeActive && millis() - lastStrike > 1000 && random(100) < 10) {
     strikeActive = 1; flash = 255; lastStrike = millis();
-    memset(lightning, 0, 200);
+    memset(lightning, 0, 256);
     int p = random(ledCount);
     for(int i = 0; i < 20; i++) {
       if(p >= 0 && p < ledCount) { lightning[p] = 255; p += random(-2, 3); }
@@ -486,17 +516,4 @@ void effectFireSimulation() {
 // Effect 21: Solid Color
 void effectSolidColor() {
   fill_solid(leds, ledCount, effectColor);
-}
-
-// Effect 31: Energy Orbits
-void effectEnergyOrbits() {
-  static float ang = 0;
-  fill_solid(leds, ledCount, stripColor(2, 2, 8));
-  for(int o = 0; o < 3; o++) {
-    float r = 0.3 + 0.1 * o;
-    float a = (ang + o * 120) * 3.14159 / 180.0;
-    int p = (0.5 + r * cos(a)) * ledCount;
-    if(p >= 0 && p < ledCount) setPixelColor(p, Wheel(o * 85));
-  }
-  ang += 5;
 }
