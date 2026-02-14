@@ -1,102 +1,134 @@
 #include "globals.h"
-#include <WiFiClientSecure.h>
 
 // ============================================================================
-// GITHUB OTA FUNCTIONS
+// ESP-NOW CALLBACKS
 // ============================================================================
 
-String fetchLatestVersion() {
-  if (WiFi.status() != WL_CONNECTED) return "";
-  
-  WiFiClientSecure client;
-  client.setInsecure(); // GitHub uses HTTPS
-  
-  HTTPClient http;
-  http.begin(client, GITHUB_VERSION_URL);
-  
-  int httpCode = http.GET();
-  String payload = "";
-  
-  if (httpCode == HTTP_CODE_OK) {
-    payload = http.getString();
-    payload.trim();
+void OnDataSent(const uint8_t *mac, esp_now_send_status_t status) {
+  if (status != ESP_NOW_SEND_SUCCESS) {
+    Serial.println("   ⚠️  ESP-NOW Send Failed");
   }
-  
-  http.end();
-  return payload;
 }
 
-void downloadAndApplyFirmware() {
-  Serial.println("📥 Starting firmware download...");
-  
-  WiFiClientSecure client;
-  client.setInsecure();
-  
-  HTTPClient http;
-  http.begin(client, GITHUB_FIRMWARE_URL);
-  
-  // Follow redirects (GitHub releases use redirects to AWS/etc.)
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  
-  int httpCode = http.GET();
-  if (httpCode != HTTP_CODE_OK) {
-    Serial.printf("❌ Failed to download firmware, HTTP code: %d\n", httpCode);
-    http.end();
+void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
+  if (len < sizeof(LuminaMessage)) {
+    Serial.printf("   ⚠️  Received small packet: %d bytes\n", len);
     return;
   }
   
-  int contentLength = http.getSize();
-  if (contentLength <= 0) {
-    Serial.println("❌ Invalid content length");
-    http.end();
-    return;
-  }
+  LuminaMessage *msg = (LuminaMessage *)data;
   
-  bool canBegin = Update.begin(contentLength);
-  if (!canBegin) {
-    Serial.println("❌ Not enough space for OTA");
-    http.end();
-    return;
-  }
-  
-  Serial.printf("📦 Updating: %d bytes\n", contentLength);
-  
-  WiFiClient* stream = http.getStreamPtr();
-  size_t written = Update.writeStream(*stream);
-  
-  if (written != (size_t)contentLength) {
-    Serial.printf("❌ Write failed: %d/%d\n", written, contentLength);
-  } else if (Update.end()) {
-    if (Update.isFinished()) {
-      Serial.println("✅ Update successful! Restarting...");
-      delay(1000);
-      ESP.restart();
+  // 1. Discovery Reply
+  if (strcmp(msg->msgType, "LUMINA_OFFER") == 0) {
+    lastGatewayContact = millis(); // Reset timer on handshake
+    if (!gatewayFound) {
+      memcpy(gatewayMAC, mac, 6);
+      gatewayFound = true;
+      
+      esp_now_peer_info_t peerInfo = {};
+      memcpy(peerInfo.peer_addr, gatewayMAC, 6);
+      peerInfo.channel = currentWifiChannel;
+      peerInfo.encrypt = false;
+      
+      if (!esp_now_is_peer_exist(gatewayMAC)) {
+        esp_now_add_peer(&peerInfo);
+      }
+      
+      Serial.printf("✨ Gateway Offer Received! Locked to channel %d from %02X:%02X:%02X:%02X:%02X:%02X\n",
+                    currentWifiChannel, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    }
+  } 
+  // 2. Control Command
+  else if (strcmp(msg->msgType, "LUMINA_CMD") == 0) {
+    // Identity Filter
+    uint8_t myMac[6];
+    esp_read_mac(myMac, ESP_MAC_WIFI_STA);
+    
+    uint8_t broadcastMac[6] = {0, 0, 0, 0, 0, 0};
+    bool isBroadcast = (memcmp(msg->targetMac, broadcastMac, 6) == 0);
+    bool isForMe = (memcmp(msg->targetMac, myMac, 6) == 0);
+    
+    if (isBroadcast || isForMe) {
+      if (!gatewayFound || memcmp(mac, gatewayMAC, 6) == 0) {
+        if (!gatewayFound) {
+          Serial.println("   🔓 Auto-locking to command source...");
+          gatewayFound = true;
+          memcpy(gatewayMAC, mac, 6);
+        }
+        
+        lastGatewayContact = millis();
+        
+        // Update mode based on message type
+        if (isBroadcast) {
+          if (currentMode != MODE_MIRROR) {
+            currentMode = MODE_MIRROR;
+            Serial.println("🔄 Switched to MIRROR Mode (Global Broadcast)");
+          }
+        } else {
+          if (currentMode != MODE_STANDALONE) {
+            currentMode = MODE_STANDALONE;
+            Serial.println("🎯 Switched to STANDALONE Mode (Individual Command)");
+          }
+        }
+        
+        portENTER_CRITICAL(&stripMux);
+        currentEffect = msg->effect;
+        effectSpeed = msg->speed;
+        effectColor = msg->color;
+        stripEnabled = msg->enabled;
+        portEXIT_CRITICAL(&stripMux);
+        
+        Serial.printf("🎮 [%s] Received Command: Effect=%d, Speed=%d, Color=%06X, Enabled=%s\n", 
+                      (currentMode == MODE_MIRROR ? "Mirror" : "Standalone"),
+                      msg->effect, msg->speed, msg->color, msg->enabled ? "ON" : "OFF");
+      }
     } else {
-      Serial.println("❌ Update not finished");
+      // Ignore messages intended for other devices
     }
   } else {
-    Serial.printf("❌ Update error: %s\n", Update.errorString());
+    Serial.printf("   ❓ Unknown Message Type: %s\n", msg->msgType);
   }
-  
-  http.end();
 }
 
-void checkForGitHubUpdate() {
-  Serial.println("🔍 Checking for updates on GitHub...");
-  String latestVersion = fetchLatestVersion();
+// ============================================================================
+// DISCOVERY TASK (THE "HUNT")
+// ============================================================================
+
+void discoveryTask(void *parameter) {
+  Serial.println("🔍 Discovery Task started on Core " + String(xPortGetCoreID()));
   
-  if (latestVersion == "") {
-    Serial.println("⚠️  Could not fetch version info");
-    return;
-  }
+  LuminaMessage discoveryMsg;
+  strcpy(discoveryMsg.msgType, "LUMINA_DISCOVERY");
+  esp_read_mac(discoveryMsg.targetMac, ESP_MAC_WIFI_STA); // Use targetMac field to carry our own MAC for discovery
   
-  Serial.printf("   Current: %s | Latest: %s\n", currentFirmwareVersion, latestVersion.c_str());
-  
-  if (latestVersion != currentFirmwareVersion) {
-    Serial.println("🆕 New version available! Starting update...");
-    downloadAndApplyFirmware();
-  } else {
-    Serial.println("✅ Firmware is up to date");
+  uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+  for(;;) {
+    esp_task_wdt_reset();
+
+    if (!gatewayFound) {
+      Serial.println("📡 Hunting for Gateway (scanning channels 1-13)...");
+      for (int ch = 1; ch <= 13 && !gatewayFound; ch++) {
+        currentWifiChannel = ch;
+        esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+        
+        Serial.printf("📡 [Receiver] Sending Discovery on Channel %d...\n", ch);
+        esp_now_send(broadcastAddress, (uint8_t *)&discoveryMsg, sizeof(discoveryMsg));
+        
+        vTaskDelay(250 / portTICK_PERIOD_MS); // Slightly longer dwell time for reliability
+      }
+    } else {
+      // Self-Healing: Check if we lost the Gateway
+      if (millis() - lastGatewayContact > GATEWAY_TIMEOUT) {
+        Serial.printf("💔 Lost contact with Gateway (MAC: %02X:%02X...) - Restarting Hunt\n", gatewayMAC[0], gatewayMAC[1]);
+        gatewayFound = false;
+        if (esp_now_is_peer_exist(gatewayMAC)) {
+          esp_now_del_peer(gatewayMAC);
+        }
+      }
+      
+      vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
   }
 }
 
@@ -106,8 +138,8 @@ void checkForGitHubUpdate() {
 
 void updateLEDs() {
   static bool lastStripEnabled = true;
-  
   bool currentEnabled;
+
   portENTER_CRITICAL(&stripMux);
   currentEnabled = stripEnabled;
   portEXIT_CRITICAL(&stripMux);
@@ -131,6 +163,7 @@ void updateLEDs() {
     case 5: effectVortex(); break;
     case 6: effectDNAHelix(); break;
     case 8: effectLavaLamp(); break;
+    case 9: effectRadarSweep(); break;
     case 10: effectQuantumParticles(); break;
     case 11: effectNeuralNetwork(); break;
     case 12: effectGalaxySpin(); break;
@@ -143,15 +176,10 @@ void updateLEDs() {
     case 19: effectSolarFlare(); break;
     case 20: effectFireSimulation(); break;
     case 21: effectSolidColor(); break;
-    case 31: effectEnergyOrbits(); break;
     default: effectRainbow(); break;
   }
   FastLED.show();
 }
-
-// ============================================================================
-// FREERTOS TASKS
-// ============================================================================
 
 void ledTask(void *parameter) {
   Serial.println("💡 LED Task started on Core " + String(xPortGetCoreID()));
@@ -162,18 +190,184 @@ void ledTask(void *parameter) {
   }
 }
 
+// OTA Update logic removed or kept as placeholder if not connected to Router
 void otaUpdateTask(void *parameter) {
-  Serial.println("🔄 OTA Task started on Core " + String(xPortGetCoreID()));
-  
+  Serial.println("🔄 OTA Update Task started on Core " + String(xPortGetCoreID()));
   const TickType_t xDelay = UPDATE_CHECK_INTERVAL / portTICK_PERIOD_MS;
-  vTaskDelay(10000 / portTICK_PERIOD_MS); // Wait 10s after boot
-  
+
+  vTaskDelay(30000 / portTICK_PERIOD_MS); // Initial delay to allow network to stabilize
+
   for(;;) {
     esp_task_wdt_reset();
+
     if (WiFi.status() == WL_CONNECTED) {
-      ArduinoOTA.handle();
       checkForGitHubUpdate();
+    } else {
+      Serial.println("⚠️  Skipping GitHub update check - WiFi not connected");
     }
+
+    esp_task_wdt_reset();
     vTaskDelay(xDelay);
   }
+}
+
+// ============================================================================
+// GITHUB OTA UPDATE FUNCTIONS
+// ============================================================================
+
+void checkForGitHubUpdate() {
+  Serial.println("🔍 Checking for GitHub firmware update...");
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("   ⚠️  WiFi not connected for GitHub OTA check");
+    return;
+  }
+
+  esp_task_wdt_reset();
+
+  String latestVersion = fetchLatestVersion();
+  if (latestVersion == "" || latestVersion.length() == 0) {
+    Serial.println("   ❌ Failed to fetch latest version from GitHub");
+    return;
+  }
+
+  Serial.printf("   Current: %s\n", currentFirmwareVersion);
+  Serial.printf("   Latest: %s\n", latestVersion.c_str());
+
+  if (latestVersion != currentFirmwareVersion) {
+    int curMajor = 0, curMinor = 0, curPatch = 0;
+    int latMajor = 0, latMinor = 0, latPatch = 0;
+
+    sscanf(currentFirmwareVersion, "%d.%d.%d", &curMajor, &curMinor, &curPatch);
+    sscanf(latestVersion.c_str(), "%d.%d.%d", &latMajor, &latMinor, &latPatch);
+
+    bool shouldUpdate = false;
+    if (latMajor > curMajor) {
+      shouldUpdate = true;
+    } else if (latMajor == curMajor && latMinor > curMinor) {
+      shouldUpdate = true;
+    } else if (latMajor == curMajor && latMinor == curMinor && latPatch > curPatch) {
+      shouldUpdate = true;
+    }
+
+    if (shouldUpdate) {
+      Serial.println("   ✅ New firmware available. Starting OTA update...");
+      downloadAndApplyFirmware();
+    } else {
+      Serial.println("   ℹ️  GitHub version is same or older. Skipping update.");
+    }
+  } else {
+    Serial.println("   ✅ Device is up to date.");
+  }
+}
+
+String fetchLatestVersion() {
+  HTTPClient http;
+  http.begin(GITHUB_VERSION_URL);
+
+  int httpCode = http.GET();
+  if (httpCode == HTTP_CODE_OK) {
+    String latestVersion = http.getString();
+    latestVersion.trim();
+    http.end();
+    return latestVersion;
+  } else {
+    Serial.printf("   ❌ Failed to fetch version. HTTP code: %d\n", httpCode);
+    http.end();
+    return "";
+  }
+}
+
+void downloadAndApplyFirmware() {
+  Serial.println("📥 Downloading firmware from GitHub...");
+
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.begin(GITHUB_FIRMWARE_URL);
+
+  int httpCode = http.GET();
+  Serial.printf("   HTTP GET code: %d\n", httpCode);
+
+  if (httpCode == HTTP_CODE_OK) {
+    int contentLength = http.getSize();
+    Serial.printf("   Firmware size: %d bytes (%.2f KB)\n", contentLength, contentLength / 1024.0);       
+
+    if (contentLength > 0) {
+      FastLED.clear();
+      FastLED.show();
+      Serial.println("   💡 LEDs turned off for OTA process...");
+
+      WiFiClient* stream = http.getStreamPtr();
+      if (startGitHubOTAUpdate(stream, contentLength)) {
+        Serial.println("   ✅ GitHub OTA update successful, restarting...");
+        delay(2000);
+        ESP.restart();
+      } else {
+        Serial.println("   ❌ GitHub OTA update failed");
+      }
+    } else {
+      Serial.println("   ❌ Invalid firmware size for GitHub OTA");
+    }
+  } else {
+    Serial.printf("   ❌ Failed to fetch firmware from GitHub. HTTP code: %d\n", httpCode);
+  }
+  http.end();
+}
+
+bool startGitHubOTAUpdate(WiFiClient* client, int contentLength) {
+  Serial.println("   🔄 Initializing GitHub update...");
+  if (!Update.begin(contentLength)) {
+    Serial.printf("   ❌ Update begin failed: %s\n", Update.errorString());
+    return false;
+  }
+
+  Serial.println("   📝 Writing firmware...");
+  size_t written = 0;
+  int progress = 0;
+  int lastProgress = 0;
+
+  const unsigned long timeoutDuration = 10 * 1000;
+  unsigned long lastDataTime = millis();
+
+  while (written < contentLength) {
+    esp_task_wdt_reset();
+
+    if (client->available()) {
+      uint8_t buffer[128];
+      size_t len = client->read(buffer, sizeof(buffer));
+      if (len > 0) {
+        Update.write(buffer, len);
+        written += len;
+        lastDataTime = millis();
+
+        progress = (written * 100) / contentLength;
+        if (progress != lastProgress) {
+          Serial.printf("      Progress: %d%%\r", progress);
+          lastProgress = progress;
+        }
+      }
+    }
+
+    if (millis() - lastDataTime > timeoutDuration) {
+      Serial.println("\n   ❌ Timeout: No data received. Aborting update...");
+      Update.abort();
+      return false;
+    }
+
+    yield();
+  }
+  Serial.println("\n   ✅ Writing complete");
+
+  if (written != contentLength) {
+    Serial.printf("   ❌ Error: Write incomplete. Expected %d but got %d bytes\n", contentLength, written);
+    Update.abort();
+    return false;
+  }
+
+  if (!Update.end()) {
+    Serial.printf("   ❌ Error: Update end failed: %s\n", Update.errorString());
+    return false;
+  }
+
+  Serial.println("   ✅ Update successfully completed");
+  return true;
 }

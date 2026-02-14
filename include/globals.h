@@ -3,6 +3,8 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
 #include <ArduinoOTA.h>
 #include <Wire.h>
 #include <FastLED.h>
@@ -18,6 +20,25 @@
 #include "effects.h"
 
 // ============================================================================
+// ESP-NOW STRUCTURES
+// ============================================================================
+typedef struct {
+    char msgType[20];   // "LUMINA_DISCOVERY", "LUMINA_OFFER", "LUMINA_CMD"
+    uint8_t targetMac[6]; // [0,0,0,0,0,0] for broadcast
+    int effect;
+    uint32_t speed;
+    uint32_t color;
+    bool enabled;
+} LuminaMessage;
+
+enum OperatingMode {
+    MODE_MIRROR,
+    MODE_STANDALONE
+};
+
+extern OperatingMode currentMode;
+
+// ============================================================================
 // CRITICAL FIX 1: Thread synchronization primitives
 // ============================================================================
 extern portMUX_TYPE stripMux;
@@ -28,9 +49,10 @@ extern portMUX_TYPE stripMux;
 extern unsigned long lastSystemStatsReport;
 extern const unsigned long SYSTEM_STATS_INTERVAL;
 extern UBaseType_t ledTaskStack;
-extern UBaseType_t otaTaskStack;
+extern UBaseType_t discoveryTaskStack;
 
 extern TaskHandle_t ledTaskHandle;
+extern TaskHandle_t discoveryTaskHandle;
 extern TaskHandle_t otaTaskHandle;
 
 extern unsigned long lastLoopTime;
@@ -52,13 +74,21 @@ extern volatile bool updateEffect;
 extern volatile bool stripEnabled;
 
 // ============================================================================
+// ESP-NOW & DISCOVERY VARIABLES
+// ============================================================================
+extern uint8_t gatewayMAC[6];
+extern bool gatewayFound;
+extern unsigned long lastGatewayContact;
+extern const unsigned long GATEWAY_TIMEOUT;
+extern int currentWifiChannel;
+
+// ============================================================================
 // DEVICE CONFIGURATION FROM SPIFFS
 // ============================================================================
 extern String deviceID;
 extern String wifiSSID;
 extern String wifiPassword;
 extern int ledCount;
-extern String basePath;
 
 // ============================================================================
 // GITHUB OTA UPDATE CONFIGURATION
@@ -76,14 +106,20 @@ const char* getResetReason(int cpu);
 void printSystemStats();
 void initSPIFFS();
 bool loadConfig();
+bool shouldStartConfigPortal();
+void startConfigPortal();
 void connectToWiFi();
-void setupTime();
-void setupOTA();
-void updateLEDs();
+void setupEspNow();
+void discoveryTask(void *parameter);
+void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len);
+void OnDataSent(const uint8_t *mac, esp_now_send_status_t status);
+
 void checkForGitHubUpdate();
 String fetchLatestVersion();
 bool startGitHubOTAUpdate(WiFiClient* client, int contentLength);
 void downloadAndApplyFirmware();
+
+void updateLEDs();
 void ledTask(void *parameter);
 void otaUpdateTask(void *parameter);
 
