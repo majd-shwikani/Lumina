@@ -19,6 +19,36 @@ void setPixelColor(int i, uint32_t c) {
   if (i >= 0 && i < ledCount) leds[i] = c;
 }
 
+// Helper function for rainbow effect
+uint32_t Wheel(byte WheelPos) {
+  WheelPos = 255 - WheelPos;
+  if(WheelPos < 85) {
+    return stripColor(255 - WheelPos * 3, 0, WheelPos * 3);
+  }
+  if(WheelPos < 170) {
+    WheelPos -= 85;
+    return stripColor(0, WheelPos * 3, 255 - WheelPos * 3);
+  }
+  WheelPos -= 170;
+  return stripColor(WheelPos * 3, 255 - WheelPos * 3, 0);
+}
+
+// Color blending helper
+uint32_t colorBlend(uint32_t color1, uint32_t color2, uint8_t blend) {
+  uint8_t r1 = (color1 >> 16) & 0xFF;
+  uint8_t g1 = (color1 >> 8) & 0xFF;
+  uint8_t b1 = color1 & 0xFF;
+  
+  uint8_t r2 = (color2 >> 16) & 0xFF;
+  uint8_t g2 = (color2 >> 8) & 0xFF;
+  uint8_t b2 = color2 & 0xFF;
+  
+  uint8_t r = (r1 * (255 - blend) + r2 * blend) / 255;
+  uint8_t g = (g1 * (255 - blend) + g2 * blend) / 255;
+  uint8_t b = (b1 * (255 - blend) + b2 * blend) / 255;
+  
+  return stripColor(r, g, b);
+}
 
 // Effect 0: Rainbow cycle
 void effectRainbow() {
@@ -36,27 +66,12 @@ void effectMeteorShower() {
   static uint32_t meteorColors[3] = {0xFF5500, 0x00AAFF, 0xAA00FF};
   static int meteorSpeeds[3] = {3, 2, 4};
   
-  // Fade all pixels
   for(int i = 0; i < ledCount; i++) {
-    uint32_t c = getPixelColor(i);
-    if(c > 0) {
-      uint8_t r = (c >> 16) & 0xFF;
-      uint8_t g = (c >> 8) & 0xFF;
-      uint8_t b = c & 0xFF;
-      
-      r = r * 8 / 10;
-      g = g * 8 / 10;
-      b = b * 8 / 10;
-      
-      setPixelColor(i, r, g, b);
-    }
+    leds[i].fadeToBlackBy(40);
   }
   
-  // Update meteors
   for(int m = 0; m < 3; m++) {
     meteors[m] += meteorSpeeds[m];
-    
-    // Draw meteor with tail
     for(int i = 0; i < 15; i++) {
       int pos = meteors[m] - i;
       if(pos >= 0 && pos < ledCount) {
@@ -68,8 +83,6 @@ void effectMeteorShower() {
         setPixelColor(pos, r, g, b);
       }
     }
-    
-    // Reset meteor if it goes off screen
     if(meteors[m] > ledCount + 20) {
       meteors[m] = -random(20, 100);
       meteorColors[m] = Wheel(random(256));
@@ -83,28 +96,10 @@ void effectDigitalRain() {
   static uint8_t columnHeights[16];
   static uint32_t lastDrop = 0;
   
-  // Fade all pixels slightly
   for(int i = 0; i < ledCount; i++) {
-    uint32_t c = getPixelColor(i);
-    if(c > 0) {
-      uint8_t r = (c >> 16) & 0xFF;
-      uint8_t g = (c >> 8) & 0xFF;
-      uint8_t b = c & 0xFF;
-      
-      r = r * 95 / 100;
-      g = g * 95 / 100;
-      b = b * 95 / 100;
-      
-      setPixelColor(i, r, g, b);
-    } else {
-      // Add some random sparkles in the background
-      if(random(1000) < 2) {
-        setPixelColor(i, 0, 10, 0);
-      }
-    }
+    leds[i].fadeToBlackBy(10);
   }
   
-  // Create new drops
   if(millis() - lastDrop > 150) {
     lastDrop = millis();
     int col = random(16);
@@ -112,7 +107,6 @@ void effectDigitalRain() {
     columnHeights[col] = random(5, 12);
   }
   
-  // Update and draw columns
   for(int col = 0; col < 16; col++) {
     if(columns[col] > 0) {
       for(int row = 0; row < columnHeights[col]; row++) {
@@ -120,64 +114,44 @@ void effectDigitalRain() {
         if(pos < ledCount) {
           float intensity = 1.0 - (row * 0.15);
           uint8_t brightness = 255 * intensity;
-          // Head of the drop is white, tail is green
-          if(row == 0) {
-            setPixelColor(pos, brightness, brightness, brightness);
-          } else {
-            setPixelColor(pos, 0, brightness, 0);
-          }
+          if(row == 0) setPixelColor(pos, brightness, brightness, brightness);
+          else setPixelColor(pos, 0, brightness, 0);
         }
       }
       columns[col]++;
-      if(columns[col] > ledCount / 16 + columnHeights[col]) {
-        columns[col] = 0;
-      }
+      if(columns[col] > ledCount / 16 + columnHeights[col]) columns[col] = 0;
     }
   }
 }
 
 // Effect 3: Pulsing spheres
 void effectPulsingSpheres() {
-  static float spheres[3][3] = {{0.3, 0.2, 0.0}, {0.7, 0.5, 0.0}, {0.5, 0.8, 0.0}}; // x, phase, size
+  static float spheres[3][3] = {{0.3, 0.2, 0.0}, {0.7, 0.5, 0.0}, {0.5, 0.8, 0.0}};
   static uint8_t sphereHues[3] = {0, 85, 170};
   
-  // Clear with dark background
   fill_solid(leds, ledCount, stripColor(5, 5, 10));
   
-  // Update spheres
   for(int s = 0; s < 3; s++) {
-    spheres[s][1] += 0.02 + (s * 0.01); // Phase
-    spheres[s][2] = 0.1 + 0.15 * (sin(spheres[s][1]) + 1.0) / 2.0; // Pulsing size
-    sphereHues[s] += 1; // Slowly change color
+    spheres[s][1] += 0.02 + (s * 0.01);
+    spheres[s][2] = 0.1 + 0.15 * (sin(spheres[s][1]) + 1.0) / 2.0;
+    sphereHues[s] += 1;
   }
   
-  // Draw spheres
   for(int i = 0; i < ledCount; i++) {
     float pos = (float)i / ledCount;
-    
     for(int s = 0; s < 3; s++) {
       float dx = pos - spheres[s][0];
       float distance = abs(dx);
       if(distance < spheres[s][2]) {
         float intensity = 1.0 - (distance / spheres[s][2]);
-        intensity = intensity * intensity; // Quadratic falloff
-        
+        intensity = intensity * intensity;
         uint32_t sphereColor = Wheel(sphereHues[s]);
         uint8_t r = ((sphereColor >> 16) & 0xFF) * intensity;
         uint8_t g = ((sphereColor >> 8) & 0xFF) * intensity;
         uint8_t b = (sphereColor & 0xFF) * intensity;
-        
-        // Blend with existing color
-        uint32_t currentColor = getPixelColor(i);
-        uint8_t cr = (currentColor >> 16) & 0xFF;
-        uint8_t cg = (currentColor >> 8) & 0xFF;
-        uint8_t cb = currentColor & 0xFF;
-        
-        setPixelColor(i, 
-          cr + r > 255 ? 255 : cr + r, 
-          cg + g > 255 ? 255 : cg + g, 
-          cb + b > 255 ? 255 : cb + b
-        );
+        leds[i].r = qadd8(leds[i].r, r);
+        leds[i].g = qadd8(leds[i].g, g);
+        leds[i].b = qadd8(leds[i].b, b);
       }
     }
   }
@@ -192,29 +166,17 @@ void effectBinaryClock() {
   if(millis() - lastChange > 300) {
     lastChange = millis();
     binaryValue = counter++;
-    
-    // Clear strip
     for(int i = 0; i < ledCount; i++) {
-      // Create grid background
-      if((i / 16) % 2 == (i % 2)) {
-        setPixelColor(i, 2, 5, 2);
-      } else {
-        setPixelColor(i, 1, 3, 1);
-      }
+      if((i / 16) % 2 == (i % 2)) setPixelColor(i, 2, 5, 2);
+      else setPixelColor(i, 1, 3, 1);
     }
-    
-    // Display binary value as bars
     for(int bit = 0; bit < 8; bit++) {
       if(binaryValue & (1 << bit)) {
         int startPos = bit * (ledCount / 8);
         int barHeight = (bit + 1) * 2;
-        
         for(int j = 0; j < barHeight && j < 11; j++) {
           int pos = startPos + j * 16;
-          if(pos < ledCount) {
-            uint8_t intensity = 255 - (j * 20);
-            setPixelColor(pos, 0, intensity, 0);
-          }
+          if(pos < ledCount) setPixelColor(pos, 0, 255 - (j * 20), 0);
         }
       }
     }
@@ -225,31 +187,14 @@ void effectBinaryClock() {
 void effectVortex() {
   static float angle = 0;
   static float twist = 0;
-  
   for(int i = 0; i < ledCount; i++) {
     float pos = (float)i / ledCount;
-    
-    // Create vortex pattern
     float vortexAngle = angle + pos * 15.0 + twist;
     float radius = pos * 8.0;
-    
-    float wave1 = sin(vortexAngle);
-    float wave2 = cos(vortexAngle + radius);
-    
-    float pattern = (wave1 + wave2 + 2.0) / 4.0; // Normalize to 0-1
-    
-    // Color based on position and angle
-    int hueValue = (int)(i * 3 + angle * 50) % 256;
-    uint8_t hue = (uint8_t)hueValue;
-    uint32_t color = Wheel(hue);
-    
-    uint8_t r = ((color >> 16) & 0xFF) * pattern;
-    uint8_t g = ((color >> 8) & 0xFF) * pattern;
-    uint8_t b = (color & 0xFF) * pattern;
-    
-    setPixelColor(i, r, g, b);
+    float pattern = (sin(vortexAngle) + cos(vortexAngle + radius) + 2.0) / 4.0;
+    uint32_t color = Wheel((int)(i * 3 + angle * 50) % 256);
+    setPixelColor(i, ((color >> 16) & 0xFF) * pattern, ((color >> 8) & 0xFF) * pattern, (color & 0xFF) * pattern);
   }
-  
   angle += 0.05;
   twist += 0.02;
 }
@@ -258,306 +203,95 @@ void effectVortex() {
 void effectDNAHelix() {
   static float phase = 0;
   static float rotation = 0;
-  
   for(int i = 0; i < ledCount; i++) {
     float pos = (float)i / ledCount;
-    
-    // Create double helix
     float helix1 = sin(pos * 20.0 + phase);
-    float helix2 = sin(pos * 20.0 + phase + 3.14159); // 180 degrees out of phase
+    float helix2 = sin(pos * 20.0 + phase + 3.14159);
     float backbone = sin(pos * 5.0 + rotation) * 0.3 + 0.7;
-    
-    // Determine which part of the helix to light
-    if(helix1 > 0.7) {
-      // First strand - red
-      setPixelColor(i, 255 * backbone, 50 * backbone, 50 * backbone);
-    } else if(helix2 > 0.7) {
-      // Second strand - blue
-      setPixelColor(i, 50 * backbone, 50 * backbone, 255 * backbone);
-    } else if(abs(helix1) < 0.2) {
-      // Connection - yellow
-      setPixelColor(i, 200 * backbone, 200 * backbone, 0);
-    } else {
-      // Background - very dim
-      setPixelColor(i, 1, 2, 3);
-    }
+    if(helix1 > 0.7) setPixelColor(i, 255 * backbone, 50 * backbone, 50 * backbone);
+    else if(helix2 > 0.7) setPixelColor(i, 50 * backbone, 50 * backbone, 255 * backbone);
+    else if(abs(helix1) < 0.2) setPixelColor(i, 200 * backbone, 200 * backbone, 0);
+    else setPixelColor(i, 1, 2, 3);
   }
-  
   phase += 0.1;
   rotation += 0.02;
 }
 
-// Effect 7: Audio visualizer
-void effectAudioVisualizer() {
-  static uint8_t bands[8] = {0};
-  static uint8_t peaks[8] = {0};
-  static uint32_t lastUpdate = 0;
-  static uint32_t peakTimer[8] = {0};
-  
-  // Simulate audio bands with more natural movement
-  if(millis() - lastUpdate > 80) {
-    lastUpdate = millis();
-    for(int i = 0; i < 8; i++) {
-      // Random walk for more natural movement
-      int change = random(-20, 25);
-      bands[i] = constrain(bands[i] + change, 10, 255);
-      
-      // Occasionally create peaks
-      if(random(100) < 5 && bands[i] > 150) {
-        peaks[i] = 255;
-        peakTimer[i] = millis();
-      }
-    }
-  }
-  
-  // Clear strip with gradient background
-  for(int i = 0; i < ledCount; i++) {
-    uint8_t bgBrightness = 5 + (i % 16);
-    setPixelColor(i, bgBrightness / 4, bgBrightness / 8, bgBrightness / 2);
-  }
-  
-  // Draw audio bands
-  for(int band = 0; band < 8; band++) {
-    int bandWidth = ledCount / 16;
-    int startPos = band * (ledCount / 8);
-    int height = bands[band] * 10 / 255;
-    
-    for(int level = 0; level < height; level++) {
-      for(int w = 0; w < bandWidth; w++) {
-        int pos = startPos + w + level * 16;
-        if(pos < ledCount) {
-          uint8_t intensity = 255 - (level * 20);
-          uint8_t hue = (band * 32) & 255;
-          uint32_t color = Wheel(hue);
-          
-          // Peak indicator
-          if(peaks[band] > 0 && level == height - 1) {
-            setPixelColor(pos, 255, 255, 255);
-          } else {
-            setPixelColor(pos, color);
-          }
-        }
-      }
-    }
-    
-    // Decay peaks
-    if(peaks[band] > 0 && millis() - peakTimer[band] > 100) {
-      peaks[band] = peaks[band] * 9 / 10;
-      if(peaks[band] < 10) peaks[band] = 0;
-    }
-  }
-}
-
 // Effect 8: Lava lamp
 void effectLavaLamp() {
-  static float blobs[4][4] = {
-    {0.2, 0.3, 0.1, 0.0}, // x, y, size, phase
-    {0.7, 0.2, 0.15, 1.57},
-    {0.3, 0.7, 0.12, 3.14},
-    {0.8, 0.6, 0.18, 4.71}
-  };
+  static float blobs[4][4] = {{0.2, 0.3, 0.1, 0.0}, {0.7, 0.2, 0.15, 1.57}, {0.3, 0.7, 0.12, 3.14}, {0.8, 0.6, 0.18, 4.71}};
   static float velocities[4][2] = {{0.008, 0.012}, {-0.01, 0.008}, {0.007, -0.009}, {-0.006, -0.011}};
   static uint8_t blobHues[4] = {0, 30, 60, 90};
-  
-  // Clear with dark purple background
   fill_solid(leds, ledCount, stripColor(15, 0, 25));
-  
-  // Update blob positions and properties
   for(int b = 0; b < 4; b++) {
     blobs[b][0] += velocities[b][0];
     blobs[b][1] += velocities[b][1];
     blobs[b][2] = 0.1 + 0.1 * (sin(blobs[b][3]) + 1.0) / 2.0;
     blobs[b][3] += 0.03;
     blobHues[b] += 1;
-    
-    // Bounce off edges with slight randomness
-    if(blobs[b][0] < 0.1 || blobs[b][0] > 0.9) {
-      velocities[b][0] *= -1.0;
-      blobs[b][0] = (blobs[b][0] < 0.1) ? 0.1 : 0.9;
-    }
-    if(blobs[b][1] < 0.1 || blobs[b][1] > 0.9) {
-      velocities[b][1] *= -1.0;
-      blobs[b][1] = (blobs[b][1] < 0.1) ? 0.1 : 0.9;
-    }
+    if(blobs[b][0] < 0.1 || blobs[b][0] > 0.9) velocities[b][0] *= -1.0;
+    if(blobs[b][1] < 0.1 || blobs[b][1] > 0.9) velocities[b][1] *= -1.0;
   }
-  
-  // Draw blobs
   for(int i = 0; i < ledCount; i++) {
     float x = (float)(i % 16) / 16.0;
     float y = (float)(i / 16) / 11.0;
-    
     float totalBrightness = 0;
     uint32_t blendedColor = 0;
-    
     for(int b = 0; b < 4; b++) {
-      float dx = x - blobs[b][0];
-      float dy = y - blobs[b][1];
+      float dx = x - blobs[b][0], dy = y - blobs[b][1];
       float distance = sqrt(dx * dx + dy * dy);
-      
       if(distance < blobs[b][2]) {
-        float brightness = 1.0 - (distance / blobs[b][2]);
-        brightness = brightness * brightness * brightness; // Cubic falloff
-        
-        uint32_t blobColor = Wheel(blobHues[b]);
+        float brightness = pow(1.0 - (distance / blobs[b][2]), 3);
         totalBrightness += brightness;
-        
-        // Blend colors
-        if(blendedColor == 0) {
-          blendedColor = blobColor;
-        } else {
-          blendedColor = colorBlend(blendedColor, blobColor, (uint8_t)(brightness * 128));
-        }
+        if(blendedColor == 0) blendedColor = Wheel(blobHues[b]);
+        else blendedColor = colorBlend(blendedColor, Wheel(blobHues[b]), (uint8_t)(brightness * 128));
       }
     }
-    
     if(totalBrightness > 0) {
       if(totalBrightness > 1.0) totalBrightness = 1.0;
-      uint8_t r = ((blendedColor >> 16) & 0xFF) * totalBrightness;
-      uint8_t g = ((blendedColor >> 8) & 0xFF) * totalBrightness;
-      uint8_t b = (blendedColor & 0xFF) * totalBrightness;
-      setPixelColor(i, r, g, b);
+      setPixelColor(i, ((blendedColor >> 16) & 0xFF) * totalBrightness, ((blendedColor >> 8) & 0xFF) * totalBrightness, (blendedColor & 0xFF) * totalBrightness);
     }
   }
-}
-
-// Effect 9: Radar sweep
-void effectRadarSweep() {
-  static float angle = 0;
-  static uint8_t sweepHistory[180] = {0};
-  static uint32_t lastBlip = 0;
-  static uint8_t blips[5] = {0};
-  static uint8_t blipSizes[5] = {0};
-  static uint8_t blipAges[5] = {0};
-  
-  // Fade sweep history
-  for(int i = 0; i < ledCount; i++) {
-    if(sweepHistory[i] > 0) {
-      sweepHistory[i] = sweepHistory[i] * 9 / 10;
-      if(sweepHistory[i] < 5) sweepHistory[i] = 0;
-      
-      uint8_t green = sweepHistory[i];
-      setPixelColor(i, 0, green, 0);
-    } else {
-      // Grid background
-      if((i / 16) % 2 == 0) {
-        setPixelColor(i, 0, 1, 0);
-      } else {
-        setPixelColor(i, 0, 0, 0);
-      }
-    }
-  }
-  
-  // Draw sweep line
-  int sweepPos = (angle / (2 * 3.14159)) * ledCount;
-  if(sweepPos < ledCount) {
-    sweepHistory[sweepPos] = 255;
-    setPixelColor(sweepPos, 0, 255, 0);
-    
-    // Draw sweep line with falloff
-    for(int i = 1; i < 5; i++) {
-      int pos = sweepPos - i;
-      if(pos >= 0 && pos < ledCount) {
-        uint8_t intensity = 200 - (i * 40);
-        if(intensity > sweepHistory[pos]) {
-          sweepHistory[pos] = intensity;
-          setPixelColor(pos, 0, intensity, 0);
-        }
-      }
-    }
-  }
-  
-  // Create new blips
-  if(millis() - lastBlip > 500 && random(100) < 20) {
-    lastBlip = millis();
-    for(int i = 0; i < 5; i++) {
-      if(blips[i] == 0) {
-        blips[i] = random(ledCount);
-        blipSizes[i] = random(2, 6);
-        blipAges[i] = 255;
-        break;
-      }
-    }
-  }
-  
-  // Update and draw blips
-  for(int i = 0; i < 5; i++) {
-    if(blips[i] > 0) {
-      for(int j = 0; j < blipSizes[i]; j++) {
-        int pos = blips[i] + j;
-        if(pos < ledCount) {
-          uint8_t intensity = blipAges[i];
-          setPixelColor(pos, intensity, intensity, 0);
-        }
-      }
-      blipAges[i] = blipAges[i] * 19 / 20;
-      if(blipAges[i] < 10) {
-        blips[i] = 0;
-      }
-    }
-  }
-  
-  angle += 0.08;
-  if(angle >= 2 * 3.14159) angle = 0;
 }
 
 // Effect 10: Quantum particles
 void effectQuantumParticles() {
-  static float particles[10][3] = {0}; // x, velocity, phase
+  static float particles[10][3] = {0};
   static uint8_t particleColors[10] = {0};
   static uint32_t lastSpawn = 0;
-  
-  // Clear with space background
   for(int i = 0; i < ledCount; i++) {
-    if(random(1000) < 2) {
-      setPixelColor(i, 50, 50, 100); // Stars
-    } else {
-      setPixelColor(i, 5, 5, 15); // Space
-    }
+    if(random(1000) < 2) setPixelColor(i, 50, 50, 100);
+    else setPixelColor(i, 5, 5, 15);
   }
-  
-  // Spawn new particles
   if(millis() - lastSpawn > 200 && random(100) < 30) {
     lastSpawn = millis();
     for(int i = 0; i < 10; i++) {
       if(particles[i][0] == 0) {
-        particles[i][0] = 0; // Start from left
-        particles[i][1] = random(10, 30) / 100.0; // Velocity
-        particles[i][2] = random(100) / 100.0 * 2 * 3.14159; // Phase
+        particles[i][0] = 0.01;
+        particles[i][1] = random(10, 30) / 100.0;
+        particles[i][2] = random(100) / 100.0 * 2 * 3.14159;
         particleColors[i] = random(256);
         break;
       }
     }
   }
-  
-  // Update and draw particles
   for(int i = 0; i < 10; i++) {
     if(particles[i][0] > 0) {
       particles[i][0] += particles[i][1];
       particles[i][2] += 0.2;
-      
       int pos = particles[i][0] * ledCount;
       if(pos < ledCount) {
-        // Quantum uncertainty - particle appears at multiple positions
         for(int j = -2; j <= 2; j++) {
-          int quantumPos = pos + j;
-          if(quantumPos >= 0 && quantumPos < ledCount) {
-            float probability = 1.0 / (1.0 + abs(j)); // Higher probability near center
-            uint8_t intensity = (uint8_t)(255 * probability * (sin(particles[i][2]) + 1.0) / 2.0);
-            
+          int qPos = pos + j;
+          if(qPos >= 0 && qPos < ledCount) {
+            float prob = 1.0 / (1.0 + abs(j));
+            uint8_t intensity = (uint8_t)(255 * prob * (sin(particles[i][2]) + 1.0) / 2.0);
             uint32_t color = Wheel(particleColors[i]);
-            uint8_t r = ((color >> 16) & 0xFF) * intensity / 255;
-            uint8_t g = ((color >> 8) & 0xFF) * intensity / 255;
-            uint8_t b = (color & 0xFF) * intensity / 255;
-            
-            setPixelColor(quantumPos, r, g, b);
+            setPixelColor(qPos, ((color >> 16) & 0xFF) * intensity / 255, ((color >> 8) & 0xFF) * intensity / 255, (color & 0xFF) * intensity / 255);
           }
         }
       }
-      
-      // Remove particles that go off screen
-      if(particles[i][0] > 1.2) {
-        particles[i][0] = 0;
-      }
+      if(particles[i][0] > 1.2) particles[i][0] = 0;
     }
   }
 }
@@ -567,62 +301,34 @@ void effectNeuralNetwork() {
   static uint8_t neurons[20] = {0};
   static uint8_t connections[20][20] = {0};
   static uint32_t lastFire = 0;
-  static uint8_t activation = 0;
-  
-  // Clear with dark background
   fill_solid(leds, ledCount, stripColor(1, 1, 3));
-  
-  // Randomly activate neurons
   if(millis() - lastFire > 50) {
     lastFire = millis();
-    
-    // Fire random neuron
     if(random(100) < 40) {
-      int neuron = random(20);
-      neurons[neuron] = 255;
-      
-      // Create connections to other neurons
+      int n = random(20);
+      neurons[n] = 255;
       for(int i = 0; i < 5; i++) {
-        int target = random(20);
-        if(target != neuron) {
-          connections[neuron][target] = 200;
-        }
+        int t = random(20);
+        if(t != n) connections[n][t] = 200;
       }
     }
-    
-    activation = (activation + 1) % 256;
   }
-  
-  // Draw neurons and connections
   for(int i = 0; i < 20; i++) {
-    int neuronPos = i * (ledCount / 20);
-    
-    // Draw neuron
+    int nPos = i * (ledCount / 20);
     if(neurons[i] > 0) {
-      uint8_t intensity = neurons[i];
-      setPixelColor(neuronPos, intensity, intensity / 2, intensity);
-      neurons[i] = neurons[i] * 8 / 10; // Decay
+      setPixelColor(nPos, neurons[i], neurons[i] / 2, neurons[i]);
+      neurons[i] = neurons[i] * 8 / 10;
       if(neurons[i] < 5) neurons[i] = 0;
     }
-    
-    // Draw connections
     for(int j = 0; j < 20; j++) {
       if(connections[i][j] > 0) {
-        int startPos = i * (ledCount / 20);
-        int endPos = j * (ledCount / 20);
-        
-        // Draw connection line
-        int steps = abs(endPos - startPos);
+        int sPos = i * (ledCount / 20), ePos = j * (ledCount / 20);
+        int steps = abs(ePos - sPos);
         for(int k = 0; k <= steps; k++) {
-          int pos = startPos + (endPos - startPos) * k / steps;
-          if(pos < ledCount) {
-            uint8_t current = getPixelColor(pos) & 0xFF;
-            uint8_t newBlue = (current > connections[i][j] / 3) ? current : connections[i][j] / 3;
-            setPixelColor(pos, 0, 0, newBlue);
-          }
+          int pos = sPos + (ePos - sPos) * k / steps;
+          if(pos < ledCount) leds[pos].b = qadd8(leds[pos].b, connections[i][j] / 3);
         }
-        
-        connections[i][j] = connections[i][j] * 9 / 10; // Decay connection
+        connections[i][j] = connections[i][j] * 9 / 10;
         if(connections[i][j] < 5) connections[i][j] = 0;
       }
     }
@@ -632,1246 +338,165 @@ void effectNeuralNetwork() {
 // Effect 12: Galaxy spin
 void effectGalaxySpin() {
   static float angle = 0;
-  static float spiral = 0;
-  
   for(int i = 0; i < ledCount; i++) {
     float pos = (float)i / ledCount;
-    
-    // Create spiral galaxy arms
     float arm1 = sin(pos * 15.0 + angle) * 0.5 + 0.5;
-    float arm2 = sin(pos * 15.0 + angle + 2.094) * 0.5 + 0.5; // 120 degrees
-    float arm3 = sin(pos * 15.0 + angle + 4.189) * 0.5 + 0.5; // 240 degrees
-    
-    float brightness = (arm1 > arm2) ? arm1 : arm2;
-    brightness = (brightness > arm3) ? brightness : arm3;
-    brightness = brightness * brightness; // Enhance contrast
-    
-    // Core of the galaxy
+    float arm2 = sin(pos * 15.0 + angle + 2.094) * 0.5 + 0.5;
+    float arm3 = sin(pos * 15.0 + angle + 4.189) * 0.5 + 0.5;
+    float br = max(max(arm1, arm2), arm3);
+    br = br * br;
     float core = 1.0 - abs(pos - 0.5) * 2.0;
-    if(core > 0) {
-      brightness = (brightness > core * core) ? brightness : core * core;
-    }
-    
-    // Color based on position (blue to purple gradient)
-    uint8_t hue = 170 + (pos * 50); // Blue to purple
-    uint32_t color = Wheel(hue);
-    
-    uint8_t r = ((color >> 16) & 0xFF) * brightness;
-    uint8_t g = ((color >> 8) & 0xFF) * brightness;
-    uint8_t b = (color & 0xFF) * brightness;
-    
-    // Add stars
-    if(random(1000) < 3 && brightness < 0.3) {
-      setPixelColor(i, 255, 255, 255);
-    } else {
-      setPixelColor(i, r, g, b);
-    }
+    if(core > 0) br = max(br, core * core);
+    uint32_t color = Wheel(170 + (pos * 50));
+    if(random(1000) < 3 && br < 0.3) setPixelColor(i, 255, 255, 255);
+    else setPixelColor(i, ((color >> 16) & 0xFF) * br, ((color >> 8) & 0xFF) * br, (color & 0xFF) * br);
   }
-  
   angle += 0.03;
-  spiral += 0.01;
 }
 
 // Effect 13: Crystal growth
 void effectCrystalGrowth() {
-  static uint8_t crystals[180] = {0};
-  static uint8_t crystalColors[180] = {0};
+  static uint8_t crystals[200] = {0};
+  static uint8_t crystalColors[200] = {0};
   static uint32_t lastGrowth = 0;
-  static uint8_t activeSeeds = 0;
-  
-  // Initialize seeds
+  static uint16_t activeSeeds = 0;
   if(activeSeeds < 5 && random(100) < 10) {
-    int seedPos = random(ledCount);
-    if(crystals[seedPos] == 0) {
-      crystals[seedPos] = 1;
-      crystalColors[seedPos] = random(256);
-      activeSeeds++;
-    }
+    int p = random(ledCount);
+    if(crystals[p] == 0) { crystals[p] = 1; crystalColors[p] = random(256); activeSeeds++; }
   }
-  
-  // Grow crystals
   if(millis() - lastGrowth > 100) {
     lastGrowth = millis();
-    
     for(int i = 0; i < ledCount; i++) {
       if(crystals[i] > 0 && crystals[i] < 255) {
-        // Grow to adjacent pixels
         for(int dir = -1; dir <= 1; dir += 2) {
-          int neighbor = i + dir;
-          if(neighbor >= 0 && neighbor < ledCount && random(100) < 30) {
-            if(crystals[neighbor] == 0) {
-              crystals[neighbor] = 1;
-              crystalColors[neighbor] = crystalColors[i]; // Same color as parent
-              activeSeeds++;
-            }
+          int n = i + dir;
+          if(n >= 0 && n < ledCount && random(100) < 30 && crystals[n] == 0) {
+            crystals[n] = 1; crystalColors[n] = crystalColors[i]; activeSeeds++;
           }
         }
-        crystals[i] = (crystals[i] + 5 > 255) ? 255 : crystals[i] + 5; // Brighten existing crystal
+        crystals[i] = qadd8(crystals[i], 5);
       }
     }
   }
-  
-  // Draw crystals
   for(int i = 0; i < ledCount; i++) {
     if(crystals[i] > 0) {
-      uint32_t color = Wheel(crystalColors[i]);
-      uint8_t r = ((color >> 16) & 0xFF) * crystals[i] / 255;
-      uint8_t g = ((color >> 8) & 0xFF) * crystals[i] / 255;
-      uint8_t b = (color & 0xFF) * crystals[i] / 255;
-      setPixelColor(i, r, g, b);
-    } else {
-      setPixelColor(i, 0, 0, 0);
-    }
+      uint32_t c = Wheel(crystalColors[i]);
+      setPixelColor(i, ((c >> 16) & 0xFF) * crystals[i] / 255, ((c >> 8) & 0xFF) * crystals[i] / 255, (c & 0xFF) * crystals[i] / 255);
+    } else setPixelColor(i, 0);
   }
-  
-  // Occasionally reset when fully grown
-  if(activeSeeds >= ledCount * 0.8 && random(100) < 5) {
-    memset(crystals, 0, sizeof(crystals));
-    activeSeeds = 0;
-  }
+  if(activeSeeds >= ledCount * 0.8 && random(100) < 5) { memset(crystals, 0, 200); activeSeeds = 0; }
 }
 
 // Effect 14: Lightning storm
 void effectLightningStorm() {
-  static uint8_t lightning[180] = {0};
+  static uint8_t lightning[200] = {0};
   static uint32_t lastStrike = 0;
-  static uint8_t strikeActive = 0;
-  static int strikePos = 0;
-  static uint8_t flash = 0;
-  
-  // Background - storm clouds
-  for(int i = 0; i < ledCount; i++) {
-    uint8_t cloud = 10 + random(10);
-    setPixelColor(i, cloud, cloud, cloud + 10);
-  }
-  
-  // Lightning strike
+  static uint8_t strikeActive = 0, flash = 0;
+  for(int i = 0; i < ledCount; i++) setPixelColor(i, 10 + random(10), 10 + random(10), 20 + random(10));
   if(!strikeActive && millis() - lastStrike > 1000 && random(100) < 10) {
-    strikeActive = 1;
-    strikePos = random(ledCount);
-    flash = 255;
-    lastStrike = millis();
-    
-    // Create lightning path
-    memset(lightning, 0, sizeof(lightning));
-    int currentPos = strikePos;
+    strikeActive = 1; flash = 255; lastStrike = millis();
+    memset(lightning, 0, 200);
+    int p = random(ledCount);
     for(int i = 0; i < 20; i++) {
-      if(currentPos >= 0 && currentPos < ledCount) {
-        lightning[currentPos] = 255;
-        // Lightning can branch
-        currentPos += random(-2, 3);
-        if(random(100) < 20) { // Branch
-          int branchPos = currentPos + random(-5, 6);
-          if(branchPos >= 0 && branchPos < ledCount) {
-            lightning[branchPos] = 200;
-          }
-        }
-      }
+      if(p >= 0 && p < ledCount) { lightning[p] = 255; p += random(-2, 3); }
     }
   }
-  
-  // Draw lightning
   if(strikeActive) {
-    for(int i = 0; i < ledCount; i++) {
-      if(lightning[i] > 0) {
-        setPixelColor(i, flash, flash, 255);
-        lightning[i] = lightning[i] * 7 / 8; // Fade lightning
-      }
-    }
+    for(int i = 0; i < ledCount; i++) if(lightning[i] > 0) { setPixelColor(i, flash, flash, 255); lightning[i] = lightning[i] * 7 / 8; }
     flash = flash * 8 / 10;
-    if(flash < 10) {
-      strikeActive = 0;
-    }
-  }
-  
-  // Rain drops
-  if(random(100) < 30) {
-    int dropPos = random(ledCount);
-    setPixelColor(dropPos, 100, 100, 255);
+    if(flash < 10) strikeActive = 0;
   }
 }
 
 // Effect 15: Ocean depth
 void effectOceanDepth() {
   static float wavePhase = 0;
-  static float creaturePhase = 0;
-  static uint8_t creatures[5] = {0};
-  static uint8_t creaturePos[5] = {0};
-  static uint8_t creatureTypes[5] = {0};
-  
   for(int i = 0; i < ledCount; i++) {
     float depth = (float)i / ledCount;
-    
-    // Ocean color gradient (deep blue to green)
-    uint8_t r = 0;
-    uint8_t g = (uint8_t)(50 * (1.0 - depth) + 100 * depth);
-    uint8_t b = (uint8_t)(100 + 155 * depth);
-    
-    // Wave patterns
-    float wave1 = sin(i * 0.1 + wavePhase) * 0.3 + 0.7;
-    float wave2 = sin(i * 0.05 + wavePhase * 0.7) * 0.2 + 0.8;
-    
-    r = (uint8_t)(r * wave1);
-    g = (uint8_t)(g * wave2);
-    b = (uint8_t)(b * (wave1 + wave2) / 2.0);
-    
-    // Sunlight rays from top
-    if(i < 30) {
-      float ray = (30 - i) / 30.0;
-      r = (uint8_t)(r + 50 * ray);
-      g = (uint8_t)(g + 50 * ray);
-    }
-    
-    setPixelColor(i, r, g, b);
+    float w1 = sin(i * 0.1 + wavePhase) * 0.3 + 0.7;
+    float w2 = sin(i * 0.05 + wavePhase * 0.7) * 0.2 + 0.8;
+    uint8_t g = (uint8_t)((50 * (1.0 - depth) + 100 * depth) * w2);
+    uint8_t b = (uint8_t)((100 + 155 * depth) * (w1 + w2) / 2.0);
+    setPixelColor(i, 0, g, b);
   }
-  
-  // Marine creatures
-  creaturePhase += 0.02;
-  for(int c = 0; c < 5; c++) {
-    if(creatures[c] == 0 && random(100) < 5) {
-      creatures[c] = 1;
-      creaturePos[c] = random(20, ledCount);
-      creatureTypes[c] = random(3);
-    }
-    
-    if(creatures[c] > 0) {
-      // Move creature
-      creaturePos[c] -= 1;
-      
-      if(creaturePos[c] < 0) {
-        creatures[c] = 0;
-      } else {
-        // Draw creature based on type
-        uint32_t color;
-        switch(creatureTypes[c]) {
-          case 0: color = stripColor(255, 50, 50); break; // Red jellyfish
-          case 1: color = stripColor(255, 255, 100); break; // Yellow fish
-          case 2: color = stripColor(100, 255, 255); break; // Cyan creature
-        }
-        
-        // Pulsing effect
-        uint8_t pulse = (uint8_t)((sin(creaturePhase * 3 + c) + 1.0) * 127.5);
-        uint32_t pulsedColor = colorBlend(0, color, pulse);
-        
-        setPixelColor(creaturePos[c], pulsedColor);
-        
-        // Trail
-        for(int t = 1; t <= 3; t++) {
-          int trailPos = creaturePos[c] + t;
-          if(trailPos < ledCount) {
-            uint8_t trailIntensity = 100 - (t * 30);
-            setPixelColor(trailPos, 
-              ((pulsedColor >> 16) & 0xFF) * trailIntensity / 255,
-              ((pulsedColor >> 8) & 0xFF) * trailIntensity / 255,
-              (pulsedColor & 0xFF) * trailIntensity / 255
-            );
-          }
-        }
-      }
-    }
-  }
-  
   wavePhase += 0.05;
 }
 
 // Effect 16: Northern lights
 void effectNorthernLights() {
-  static float phase1 = 0;
-  static float phase2 = 0;
-  static float phase3 = 0;
-  
+  static float p1 = 0, p2 = 0, p3 = 0;
   for(int i = 0; i < ledCount; i++) {
     float pos = (float)i / ledCount;
-    
-    // Multiple layers of aurora
-    float aurora1 = sin(pos * 8.0 + phase1) * 0.5 + 0.5;
-    float aurora2 = sin(pos * 12.0 + phase2) * 0.3 + 0.7;
-    float aurora3 = sin(pos * 6.0 + phase3) * 0.4 + 0.6;
-    
-    // Combine layers
-    float brightness = (aurora1 + aurora2 + aurora3) / 3.0;
-    brightness = brightness * brightness; // Enhance contrast
-    
-    // Green-purple aurora colors
-    uint8_t r = (uint8_t)(50 * brightness + 100 * aurora3);
-    uint8_t g = (uint8_t)(200 * brightness + 50 * aurora1);
-    uint8_t b = (uint8_t)(150 * brightness + 100 * aurora2);
-    
-    // Stars in the background
-    if(random(1000) < 2 && brightness < 0.3) {
-      r = 255; g = 255; b = 255;
-    }
-    
-    setPixelColor(i, r, g, b);
+    float a1 = sin(pos * 8.0 + p1) * 0.5 + 0.5;
+    float a2 = sin(pos * 12.0 + p2) * 0.3 + 0.7;
+    float a3 = sin(pos * 6.0 + p3) * 0.4 + 0.6;
+    float br = pow((a1 + a2 + a3) / 3.0, 2);
+    setPixelColor(i, (uint8_t)(50 * br + 100 * a3), (uint8_t)(200 * br + 50 * a1), (uint8_t)(150 * br + 100 * a2));
   }
-  
-  phase1 += 0.02;
-  phase2 += 0.015;
-  phase3 += 0.025;
+  p1 += 0.02; p2 += 0.015; p3 += 0.025;
 }
 
 // Effect 17: Time tunnel
 void effectTimeTunnel() {
-  static float tunnelDepth = 0;
-  static float rotation = 0;
-  
+  static float depth = 0, rot = 0;
   for(int i = 0; i < ledCount; i++) {
     float pos = (float)i / ledCount;
-    
-    // Create tunnel effect with rotating pattern
-    float angle = rotation + pos * 20.0;
-    float radius = 0.5 + 0.3 * sin(pos * 10.0 + tunnelDepth);
-    
-    float tunnel = sin(angle) * cos(angle * 2.0) * radius;
-    tunnel = (tunnel + 1.0) / 2.0; // Normalize to 0-1
-    
-    // Color shift through time
-    uint8_t hue = (uint8_t)(tunnelDepth * 50 + pos * 100) % 256;
-    uint32_t color = Wheel(hue);
-    
-    uint8_t r = ((color >> 16) & 0xFF) * tunnel;
-    uint8_t g = ((color >> 8) & 0xFF) * tunnel;
-    uint8_t b = (color & 0xFF) * tunnel;
-    
-    // Time particles flowing through tunnel
-    if(random(1000) < 10) {
-      float particle = sin(pos * 50.0 + tunnelDepth * 10.0);
-      if(particle > 0.8) {
-        r = 255; g = 255; b = 255;
-      }
-    }
-    
-    setPixelColor(i, r, g, b);
+    float val = (sin(rot + pos * 20.0) * cos(rot + pos * 20.0 * 2.0) * (0.5 + 0.3 * sin(pos * 10.0 + depth)) + 1.0) / 2.0;
+    uint32_t c = Wheel((uint8_t)(depth * 50 + pos * 100) % 256);
+    setPixelColor(i, ((c >> 16) & 0xFF) * val, ((c >> 8) & 0xFF) * val, (c & 0xFF) * val);
   }
-  
-  tunnelDepth += 0.05;
-  rotation += 0.03;
+  depth += 0.05; rot += 0.03;
 }
 
 // Effect 18: Cyber city
 void effectCyberCity() {
-  static uint8_t buildings[16] = {0};
-  static uint8_t buildingLights[16][10] = {0};
-  static uint32_t lastUpdate = 0;
-  static uint8_t scanLine = 0;
-  
-  // Initialize random building heights
-  if(lastUpdate == 0) {
-    for(int i = 0; i < 16; i++) {
-      buildings[i] = random(5, 12);
-      for(int j = 0; j < 10; j++) {
-        buildingLights[i][j] = random(100) < 30 ? random(50, 255) : 0;
-      }
-    }
-  }
-  
-  // Update building lights occasionally
-  if(millis() - lastUpdate > 200) {
-    lastUpdate = millis();
-    
-    for(int i = 0; i < 16; i++) {
-      for(int j = 0; j < 10; j++) {
-        if(random(100) < 10) { // 10% chance to change a light
-          buildingLights[i][j] = random(100) < 40 ? random(100, 255) : 0;
-        }
-      }
-    }
-    
-    scanLine = (scanLine + 1) % ledCount;
-  }
-  
-  // Draw cyber city
+  static uint8_t scan = 0;
   FastLED.clear();
-  
-  // Draw buildings
   for(int col = 0; col < 16; col++) {
-    int buildingHeight = buildings[col];
-    
-    for(int row = 0; row < buildingHeight; row++) {
+    for(int row = 0; row < 8; row++) {
       int pos = col + row * 16;
       if(pos < ledCount) {
-        uint8_t intensity = buildingLights[col][row % 10];
-        if(intensity > 0) {
-          // Neon colors: pink, cyan, blue, purple
-          uint32_t colors[4] = {0xFF00FF, 0x00FFFF, 0x0088FF, 0x8800FF};
-          uint32_t color = colors[col % 4];
-          setPixelColor(pos, 
-            ((color >> 16) & 0xFF) * intensity / 255,
-            ((color >> 8) & 0xFF) * intensity / 255,
-            (color & 0xFF) * intensity / 255
-          );
-        } else {
-          // Building structure
-          setPixelColor(pos, 20, 20, 30);
-        }
+        if(random(100) < 20) setPixelColor(pos, col % 2 ? 0xFF : 0, col % 3 ? 0xFF : 0, 0xFF);
+        else setPixelColor(pos, 5, 5, 10);
       }
     }
   }
-  
-  // Scanning laser line
-  for(int i = 0; i < 3; i++) {
-    int pos = scanLine + i;
-    if(pos < ledCount) {
-      setPixelColor(pos, 0, 255, 0);
-    }
-  }
+  scan = (scan + 1) % ledCount;
+  if(scan < ledCount) setPixelColor(scan, 0, 255, 0);
 }
 
 // Effect 19: Solar flare
 void effectSolarFlare() {
-  static float flareIntensity = 0;
-  static float flarePhase = 0;
-  static uint32_t lastFlare = 0;
-  static uint8_t activeFlares = 0;
-  static float flarePositions[3] = {0.2, 0.5, 0.8};
-  static float flareSizes[3] = {0, 0, 0};
-  
-  // Background - sun surface
+  static float phase = 0;
   for(int i = 0; i < ledCount; i++) {
-    float pos = (float)i / ledCount;
-    
-    // Sun surface with turbulence
-    float turbulence = sin(pos * 20.0 + flarePhase) * 0.3 + 0.7;
-    turbulence += sin(pos * 35.0 + flarePhase * 1.3) * 0.2;
-    
-    uint8_t r = (uint8_t)(255 * turbulence);
-    uint8_t g = (uint8_t)(100 * turbulence);
-    uint8_t b = (uint8_t)(50 * turbulence);
-    
-    setPixelColor(i, r, g, b);
+    float turb = sin((float)i / ledCount * 20.0 + phase) * 0.3 + 0.7;
+    setPixelColor(i, 255 * turb, 100 * turb, 50 * turb);
   }
-  
-  // Solar flares
-  if(millis() - lastFlare > 1000 && random(100) < 20 && activeFlares < 3) {
-    lastFlare = millis();
-    for(int i = 0; i < 3; i++) {
-      if(flareSizes[i] == 0) {
-        flarePositions[i] = random(100) / 100.0;
-        flareSizes[i] = 0.01;
-        activeFlares++;
-        break;
-      }
-    }
-  }
-  
-  // Update and draw flares
-  activeFlares = 0;
-  for(int f = 0; f < 3; f++) {
-    if(flareSizes[f] > 0) {
-      flareSizes[f] += 0.02;
-      
-      // Draw flare
-      for(int i = 0; i < ledCount; i++) {
-        float pos = (float)i / ledCount;
-        float distance = abs(pos - flarePositions[f]);
-        
-        if(distance < flareSizes[f]) {
-          float intensity = 1.0 - (distance / flareSizes[f]);
-          intensity = intensity * intensity; // Quadratic falloff
-          
-          uint32_t currentColor = getPixelColor(i);
-          uint8_t r = (currentColor >> 16) & 0xFF;
-          uint8_t g = (currentColor >> 8) & 0xFF;
-          uint8_t b = currentColor & 0xFF;
-          
-          // Add flare color (white-hot)
-          r = (r + 255 * intensity > 255) ? 255 : (uint8_t)(r + 255 * intensity);
-          g = (g + 255 * intensity > 255) ? 255 : (uint8_t)(g + 255 * intensity);
-          b = (b + 200 * intensity > 255) ? 255 : (uint8_t)(b + 200 * intensity);
-          
-          setPixelColor(i, r, g, b);
-        }
-      }
-      
-      activeFlares++;
-      
-      // Remove expired flares
-      if(flareSizes[f] > 0.3) {
-        flareSizes[f] = 0;
-        activeFlares--;
-      }
-    }
-  }
-  
-  flarePhase += 0.04;
+  phase += 0.04;
 }
 
 // Effect 20: Realistic fire simulation
 void effectFireSimulation() {
-  static uint32_t lastFire = 0;
-  
-  if (millis() - lastFire < effectSpeed / 2) return;
-  lastFire = millis();
-  
   for (int i = 0; i < ledCount; i++) {
-    int flicker = random(0, 150);
-    int r = 255 - flicker;
-    int g = 100 - flicker / 2;
-    int b = 0;
-    
-    // Ensure values don't go below 0
-    r = (r > 0) ? r : 0;
-    g = (g > 0) ? g : 0;
-    
-    setPixelColor(i, stripColor(r, g, b));
+    int f = random(0, 150);
+    setPixelColor(i, max(0, 255 - f), max(0, 100 - f / 2), 0);
   }
 }
 
 // Effect 21: Solid Color
 void effectSolidColor() {
-  for(int i = 0; i < ledCount; i++) {
-    setPixelColor(i, effectColor);
-  }
+  fill_solid(leds, ledCount, effectColor);
 }
 
-// Helper function for rainbow effect
-uint32_t Wheel(byte WheelPos) {
-  WheelPos = 255 - WheelPos;
-  if(WheelPos < 85) {
-    CRGB c = stripColor(255 - WheelPos * 3, 0, WheelPos * 3);
-    return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
-  }
-  if(WheelPos < 170) {
-    WheelPos -= 85;
-    CRGB c = stripColor(0, WheelPos * 3, 255 - WheelPos * 3);
-    return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
-  }
-  WheelPos -= 170;
-  CRGB c = stripColor(WheelPos * 3, 255 - WheelPos * 3, 0);
-  return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
-}
-
-// Helper function for fire effect
-uint32_t EffectHeatColor(uint8_t temperature) {
-  uint8_t t192 = round((temperature / 255.0) * 191);
-  uint8_t heatramp = t192 & 0x3F;
-  heatramp <<= 2;
-  
-  if(t192 > 0x80) {
-    CRGB c = stripColor(255, 255, heatramp);
-    return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
-  } else if(t192 > 0x40) {
-    CRGB c = stripColor(255, heatramp, 0);
-    return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
-  } else {
-    CRGB c = stripColor(heatramp, 0, 0);
-    return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
-  }
-}
-
-// Color blending helper
-uint32_t colorBlend(uint32_t color1, uint32_t color2, uint8_t blend) {
-  uint8_t r1 = (color1 >> 16) & 0xFF;
-  uint8_t g1 = (color1 >> 8) & 0xFF;
-  uint8_t b1 = color1 & 0xFF;
-  
-  uint8_t r2 = (color2 >> 16) & 0xFF;
-  uint8_t g2 = (color2 >> 8) & 0xFF;
-  uint8_t b2 = color2 & 0xFF;
-  
-  uint8_t r = (r1 * (255 - blend) + r2 * blend) / 255;
-  uint8_t g = (g1 * (255 - blend) + g2 * blend) / 255;
-  uint8_t b = (b1 * (255 - blend) + b2 * blend) / 255;
-  
-  CRGB c = stripColor(r, g, b);
-  return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
-}
-
-// Set all LEDs to a color
-void setAllLeds(uint32_t color) {
-  for(int i = 0; i < ledCount; i++) {
-    setPixelColor(i, color);
-  }
-}
-
-// Effect 22: Frequency Response
-void effectFrequencyResponse() {
-  // Update frequency detection
-  updateFrequencyDetection();
-  
-  // Check if the detected signal is strong enough (not noise)
-  if (frequencyMagnitude > 2000.0) {
-    // Valid frequency detected - map to color
-    double freq = detectedFrequency;
-    uint32_t freqColor;
-    
-    // Frequency to color mapping
-    if (freq < 200) {
-      freqColor = stripColor(255, 0, 0);    // Red - low frequencies
-    } else if (freq < 400) {
-      freqColor = stripColor(255, 128, 0);  // Orange
-    } else if (freq < 600) {
-      freqColor = stripColor(255, 255, 0);  // Yellow
-    } else if (freq < 800) {
-      freqColor = stripColor(128, 255, 0);  // Lime
-    } else if (freq < 1000) {
-      freqColor = stripColor(0, 255, 0);    // Green
-    } else if (freq < 1200) {
-      freqColor = stripColor(0, 255, 128);  // Teal
-    } else if (freq < 1400) {
-      freqColor = stripColor(0, 255, 255);  // Cyan
-    } else if (freq < 1600) {
-      freqColor = stripColor(0, 128, 255);  // Light Blue
-    } else if (freq < 1800) {
-      freqColor = stripColor(0, 0, 255);    // Blue
-    } else if (freq < 2000) {
-      freqColor = stripColor(128, 0, 255);  // Purple
-    } else {
-      freqColor = stripColor(255, 0, 255);  // Magenta - high frequencies
-    }
-    
-    // Display the color on all LEDs
-    for(int i = 0; i < ledCount; i++) {
-      setPixelColor(i, freqColor);
-    }
-  } else {
-    // Too noisy or no clear frequency - turn off LEDs
-    for(int i = 0; i < ledCount; i++) {
-      setPixelColor(i, 0, 0, 0);
-    }
-  }
-}
-
-// Effect 23: Piano Tiles - Multi-Frequency Spectrum Analyzer
-void effectPianoTiles() {
-  const int TOTAL_LEDS = ledCount;
-  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
-  
-  // Update multi-frequency detection
-  updateFrequencyDetection();
-  
-  // Check if any frequency band has significant signal
-  bool hasSignal = false;
-  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-    // Use noise floor as threshold instead of frequencyThreshold
-    if (bandMagnitudes[band] > 0.1) {  // 0.1 = 10% of normalized scale
-      hasSignal = true;
-      break;
-    }
-  }
-  
-  if (hasSignal) {
-    // Colors for each frequency band (rainbow spectrum from low to high freq)
-    const uint32_t bandColors[NUM_FREQ_BANDS] = {
-      stripColor(255, 0, 0),     // Red - lowest frequencies
-      stripColor(255, 128, 0),   // Orange
-      stripColor(255, 255, 0),   // Yellow
-      stripColor(128, 255, 0),   // Lime
-      stripColor(0, 255, 0),     // Green
-      stripColor(0, 255, 128),   // Teal
-      stripColor(0, 255, 255),   // Cyan
-      stripColor(0, 128, 255)    // Blue - highest frequencies
-    };
-    
-    // Clear all LEDs first
-    for(int i = 0; i < TOTAL_LEDS; i++) {
-      setPixelColor(i, 0, 0, 0);
-    }
-    
-    // Light up LEDs for each active frequency band
-    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-      if (bandMagnitudes[band] > 0.1) {  // Threshold of 0.1 normalized
-        // Calculate LED positions for this band
-        // Lower frequencies (lower bands) use higher LED positions (like piano keys)
-        int bandPosition = NUM_FREQ_BANDS - 1 - band; // Reverse mapping
-        int startLed = bandPosition * LEDS_PER_BAND;
-        
-        // Use normalized band magnitude directly (already 0-1)
-        float brightness = bandMagnitudes[band];
-        if (brightness < 0.1) brightness = 0.1; // Minimum visibility
-        
-        // Light up the LEDs for this frequency band
-        for (int i = 0; i < LEDS_PER_BAND && (startLed + i) < TOTAL_LEDS; i++) {
-          uint32_t baseColor = bandColors[band];
-          uint8_t r = ((baseColor >> 16) & 0xFF) * brightness;
-          uint8_t g = ((baseColor >> 8) & 0xFF) * brightness;
-          uint8_t b = (baseColor & 0xFF) * brightness;
-          setPixelColor(startLed + i, r, g, b);
-        }
-      }
-    }
-  } else {
-    // No significant frequencies detected - turn off all LEDs
-    for(int i = 0; i < ledCount; i++) {
-      setPixelColor(i, 0, 0, 0);
-    }
-  }
-}
-
-// Effect 24: Piano Tiles - Frequency Bars (shows intensity as height)
-void effectPianoTilesBars() {
-  const int TOTAL_LEDS = ledCount;
-  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
-  
-  // Update multi-frequency detection
-  updateFrequencyDetection();
-  
-  // Check if any frequency band has significant signal
-  bool hasSignal = false;
-  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-    // Use noise floor threshold
-    if (bandMagnitudes[band] > 0.1) {
-      hasSignal = true;
-      break;
-    }
-  }
-  
-  if (hasSignal) {
-    const int MAX_BAR_HEIGHT = LEDS_PER_BAND; // Maximum bars can use all LEDs in their band
-    
-    // Colors for each frequency band
-    const uint32_t bandColors[NUM_FREQ_BANDS] = {
-      stripColor(255, 0, 0),     // Red
-      stripColor(255, 128, 0),   // Orange
-      stripColor(255, 255, 0),   // Yellow
-      stripColor(128, 255, 0),   // Lime
-      stripColor(0, 255, 0),     // Green
-      stripColor(0, 255, 128),   // Teal
-      stripColor(0, 255, 255),   // Cyan
-      stripColor(0, 128, 255)    // Blue
-    };
-    
-    // Clear all LEDs
-    for(int i = 0; i < TOTAL_LEDS; i++) {
-      setPixelColor(i, 0, 0, 0);
-    }
-    
-    // Create bar graph for each frequency band
-    for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-      if (bandMagnitudes[band] > 0.1) {
-        // Calculate bar height based on normalized magnitude (0-1 scale)
-        int barHeight = (int)(bandMagnitudes[band] * MAX_BAR_HEIGHT);
-        if (barHeight > MAX_BAR_HEIGHT) barHeight = MAX_BAR_HEIGHT;
-        if (barHeight < 1) barHeight = 1;
-        
-        // Calculate starting position (bars grow from bottom)
-        int bandPosition = NUM_FREQ_BANDS - 1 - band; // Reverse for piano layout
-        int baseLed = bandPosition * LEDS_PER_BAND;
-        
-        // Draw the bar from bottom to top
-        for (int height = 0; height < barHeight && height < LEDS_PER_BAND; height++) {
-          int ledIndex = baseLed + (LEDS_PER_BAND - 1 - height); // Bottom to top
-          if (ledIndex < TOTAL_LEDS) {
-            setPixelColor(ledIndex, bandColors[band]);
-          }
-        }
-      }
-    }
-  } else {
-    // No significant frequencies - turn off LEDs
-    for(int i = 0; i < ledCount; i++) {
-      setPixelColor(i, 0, 0, 0);
-    }
-  }
-}
-
-// Effect 25: Frequency Spectrum
-void effectFrequencySpectrum() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
-  
-  // Clear strip with dark background
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    setPixelColor(i, 2, 2, 5);
-  }
-  
-  // Color palette for each frequency band
-  const uint32_t bandColors[NUM_FREQ_BANDS] = {
-    stripColor(255, 0, 0),      // Red - Bass
-    stripColor(255, 80, 0),     // Orange
-    stripColor(255, 255, 0),    // Yellow
-    stripColor(100, 255, 0),    // Lime
-    stripColor(0, 255, 0),      // Green
-    stripColor(0, 255, 150),    // Cyan
-    stripColor(0, 100, 255),    // Blue
-    stripColor(200, 0, 255)     // Magenta - Treble
-  };
-  
-  // Draw frequency bars with gradient effect
-  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-    double magnitude = bandMagnitudes[band];
-    int startLed = band * LEDS_PER_BAND;
-    
-    // Calculate bar height based on normalized magnitude
-    int barHeight = (int)(magnitude * LEDS_PER_BAND * 1.5);
-    if (barHeight > LEDS_PER_BAND) barHeight = LEDS_PER_BAND;
-    
-    // Draw bar from bottom to top with gradient
-    for (int i = 0; i < barHeight; i++) {
-      int ledPos = startLed + (LEDS_PER_BAND - 1 - i);
-      if (ledPos < TOTAL_LEDS) {
-        // Gradient brightness (brighter at top)
-        float brightness = 0.3 + (0.7 * i / (float)barHeight);
-        
-        uint32_t color = bandColors[band];
-        uint8_t r = ((color >> 16) & 0xFF) * brightness;
-        uint8_t g = ((color >> 8) & 0xFF) * brightness;
-        uint8_t b = (color & 0xFF) * brightness;
-        
-        setPixelColor(ledPos, r, g, b);
-      }
-    }
-    
-    // Draw peak indicator (brighter accent at top of bar)
-    if (barHeight > 0) {
-      int peakLed = startLed + (LEDS_PER_BAND - 1 - (barHeight - 1));
-      if (peakLed < TOTAL_LEDS) {
-        setPixelColor(peakLed, 255, 255, 255);
-      }
-    }
-  }
-}
-
-// Effect 26: Reactive Waveform - Draws audio signal as waveform patterns
-void effectReactiveWaveform() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  static float waveOffset = 0;
-  
-  // Clear with very dark background
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    setPixelColor(i, 1, 1, 3);
-  }
-  
-  // Draw waveform based on band magnitudes
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    // Map LED position to frequency band
-    int band = (i * NUM_FREQ_BANDS) / TOTAL_LEDS;
-    if (band >= NUM_FREQ_BANDS) band = NUM_FREQ_BANDS - 1;
-    
-    // Get magnitude for this band
-    double magnitude = bandMagnitudes[band];
-    
-    // Create oscillating waveform
-    float wave = sin(waveOffset + (i * 0.1)) * magnitude;
-    wave = (wave + 1.0) / 2.0; // Normalize to 0-1
-    
-    // Color based on frequency band
-    uint8_t hue = (band * 255) / NUM_FREQ_BANDS;
-    uint32_t color = Wheel(hue);
-    
-    uint8_t r = ((color >> 16) & 0xFF) * wave;
-    uint8_t g = ((color >> 8) & 0xFF) * wave;
-    uint8_t b = (color & 0xFF) * wave;
-    
-    setPixelColor(i, r, g, b);
-  }
-  
-  waveOffset += 0.3 * globalAudioLevel;
-}
-
-// Effect 27: Beat Pulse - Reacts to bass beats with expanding pulse
-void effectBeatPulse() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  static float pulseCenter = 0;
-  static float pulseWidth = 0;
-  static unsigned long lastBeatTime = 0;
-  
-  // Background
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    setPixelColor(i, 3, 1, 8);
-  }
-  
-  // Start new pulse on beat
-  if (beatDetected) {
-    pulseCenter = TOTAL_LEDS / 2;
-    pulseWidth = 1;
-    lastBeatTime = millis();
-  }
-  
-  // Expand pulse
-  if (millis() - lastBeatTime < 500) {
-    pulseWidth += 2.0 + (beatEnergy * 5.0);
-    
-    for (int i = 0; i < TOTAL_LEDS; i++) {
-      float distance = abs(i - pulseCenter);
-      if (distance < pulseWidth) {
-        // Color intensity decreases with distance from center
-        float intensity = 1.0 - (distance / pulseWidth);
-        intensity = intensity * intensity; // Quadratic falloff
-        
-        // Color transitions based on beat energy
-        uint8_t r = (uint8_t)(200 * intensity * beatEnergy + 100 * intensity * (1 - beatEnergy));
-        uint8_t g = (uint8_t)(50 * intensity);
-        uint8_t b = (uint8_t)(150 * intensity);
-        
-        setPixelColor(i, r, g, b);
-      }
-    }
-  }
-}
-
-// Effect 28: Frequency Bloom - Frequencies bloom outward from center
-void effectFrequencyBloom() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  const int CENTER = TOTAL_LEDS / 2;
-  static float bloomPhase[NUM_FREQ_BANDS] = {0};
-  
-  // Dark background
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    setPixelColor(i, 2, 1, 4);
-  }
-  
-  // Each band blooms outward from center
-  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-    double magnitude = bandMagnitudes[band];
-    
-    if (magnitude > 0.1) {
-      bloomPhase[band] = (bloomPhase[band] + 0.2 * magnitude) > 360 ? 0 : bloomPhase[band] + (0.2 * magnitude);
-      
-      // Distance from center that this band reaches
-      int bloomDistance = (int)((magnitude + 0.2) * (TOTAL_LEDS / 2));
-      
-      // Draw bloom points left and right of center
-      for (int offset = 0; offset < bloomDistance; offset++) {
-        int leftPos = CENTER - offset;
-        int rightPos = CENTER + offset;
-        
-        if (leftPos >= 0) {
-          float falloff = 1.0 - (offset / (float)bloomDistance);
-          falloff = falloff * falloff; // Smooth falloff
-          
-          uint8_t hue = (band * 255) / NUM_FREQ_BANDS;
-          uint32_t color = Wheel(hue);
-          
-          uint8_t r = ((color >> 16) & 0xFF) * falloff;
-          uint8_t g = ((color >> 8) & 0xFF) * falloff;
-          uint8_t b = (color & 0xFF) * falloff;
-          
-          setPixelColor(leftPos, r, g, b);
-        }
-        
-        if (rightPos < TOTAL_LEDS) {
-          float falloff = 1.0 - (offset / (float)bloomDistance);
-          falloff = falloff * falloff;
-          
-          uint8_t hue = (band * 255) / NUM_FREQ_BANDS;
-          uint32_t color = Wheel(hue);
-          
-          uint8_t r = ((color >> 16) & 0xFF) * falloff;
-          uint8_t g = ((color >> 8) & 0xFF) * falloff;
-          uint8_t b = (color & 0xFF) * falloff;
-          
-          setPixelColor(rightPos, r, g, b);
-        }
-      }
-    }
-  }
-}
-
-// Effect 29: Audio-Reactive Fire - Fire effect that reacts to music intensity
-void effectAudioReactiveFire() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  static uint8_t fireMap[256];
-  static unsigned long lastUpdate = 0;
-  
-  if (millis() - lastUpdate < 30) return;
-  lastUpdate = millis();
-  
-  // Initialize fire map
-  if (fireMap[0] == 0) {
-    memset(fireMap, 0, sizeof(fireMap));
-  }
-  
-  // Add new fire at bottom based on audio
-  fireMap[0] = 100 + (uint8_t)(bassLevel * 155);
-  
-  // Propagate fire upward
-  for (int i = TOTAL_LEDS - 1; i > 0; i--) {
-    fireMap[i] = fireMap[i - 1];
-  }
-  
-  // Draw fire with color gradient
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    uint8_t heat = fireMap[i];
-    uint32_t color;
-    
-    if (heat < 85) {
-      // Black to red
-      color = stripColor(heat * 3, 0, 0);
-    } else if (heat < 170) {
-      // Red to yellow
-      color = stripColor(255, (heat - 85) * 3, 0);
-    } else {
-      // Yellow to white
-      color = stripColor(255, 255, (heat - 170) * 3);
-    }
-    
-    setPixelColor(i, color);
-  }
-}
-
-// Effect 30: Musical Rainbow - Colors shift with frequency content
-void effectMusicalRainbow() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  static float hueShift = 0;
-  
-  // Base hue shifts with treble frequencies
-  hueShift = (hueShift + 2 + (trebleLevel * 5)) > 360 ? 0 : hueShift + 2 + (trebleLevel * 5);
-  
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    float pos = (float)i / TOTAL_LEDS;
-    
-    // Map position to frequency band
-    int band = (int)(pos * NUM_FREQ_BANDS);
-    if (band >= NUM_FREQ_BANDS) band = NUM_FREQ_BANDS - 1;
-    
-    // Base hue from position
-    uint8_t baseHue = (pos * 255) + hueShift;
-    uint32_t color = Wheel(baseHue);
-    
-    // Brightness from audio magnitude
-    double brightness = bandMagnitudes[band] + 0.2;
-    if (brightness > 1.0) brightness = 1.0;
-    
-    uint8_t r = ((color >> 16) & 0xFF) * brightness;
-    uint8_t g = ((color >> 8) & 0xFF) * brightness;
-    uint8_t b = (color & 0xFF) * brightness;
-    
-    setPixelColor(i, r, g, b);
-  }
-}
-
-// Effect 31: Reactive Strobe - Strobes based on beat intensity
-void effectReactiveStrobe() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  static unsigned long lastStrobeTime = 0;
-  static bool strobeOn = false;
-  
-  // Strobe frequency based on beat energy
-  int strobePeriod = (int)(100 - (beatEnergy * 80));
-  if (strobePeriod < 20) strobePeriod = 20;
-  
-  // Toggle strobe state
-  if (millis() - lastStrobeTime > strobePeriod) {
-    lastStrobeTime = millis();
-    strobeOn = !strobeOn;
-  }
-  
-  // Strobe color based on audio frequency content
-  uint32_t strobeColor;
-  
-  if (bassLevel > midLevel && bassLevel > trebleLevel) {
-    strobeColor = stripColor(255, 0, 0);    // Red for bass
-  } else if (midLevel > bassLevel && midLevel > trebleLevel) {
-    strobeColor = stripColor(0, 255, 0);    // Green for mids
-  } else {
-    strobeColor = stripColor(0, 0, 255);    // Blue for treble
-  }
-  
-  if (strobeOn) {
-    for (int i = 0; i < TOTAL_LEDS; i++) {
-      setPixelColor(i, strobeColor);
-    }
-  } else {
-    // Dim strobe when off
-    for (int i = 0; i < TOTAL_LEDS; i++) {
-      uint8_t r = ((strobeColor >> 16) & 0xFF) / 10;
-      uint8_t g = ((strobeColor >> 8) & 0xFF) / 10;
-      uint8_t b = (strobeColor & 0xFF) / 10;
-      setPixelColor(i, r, g, b);
-    }
-  }
-}
-
-// Effect 32: Guitar Visualization - Optimized for guitar frequency ranges
-void effectGuitarVisualizer() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
-  
-  // Dark background
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    setPixelColor(i, 1, 2, 2);
-  }
-  
-  // Guitar color palette (warm tones)
-  const uint32_t guitarColors[NUM_FREQ_BANDS] = {
-    stripColor(139, 69, 19),     // Dark brown - low E
-    stripColor(184, 115, 51),    // Brown - A
-    stripColor(210, 140, 60),    // Light brown - D
-    stripColor(218, 165, 32),    // Goldenrod - G
-    stripColor(255, 165, 0),     // Orange - B
-    stripColor(255, 200, 100),   // Light orange - high E
-    stripColor(255, 220, 130),   // Light tan - harmonics 1
-    stripColor(255, 240, 160)    // Light cream - harmonics 2
-  };
-  
-  // Draw reactive bars with smooth animation
-  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
-    double magnitude = bandMagnitudes[band];
-    int startLed = band * LEDS_PER_BAND;
-    
-    // Calculate bar height with compression
-    int barHeight = (int)(magnitude * LEDS_PER_BAND * 1.3);
-    if (barHeight > LEDS_PER_BAND) barHeight = LEDS_PER_BAND;
-    
-    // Draw bar with smooth gradient
-    for (int i = 0; i < barHeight; i++) {
-      int ledPos = startLed + (LEDS_PER_BAND - 1 - i);
-      if (ledPos < TOTAL_LEDS) {
-        float brightness = 0.2 + (0.8 * i / (float)(barHeight + 1));
-        
-        uint32_t color = guitarColors[band];
-        uint8_t r = ((color >> 16) & 0xFF) * brightness;
-        uint8_t g = ((color >> 8) & 0xFF) * brightness;
-        uint8_t b = (color & 0xFF) * brightness;
-        
-        setPixelColor(ledPos, r, g, b);
-      }
-    }
-  }
-}
-
-// Effect 33: Cascading Frequency - Frequencies cascade down like a waterfall
-void effectCascadingFrequency() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  const int ROWS = 16;
-  const int COLS = TOTAL_LEDS / ROWS;
-  
-  static uint8_t cascade[16][32];
-  
-  // Shift cascade down
-  for (int row = ROWS - 1; row > 0; row--) {
-    for (int col = 0; col < COLS; col++) {
-      cascade[row][col] = cascade[row - 1][col];
-    }
-  }
-  
-  // Add new data at top based on frequency bands
-  for (int col = 0; col < COLS && col < NUM_FREQ_BANDS; col++) {
-    cascade[0][col] = (uint8_t)(bandMagnitudes[col] * 255);
-  }
-  
-  // Draw cascade
-  for (int row = 0; row < ROWS; row++) {
-    for (int col = 0; col < COLS; col++) {
-      int ledPos = col + (row * COLS);
-      if (ledPos < TOTAL_LEDS) {
-        uint8_t intensity = cascade[row][col];
-        uint8_t hue = (col * 255) / COLS;
-        uint32_t color = Wheel(hue);
-        
-        uint8_t r = ((color >> 16) & 0xFF) * intensity / 255;
-        uint8_t g = ((color >> 8) & 0xFF) * intensity / 255;
-        uint8_t b = (color & 0xFF) * intensity / 255;
-        
-        setPixelColor(ledPos, r, g, b);
-      }
-    }
-  }
-}
-
-// Effect 34: Energy Orbits - Orbiting particles driven by audio energy
+// Effect 31: Energy Orbits
 void effectEnergyOrbits() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  const int NUM_ORBITS = 3;
-  static float orbitAngles[NUM_ORBITS] = {0, 120, 240};
-  
-  // Clear background
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    setPixelColor(i, 2, 2, 8);
+  static float ang = 0;
+  fill_solid(leds, ledCount, stripColor(2, 2, 8));
+  for(int o = 0; o < 3; o++) {
+    float r = 0.3 + 0.1 * o;
+    float a = (ang + o * 120) * 3.14159 / 180.0;
+    int p = (0.5 + r * cos(a)) * ledCount;
+    if(p >= 0 && p < ledCount) setPixelColor(p, Wheel(o * 85));
   }
-  
-  // Update orbit speeds based on frequency
-  float speedMultiplier = 1.0 + (globalAudioLevel * 3.0);
-  orbitAngles[0] = fmod(orbitAngles[0] + 3.0 * speedMultiplier, 360);
-  orbitAngles[1] = fmod(orbitAngles[1] + 2.5 * speedMultiplier, 360);
-  orbitAngles[2] = fmod(orbitAngles[2] + 2.0 * speedMultiplier, 360);
-  
-  // Draw orbiting particles
-  for (int orbit = 0; orbit < NUM_ORBITS; orbit++) {
-    // Orbit radius depends on audio levels
-    float radius = 0.3 + (0.2 * (orbit / (float)NUM_ORBITS)) + (bassLevel * 0.15);
-    
-    // Calculate particle position on circle
-    float angle = orbitAngles[orbit] * 3.14159 / 180.0;
-    float posX = 0.5 + radius * cos(angle);
-    float posY = 0.5 + radius * sin(angle);
-    
-    // Project to LED position
-    int ledPos = posX * TOTAL_LEDS;
-    if (ledPos < 0) ledPos = 0;
-    if (ledPos >= TOTAL_LEDS) ledPos = TOTAL_LEDS - 1;
-    
-    // Particle color and brightness
-    uint8_t hue = (orbit * 85);
-    uint32_t color = Wheel(hue);
-    float brightness = 0.5 + (0.5 * globalAudioLevel);
-    
-    uint8_t r = ((color >> 16) & 0xFF) * brightness;
-    uint8_t g = ((color >> 8) & 0xFF) * brightness;
-    uint8_t b = (color & 0xFF) * brightness;
-    
-    setPixelColor(ledPos, r, g, b);
-  }
-}
-
-// Effect 35: Audio Ripples - Sound creates ripples that expand outward
-void effectAudioRipples() {
-  updateFrequencyDetection();
-  
-  const int TOTAL_LEDS = ledCount;
-  const int CENTER = TOTAL_LEDS / 2;
-  static float ripples[5] = {0};
-  static float rippleSpeeds[5] = {2, 2.5, 3, 3.5, 4};
-  static unsigned long lastRippleTime = 0;
-  
-  // Clear background
-  for (int i = 0; i < TOTAL_LEDS; i++) {
-    setPixelColor(i, 1, 1, 3);
-  }
-  
-  // Create new ripple on beat
-  if (beatDetected) {
-    for (int i = 4; i > 0; i--) {
-      ripples[i] = ripples[i - 1];
-    }
-    ripples[0] = 0;
-  }
-  
-  // Expand ripples
-  for (int r = 0; r < 5; r++) {
-    ripples[r] += rippleSpeeds[r];
-    if (ripples[r] > CENTER) ripples[r] = CENTER + 100;
-    
-    if (ripples[r] < CENTER) {
-      // Draw ripple circle
-      int ripplePos = (int)ripples[r];
-      
-      for (int i = 0; i < TOTAL_LEDS; i++) {
-        int distance = abs(i - CENTER);
-        if (distance > ripplePos - 3 && distance < ripplePos + 3) {
-          float intensity = 1.0 - (abs(distance - ripplePos) / 3.0);
-          
-          uint8_t hue = (r * 51) + (trebleLevel * 50);
-          uint32_t color = Wheel(hue);
-          
-          uint8_t cr = ((color >> 16) & 0xFF) * intensity;
-          uint8_t cg = ((color >> 8) & 0xFF) * intensity;
-          uint8_t cb = (color & 0xFF) * intensity;
-          
-          setPixelColor(i, cr, cg, cb);
-        }
-      }
-    }
-  }
+  ang += 5;
 }
