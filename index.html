@@ -5,297 +5,560 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lumina Control</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <style>
         :root {
-            --primary: #4361ee;
-            --primary-dark: #3a56d4;
-            --secondary: #7209b7;
-            --success: #4cc9f0;
-            --danger: #f72585;
-            --dark: #212529;
-            --light: #f8f9fa;
-            --gray: #6c757d;
-            --border-radius: 12px;
-            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            --transition: all 0.3s ease;
+            --bg-body: #050505;
+            --bg-card: #121212;
+            --bg-card-hover: #1a1a1a;
+            --bg-input: #2a2a2a;
+            
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.4);
+            --secondary: #8b5cf6;
+            --accent: #f43f5e;
+            --success: #10b981;
+            
+            --text-main: #ffffff;
+            --text-secondary: #a3a3a3;
+            
+            --border-light: rgba(255, 255, 255, 0.1);
+            --radius-lg: 24px;
+            --radius-md: 16px;
+            --radius-sm: 8px;
+            
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', sans-serif;
         }
 
         body {
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-            color: var(--light);
+            background-color: var(--bg-body);
+            color: var(--text-main);
             min-height: 100vh;
-            padding: 20px;
-            position: relative;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
             overflow-x: hidden;
         }
 
-        /* LED Background Effect */
-        .led-background {
+        /* Ambient Background */
+        .ambient-bg {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
             z-index: -1;
-            opacity: 0.15;
+            overflow: hidden;
             pointer-events: none;
         }
-
-        .led-strip {
+        .orb {
             position: absolute;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, 
-                #ff0000, #ff8000, #ffff00, #80ff00, 
-                #00ff00, #00ff80, #00ffff, #0080ff, 
-                #0000ff, #8000ff, #ff00ff, #ff0080);
-            background-size: 1200% 100%;
-            animation: led-animation 8s linear infinite;
-            filter: blur(1px);
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.4;
+            animation: float 20s infinite ease-in-out;
         }
-
-        .led-strip:nth-child(2) { top: 20%; animation-delay: -1s; }
-        .led-strip:nth-child(3) { top: 40%; animation-delay: -2s; }
-        .led-strip:nth-child(4) { top: 60%; animation-delay: -3s; }
-        .led-strip:nth-child(5) { top: 80%; animation-delay: -4s; }
-
-        @keyframes led-animation {
-            0% { background-position: 0% 0%; }
-            100% { background-position: 100% 0%; }
+        .orb-1 {
+            top: -10%; left: -10%; width: 50vw; height: 50vw;
+            background: radial-gradient(circle, var(--primary), transparent 70%);
+        }
+        .orb-2 {
+            bottom: -10%; right: -10%; width: 60vw; height: 60vw;
+            background: radial-gradient(circle, var(--secondary), transparent 70%);
+            animation-delay: -10s;
+        }
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(30px, -30px); }
         }
 
         .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            position: relative;
+            width: 100%;
+            max-width: 1100px;
             z-index: 1;
         }
 
+        /* Header */
         header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: var(--border-radius);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            padding: 0 10px;
+        }
+        
+        .brand {
+            display: flex;
+            flex-direction: column;
         }
 
         h1 {
             font-size: 2.5rem;
-            margin-bottom: 10px;
-            background: linear-gradient(90deg, var(--primary), var(--success));
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
             -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+            letter-spacing: -1px;
         }
 
         .subtitle {
-            font-size: 1.1rem;
-            color: var(--gray);
+            color: var(--text-secondary);
+            font-size: 1rem;
+            font-weight: 400;
         }
 
-        .settings-link {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            padding: 10px 15px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            color: var(--light);
-            text-decoration: none;
+        .settings-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-light);
+            color: var(--text-main);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: center;
+            text-decoration: none;
             transition: var(--transition);
+            backdrop-filter: blur(10px);
         }
 
-        .settings-link:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
+        .settings-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: rotate(90deg);
         }
 
+        /* Status Bar */
         .status-bar {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 15px 20px;
-            border-radius: var(--border-radius);
-            margin-bottom: 25px;
+            gap: 20px;
+            margin-bottom: 30px;
             flex-wrap: wrap;
-            gap: 15px;
         }
 
-        .status-item { display: flex; align-items: center; gap: 10px; }
-
-        .status-indicator {
-            width: 12px; height: 12px; border-radius: 50%; background: var(--danger);
+        .status-chip {
+            background: var(--bg-card);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
         }
 
-        .status-indicator.connected {
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+        .status-dot.connected {
             background: var(--success);
-            animation: pulse 2s infinite;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
         }
 
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-
+        /* Card System */
         .card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: var(--border-radius);
-            padding: 25px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(18, 18, 18, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-lg);
+            padding: 30px;
+            margin-bottom: 24px;
             transition: var(--transition);
-            margin-bottom: 25px;
+        }
+        
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.5);
         }
 
         .card-header {
-            display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
-            padding-bottom: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        
+        .card-header i {
+            color: var(--primary);
+            font-size: 1.2rem;
+            background: rgba(59, 130, 246, 0.1);
+            padding: 10px;
+            border-radius: 12px;
         }
 
-        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; }
+        .card-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
 
-        .node-btn { opacity: 0.7; border: 1px solid transparent; min-width: 120px; }
+        /* Grid Layout */
+        .grid-layout {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+        }
+
+        /* Device Buttons */
+        .node-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .node-btn {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            color: var(--text-main);
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 160px;
+            text-align: left;
+        }
+
+        .node-btn:hover {
+            background: rgba(255,255,255,0.08);
+        }
+
         .node-btn.active {
-            opacity: 1; border-color: var(--success);
-            background: rgba(76, 201, 240, 0.1);
-            box-shadow: 0 0 10px rgba(76, 201, 240, 0.3);
+            background: rgba(59, 130, 246, 0.15);
+            border-color: var(--primary);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
         }
 
-        .node-status { font-size: 0.7rem; display: block; margin-top: 2px; color: var(--gray); }
+        .node-btn i { font-size: 1.2rem; }
+        .node-info { display: flex; flex-direction: column; }
+        .node-name { font-weight: 600; font-size: 0.95rem; }
+        .node-status { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
 
-        .toggle-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .toggle { position: relative; display: inline-block; width: 60px; height: 30px; }
+        /* Controls */
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .control-row:last-child { border-bottom: none; }
+        
+        .control-label { font-size: 1rem; font-weight: 500; }
+        .control-sub { font-size: 0.85rem; color: var(--text-secondary); }
+
+        /* Toggle Switch */
+        .toggle {
+            position: relative;
+            width: 52px;
+            height: 28px;
+        }
         .toggle input { opacity: 0; width: 0; height: 0; }
         .slider {
-            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: var(--gray); transition: .4s; border-radius: 34px;
+            position: absolute; cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--bg-input);
+            transition: .4s;
+            border-radius: 34px;
         }
         .slider:before {
-            position: absolute; content: ""; height: 22px; width: 22px;
-            left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%;
+            position: absolute; content: "";
+            height: 20px; width: 20px;
+            left: 4px; bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
-        input:checked + .slider { background-color: var(--success); }
-        input:checked + .slider:before { transform: translateX(30px); }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(24px); }
 
-        .dropdown-container { position: relative; margin-top: 15px; margin-bottom: 20px; }
+        /* Inputs */
+        .time-inputs {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .time-input {
+            flex: 1;
+            background: var(--bg-input);
+            border: 1px solid transparent;
+            color: var(--text-main);
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            outline: none;
+            transition: var(--transition);
+        }
+        .time-input:focus { border-color: var(--primary); }
+
+        /* Dropdown */
+        .dropdown-container { position: relative; width: 100%; margin: 10px 0 20px; }
         .dropdown-header {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 12px 15px; background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.2);
+            background: var(--bg-input);
+            padding: 14px 20px;
+            border-radius: var(--radius-md);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: var(--transition);
         }
-        .dropdown-list {
-            background: rgba(30, 30, 46, 0.95); border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 0 0 8px 8px; max-height: 0; overflow: hidden;
-            transition: max-height 0.3s ease; z-index: 10; backdrop-filter: blur(10px);
-        }
-        .dropdown-list.show { max-height: 250px; overflow-y: auto; }
-        .dropdown-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
-        .dropdown-item.active { background: var(--primary); }
-
-        .slider-container { margin: 20px 0; }
-        .range-slider {
-            width: 100%; height: 8px; -webkit-appearance: none;
-            background: rgba(255, 255, 255, 0.1); border-radius: 4px; outline: none;
-        }
-        .range-slider::-webkit-slider-thumb {
-            -webkit-appearance: none; width: 20px; height: 20px;
-            border-radius: 50%; background: var(--primary); cursor: pointer;
-        }
-
-        .btn { padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-secondary { background: rgba(255, 255, 255, 0.1); color: var(--light); }
-        .action-buttons { display: flex; gap: 15px; margin-top: 20px; }
-
-        .color-preview { width: 40px; height: 40px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); }
+        .dropdown-header:hover { background: rgba(255,255,255,0.1); }
         
-        footer { text-align: center; margin-top: 40px; padding: 20px; color: var(--gray); }
+        .dropdown-list {
+            position: absolute;
+            top: 100%; left: 0; right: 0;
+            background: #1e1e1e;
+            border-radius: var(--radius-md);
+            margin-top: 8px;
+            max-height: 0;
+            overflow: hidden;
+            overflow-y: auto;
+            z-index: 10;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-light);
+        }
+        .dropdown-list.show { max-height: 300px; padding: 5px; }
+        
+        .dropdown-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            transition: var(--transition);
+        }
+        .dropdown-item:hover { background: var(--primary); color: white; }
+
+        /* Range Slider */
+        input[type=range] {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-input);
+            border-radius: 5px;
+            outline: none;
+            -webkit-appearance: none;
+            margin: 15px 0;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
+
+        /* Color Picker */
+        .color-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: var(--bg-input);
+            padding: 10px;
+            border-radius: var(--radius-md);
+        }
+        .color-preview {
+            width: 48px; height: 48px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            border: 2px solid rgba(255,255,255,0.1);
+        }
+        #colorPicker {
+            flex: 1;
+            height: 40px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+        }
+        .btn-icon {
+            width: 40px; height: 40px;
+            border-radius: 10px;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .btn-icon:hover { background: rgba(255,255,255,0.2); }
+
+        /* Primary Button */
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+        .btn-primary:hover {
+            background: #2563eb;
+            box-shadow: 0 4px 12px var(--primary-glow);
+            transform: translateY(-2px);
+        }
+
+        /* Footer */
+        footer { text-align: center; margin-top: 40px; color: var(--text-secondary); font-size: 0.9rem; opacity: 0.6; }
+
+        @media (max-width: 768px) {
+            .grid-layout { grid-template-columns: 1fr; }
+            h1 { font-size: 2rem; }
+            body { padding: 20px 15px; }
+        }
     </style>
 </head>
 <body>
-    <div class="led-background"><div class="led-strip"></div><div class="led-strip"></div><div class="led-strip"></div></div>
+    <div class="ambient-bg">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+    </div>
 
     <div class="container">
         <header>
-            <h1><i class="fas fa-lightbulb"></i> Lumina Control</h1>
-            <p class="subtitle">Advanced Multi-Device Command Router</p>
-            <a href="settings.html" class="settings-link"><i class="fas fa-cog"></i> Settings</a>
+            <div class="brand">
+                <h1>Lumina Control</h1>
+                <span class="subtitle">Advanced Multi-Device Command Center</span>
+            </div>
+            <a href="settings.html" class="settings-btn"><i class="fas fa-cog"></i></a>
         </header>
 
         <div class="status-bar">
-            <div class="status-item"><div class="status-indicator" id="connectionStatus"></div><span id="statusText">Connecting...</span></div>
-            <div class="status-item"><i class="fas fa-microchip"></i><span>Gateway: <span id="currentDeviceId">--</span></span></div>
+            <div class="status-chip">
+                <div class="status-dot" id="connectionStatus"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+            <div class="status-chip">
+                <i class="fas fa-microchip"></i>
+                <span>ID: <span id="currentDeviceId">--</span></span>
+            </div>
         </div>
 
+        <!-- Device Registry -->
         <div class="card">
-            <div class="card-header"><i class="fas fa-network-wired"></i><h2>Device Registry & Routing</h2></div>
-            <div id="nodeList" class="action-buttons" style="flex-wrap: wrap; gap: 10px;">
-                <button class="btn btn-secondary node-btn active" data-target="local">
-                    <div><i class="fas fa-server"></i> Gateway<span class="node-status">Main Controller</span></div>
+            <div class="card-header">
+                <i class="fas fa-network-wired"></i>
+                <h2>Device Network</h2>
+            </div>
+            <div id="nodeList" class="node-list">
+                <button class="node-btn active" data-target="local">
+                    <i class="fas fa-server"></i>
+                    <div class="node-info">
+                        <span class="node-name">Gateway</span>
+                        <span class="node-status">Main Controller</span>
+                    </div>
                 </button>
             </div>
         </div>
 
-        <div class="card-grid">
+        <div class="grid-layout">
+            <!-- Power & Sync -->
             <div class="card">
-                <div class="card-header"><i class="fas fa-power-off"></i><h2>Power & Sync</h2></div>
-                <div class="toggle-container">
-                    <span class="toggle-label">Power State</span>
+                <div class="card-header">
+                    <i class="fas fa-power-off"></i>
+                    <h2>Power & Sync</h2>
+                </div>
+                
+                <div class="control-row">
+                    <div>
+                        <div class="control-label">Master Power</div>
+                        <div class="control-sub">Toggle all connected LEDs</div>
+                    </div>
                     <label class="toggle"><input type="checkbox" id="powerToggle"><span class="slider"></span></label>
                 </div>
-                <div id="mirrorControlContainer" class="toggle-container" style="display: none; background: rgba(67, 97, 238, 0.1); padding: 10px; border-radius: 8px;">
-                    <span class="toggle-label"><i class="fas fa-copy"></i> Mirror Gateway</span>
+
+                <div id="mirrorControlContainer" class="control-row" style="display: none;">
+                    <div>
+                        <div class="control-label">Mirror Gateway</div>
+                        <div class="control-sub">Sync with main controller</div>
+                    </div>
                     <label class="toggle"><input type="checkbox" id="mirrorToggle"><span class="slider"></span></label>
                 </div>
-                <hr style="border-color: rgba(255, 255, 255, 0.1); margin: 20px 0;">
-                <div class="toggle-container">
-                    <span class="toggle-label">Timer Enabled</span>
-                    <label class="toggle"><input type="checkbox" id="timerToggle"><span class="slider"></span></label>
-                </div>
-                <div style="display:flex; gap:10px; margin-top:10px;">
-                    <input type="time" id="timerOnTimeInput" style="flex:1; padding:8px; border-radius:5px; border:none; background:rgba(255,255,255,0.1); color:white;">
-                    <input type="time" id="timerOffTimeInput" style="flex:1; padding:8px; border-radius:5px; border:none; background:rgba(255,255,255,0.1); color:white;">
+
+                <div style="border-top: 1px solid var(--border-light); margin: 15px 0; padding-top: 15px;">
+                    <div class="control-row">
+                        <div class="control-label">Schedule Timer</div>
+                        <label class="toggle"><input type="checkbox" id="timerToggle"><span class="slider"></span></label>
+                    </div>
+                    <div class="time-inputs">
+                        <input type="time" id="timerOnTimeInput" class="time-input" title="Turn On Time">
+                        <input type="time" id="timerOffTimeInput" class="time-input" title="Turn Off Time">
+                    </div>
                 </div>
             </div>
 
+            <!-- Effects & Color -->
             <div class="card">
-                <div class="card-header"><i class="fas fa-palette"></i><h2>Effects & Color</h2></div>
+                <div class="card-header">
+                    <i class="fas fa-palette"></i>
+                    <h2>Visual Effects</h2>
+                </div>
+                
                 <div class="dropdown-container">
-                    <div class="dropdown-header" id="dropdownHeader"><span id="selectedEffect">Select Effect</span><i class="fas fa-chevron-down"></i></div>
+                    <div class="dropdown-header" id="dropdownHeader">
+                        <span id="selectedEffect">Select Effect</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
                     <div class="dropdown-list" id="dropdownList"></div>
                 </div>
-                <div class="slider-container">
-                    <div style="display:flex; justify-content:space-between;"><span>Speed</span><span id="speedValue">50</span></div>
-                    <input type="range" min="10" max="200" value="50" class="range-slider" id="speedSlider">
+
+                <div style="margin: 20px 0;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <span class="control-label">Animation Speed</span>
+                        <span id="speedValue" style="color:var(--primary); font-family:monospace;">50</span>
+                    </div>
+                    <input type="range" min="10" max="200" value="50" id="speedSlider">
                 </div>
-                <div style="display:flex; align-items:center; gap:15px;">
+
+                <div class="color-controls">
                     <div class="color-preview" id="colorPreview"></div>
-                    <input type="color" id="colorPicker" value="#FF0000" style="width:50px; height:40px; border:none; background:transparent;">
-                    <button class="btn btn-secondary" id="randomColorBtn"><i class="fas fa-random"></i></button>
+                    <input type="color" id="colorPicker" value="#FF0000">
+                    <button class="btn-icon" id="randomColorBtn"><i class="fas fa-random"></i></button>
                 </div>
             </div>
 
+            <!-- Sensors -->
             <div class="card">
-                <div class="card-header"><i class="fas fa-user-check"></i><h2>Sensors</h2></div>
-                <div style="display:flex; justify-content:space-between; background:rgba(0,0,0,0.2); padding:15px; border-radius:8px;">
-                    <span>Presence:</span><span id="presenceValue" style="color:var(--success); font-weight:bold;">--</span>
+                <div class="card-header">
+                    <i class="fas fa-wave-square"></i>
+                    <h2>Sensors & Audio</h2>
                 </div>
-                <button class="btn btn-primary" id="calibrateMicBtn" style="width:100%; margin-top:20px; justify-content:center;"><i class="fas fa-microphone"></i> Calibrate Mic</button>
+                
+                <div style="background: var(--bg-input); padding: 20px; border-radius: var(--radius-md); text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 5px;">Human Presence</div>
+                    <div id="presenceValue" style="font-size: 1.5rem; font-weight: 700; color: var(--success);">--</div>
+                </div>
+
+                <button class="btn-primary" id="calibrateMicBtn">
+                    <i class="fas fa-microphone-lines"></i> Calibrate Microphone
+                </button>
             </div>
         </div>
+
+        <footer>
+            &copy; 2026 Lumina Inc. All rights reserved.
+        </footer>
     </div>
 
     <script>
@@ -358,9 +621,15 @@
                 nodeList.appendChild(gatewayBtn);
                 Object.keys(currentState.activeNodes).forEach(mac => {
                     const btn = document.createElement('button');
-                    btn.className = `btn btn-secondary node-btn ${currentState.currentTarget === mac ? 'active' : ''}`;
+                    // Updated class names for new design while keeping JS logic work with .node-btn
+                    btn.className = `node-btn ${currentState.currentTarget === mac ? 'active' : ''}`;
                     btn.dataset.target = mac;
-                    btn.innerHTML = `<div><i class="fas fa-lightbulb"></i> Receiver<span class="node-status">${mac}</span></div>`;
+                    // Updated HTML structure for button content
+                    btn.innerHTML = `<i class="fas fa-lightbulb"></i>
+                                     <div class="node-info">
+                                         <span class="node-name">Receiver</span>
+                                         <span class="node-status">${mac}</span>
+                                     </div>`;
                     nodeList.appendChild(btn);
                 });
             });
@@ -388,8 +657,8 @@
                 
                 document.getElementById('selectedEffect').textContent = effects[data.effect] || 'Rainbow Cycle';
                 
-                document.getElementById('connectionStatus').className = 'status-indicator connected';
-                document.getElementById('statusText').textContent = 'Target Online';
+                document.getElementById('connectionStatus').className = 'status-dot connected';
+                document.getElementById('statusText').textContent = 'Online';
             });
 
             // Timers & Sensors (Always from Local)
@@ -403,7 +672,7 @@
                 document.getElementById('timerOffTimeInput').value = data.timer_off || "17:00";
                 
                 if (data.sensor_stats && data.sensor_stats.sensors) {
-                    document.getElementById('presenceValue').textContent = data.sensor_stats.sensors.presence ? 'YES' : 'NO';
+                    document.getElementById('presenceValue').textContent = data.sensor_stats.sensors.presence ? 'Detected' : 'Clear';
                 }
             });
         }
