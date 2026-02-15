@@ -32,21 +32,15 @@ unsigned long lastGatewayContact = 0;
 const unsigned long GATEWAY_TIMEOUT = 60000; // 60 seconds
 int currentWifiChannel = 1;
 
-// ESP-NOW Variables
-uint8_t gatewayMAC[6] = {0};
-bool gatewayFound = false;
-unsigned long lastGatewayContact = 0;
-const unsigned long GATEWAY_TIMEOUT = 15000; // 15 seconds
-int currentWifiChannel = 1;
 
 String deviceID;
 String wifiSSID;
 String wifiPassword;
 int ledCount;
 
-const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmware.bin";
-const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/version.txt";
-const char* currentFirmwareVersion = "2.1.0-ESPNOW";
+const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmwareC3.bin";
+const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/versionC3.txt";
+const char* currentFirmwareVersion = "2.0.0";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
 unsigned long lastUpdateCheck = 0;
 
