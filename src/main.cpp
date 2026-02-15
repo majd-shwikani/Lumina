@@ -50,10 +50,18 @@ void setup() {
   Serial.println("⏱️  Initializing watchdog timer (30s)...");
   esp_task_wdt_init(30, true);
   
-  Serial.println("\n🚀 INITIALIZING SYSTEMS:\n");
+  Serial.println("\n🚀 INITIALIZING BOOT OTA TASK:\n");
   
-  // Try to connect to WiFi for background OTA tasks if configured
-  connectToWiFi();
+  xTaskCreatePinnedToCore(bootOTAUpdateTask, "BootOTATask", 8000, NULL, 1, &otaTaskHandle, 0);
+  Serial.println("      ✅ Boot OTA task created (Core 0)");
+}
+
+// ============================================================================
+// SYSTEM STARTUP (CALLED AFTER BOOT OTA)
+// ============================================================================
+
+void startSystems() {
+  Serial.println("\n🚀 INITIALIZING MAIN SYSTEMS:\n");
 
   Serial.println("📡 Initializing ESP-NOW...");
   setupEspNow();
@@ -65,11 +73,8 @@ void setup() {
 
   xTaskCreatePinnedToCore(discoveryTask, "DiscoveryTask", 4000, NULL, 1, &discoveryTaskHandle, 0);
   Serial.println("      ✅ Discovery task created (Core 0)");
-
-  xTaskCreatePinnedToCore(otaUpdateTask, "OTAUpdateTask", 8000, NULL, 0, &otaTaskHandle, 0);
-  Serial.println("      ✅ OTA Update task created (Core 0)");
   
-  Serial.println("\n🎉 ALL SYSTEMS INITIALIZED 🎉\n");
+  Serial.println("\n🎉 ALL MAIN SYSTEMS INITIALIZED 🎉\n");
 }
 
 // ============================================================================

@@ -121,6 +121,7 @@ void downloadAndApplyFirmware();
 
 void updateLEDs();
 void ledTask(void *parameter);
-void otaUpdateTask(void *parameter);
+void bootOTAUpdateTask(void *parameter);
+void startSystems();
 
 #endif // GLOBALS_H

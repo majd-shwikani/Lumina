@@ -190,25 +190,35 @@ void ledTask(void *parameter) {
   }
 }
 
-// OTA Update logic removed or kept as placeholder if not connected to Router
-void otaUpdateTask(void *parameter) {
-  Serial.println("🔄 OTA Update Task started on Core " + String(xPortGetCoreID()));
-  const TickType_t xDelay = UPDATE_CHECK_INTERVAL / portTICK_PERIOD_MS;
+// ============================================================================
+// BOOT OTA UPDATE TASK (RUNS ONCE AT BOOT)
+// ============================================================================
 
-  vTaskDelay(30000 / portTICK_PERIOD_MS); // Initial delay to allow network to stabilize
-
-  for(;;) {
-    esp_task_wdt_reset();
-
-    if (WiFi.status() == WL_CONNECTED) {
-      checkForGitHubUpdate();
-    } else {
-      Serial.println("⚠️  Skipping GitHub update check - WiFi not connected");
-    }
-
-    esp_task_wdt_reset();
-    vTaskDelay(xDelay);
+void bootOTAUpdateTask(void *parameter) {
+  Serial.println("🔄 Boot OTA Update Task started on Core " + String(xPortGetCoreID()));
+  
+  // 1. Connect to WiFi
+  connectToWiFi();
+  
+  // 2. Check for update if connected
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("🔍 Checking for boot firmware update...");
+    checkForGitHubUpdate();
+  } else {
+    Serial.println("⚠️  WiFi not connected for boot OTA check");
   }
+  
+  // 3. Disconnect WiFi to return to "Receiver" state (ESP-NOW works best when STA isn't actively hunting)
+  // Actually, keeping STA connected is fine if it matched, but for clean ESP-NOW, we can disconnect if desired.
+  // The user asked to connect, check, then continue.
+  
+  // 4. Start the rest of the systems
+  startSystems();
+  
+  // 5. Self-terminate to free memory
+  Serial.println("🗑️  Boot OTA task completed. Terminating to free memory...");
+  otaTaskHandle = NULL;
+  vTaskDelete(NULL);
 }
 
 // ============================================================================
