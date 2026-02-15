@@ -66,7 +66,7 @@ void effectFireSimulation();       // 20: Realistic fire simulation
 void effectSolidColor();           // 21: Solid Color
 
 // ============================================================================
-// NEW SOUND-REACTIVE EFFECTS (22-35)
+// NEW SOUND-REACTIVE EFFECTS (22-32)
 // ============================================================================
 
 void effectFrequencySpectrum();    // 22: Frequency spectrum analyzer
@@ -80,6 +80,21 @@ void effectGuitarVisualizer();     // 29: Guitar-optimized visualizer
 void effectCascadingFrequency();   // 30: Frequency cascade waterfall
 void effectEnergyOrbits();         // 31: Orbiting particles (audio-driven)
 void effectAudioRipples();         // 32: Sound creates ripples
+
+// ============================================================================
+// NEW REVOLUTIONARY EFFECTS (33-42)
+// ============================================================================
+
+void effectPlasmaWaves();          // 33
+void effectConfettiPalettes();     // 34
+void effectSinelonDual();          // 35
+void effectBPM();                  // 36
+void effectJuggle();               // 37
+void effectGlitterRainbow();       // 38
+void effectPacific();              // 39
+void effectTwinkleFox();           // 40
+void effectColorWaves();           // 41
+void effectPerlinMove();           // 42
 
 // ============================================================================
 // HELPER FUNCTION DECLARATIONS

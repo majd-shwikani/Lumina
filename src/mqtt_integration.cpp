@@ -33,7 +33,9 @@ const char* EFFECT_NAMES[] = {
     "Cyber City", "Solar Flare", "Fire Simulation", "Solid Color",
     "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom",
     "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer",
-    "Cascading Frequency", "Energy Orbits", "Audio Ripples"
+    "Cascading Frequency", "Energy Orbits", "Audio Ripples",
+    "Plasma Waves", "Confetti Palettes", "Sinelon Dual", "BPM", "Juggle",
+    "Glitter Rainbow", "Pacific", "Twinkle Fox", "Color Waves", "Perlin Move"
 };
 const int NUM_EFFECTS = sizeof(EFFECT_NAMES) / sizeof(EFFECT_NAMES[0]);
 

@@ -68,6 +68,16 @@ void updateLEDs() {
     case 30: effectCascadingFrequency(); break;
     case 31: effectEnergyOrbits(); break;
     case 32: effectAudioRipples(); break;
+    case 33: effectPlasmaWaves(); break;
+    case 34: effectConfettiPalettes(); break;
+    case 35: effectSinelonDual(); break;
+    case 36: effectBPM(); break;
+    case 37: effectJuggle(); break;
+    case 38: effectGlitterRainbow(); break;
+    case 39: effectPacific(); break;
+    case 40: effectTwinkleFox(); break;
+    case 41: effectColorWaves(); break;
+    case 42: effectPerlinMove(); break;
     
     default: effectRainbow(); break;
   }
