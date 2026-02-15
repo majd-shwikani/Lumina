@@ -2,187 +2,129 @@
 #include "effects.h"
 #include <Arduino.h>
 
-uint32_t stripColor(uint8_t r, uint8_t g, uint8_t b) {
-  return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
-}
+// ============================================================================
+// SHARED PALETTES & UTILS
+// ============================================================================
 
-uint32_t getPixelColor(int i) {
-  if (i < 0 || i >= ledCount) return 0;
-  return ((uint32_t)leds[i].r << 16) | ((uint32_t)leds[i].g << 8) | leds[i].b;
-}
+// Global palette for effects that need one (Fire, Water, Cyber, etc.)
+CRGBPalette16 currentPalette;
+CRGBPalette16 targetPalette;
 
-void setPixelColor(int i, uint8_t r, uint8_t g, uint8_t b) {
-  if (i >= 0 && i < ledCount) leds[i] = stripColor(r, g, b);
-}
+// Define FairyLight_p for TwinkleFox
+const TProgmemRGBPalette16 FairyLight_p FL_PROGMEM =
+{
+    CRGB::White,      CRGB::AliceBlue,  CRGB::Azure,      CRGB::WhiteSmoke,
+    CRGB::Ivory,      CRGB::FloralWhite,CRGB::OldLace,    CRGB::Linen,
+    CRGB::AntiqueWhite,CRGB::AntiqueWhite,CRGB::AntiqueWhite,CRGB::AntiqueWhite,
+    CRGB::AntiqueWhite,CRGB::AntiqueWhite,CRGB::AntiqueWhite,CRGB::AntiqueWhite
+};
 
-void setPixelColor(int i, uint32_t c) {
-  if (i >= 0 && i < ledCount) leds[i] = c;
-}
-
-// Helper function for rainbow effect
-uint32_t Wheel(byte WheelPos) {
-  WheelPos = 255 - WheelPos;
-  if(WheelPos < 85) {
-    return stripColor(255 - WheelPos * 3, 0, WheelPos * 3);
-  }
-  if(WheelPos < 170) {
-    WheelPos -= 85;
-    return stripColor(0, WheelPos * 3, 255 - WheelPos * 3);
-  }
-  WheelPos -= 170;
-  return stripColor(WheelPos * 3, 255 - WheelPos * 3, 0);
-}
-
-// Color blending helper
-uint32_t colorBlend(uint32_t color1, uint32_t color2, uint8_t blend) {
-  uint8_t r1 = (color1 >> 16) & 0xFF;
-  uint8_t g1 = (color1 >> 8) & 0xFF;
-  uint8_t b1 = color1 & 0xFF;
-  
-  uint8_t r2 = (color2 >> 16) & 0xFF;
-  uint8_t g2 = (color2 >> 8) & 0xFF;
-  uint8_t b2 = color2 & 0xFF;
-  
-  uint8_t r = (r1 * (255 - blend) + r2 * blend) / 255;
-  uint8_t g = (g1 * (255 - blend) + g2 * blend) / 255;
-  uint8_t b = (b1 * (255 - blend) + b2 * blend) / 255;
-  
-  return stripColor(r, g, b);
-}
-
-void setAllLeds(uint32_t color) {
-  for(int i = 0; i < ledCount; i++) {
-    setPixelColor(i, color);
-  }
+// Helper to fade all LEDs (creates trails)
+void fadeAll(uint8_t scale) {
+  fadeToBlackBy(leds, ledCount, scale);
 }
 
 // Effect 0: Rainbow cycle
+// Replaced manual Wheel() with fill_rainbow
 void effectRainbow() {
-  static uint16_t j = 0;
-  for(int i = 0; i < ledCount; i++) {
-    leds[i] = Wheel((i + j) & 255);
+  static uint8_t hue = 0;
+  fill_rainbow(leds, ledCount, hue, 7); // 7 is delta hue per pixel
+  EVERY_N_MILLISECONDS(20) {
+    hue++;
   }
-  j++;
-  if(j >= 256) j = 0;
 }
 
 // Effect 1: Meteor shower
+// Uses fadeToBlackBy for trails instead of manual calculation
 void effectMeteorShower() {
-  static int meteors[3] = {-50, -100, -150};
-  static uint32_t meteorColors[3] = {0xFF5500, 0x00AAFF, 0xAA00FF};
-  static int meteorSpeeds[3] = {3, 2, 4};
-  
-  for(int i = 0; i < ledCount; i++) {
-    leds[i].fadeToBlackBy(40);
+  // Fade everything to create tails
+  fadeToBlackBy(leds, ledCount, 64); // Adjust 64 for tail length
+
+  // Spawn new meteors
+  EVERY_N_MILLISECONDS(100) {
+    if (random8() < 40) { // 15% chance
+       int pos = random16(ledCount);
+       leds[pos] = CHSV(random8(), 200, 255);
+    }
   }
   
-  for(int m = 0; m < 3; m++) {
-    meteors[m] += meteorSpeeds[m];
-    for(int i = 0; i < 15; i++) {
-      int pos = meteors[m] - i;
-      if(pos >= 0 && pos < ledCount) {
-        float intensity = 1.0 - (i * 0.07);
-        uint32_t color = meteorColors[m];
-        uint8_t r = ((color >> 16) & 0xFF) * intensity;
-        uint8_t g = ((color >> 8) & 0xFF) * intensity;
-        uint8_t b = (color & 0xFF) * intensity;
-        setPixelColor(pos, r, g, b);
-      }
+  static int position = 0;
+  
+  // Move a meteor across
+  EVERY_N_MILLISECONDS_I(timer, 0) {
+    timer.setPeriod(map(effectSpeed, 0, 255, 10, 100));
+    position++;
+    if (position >= ledCount) {
+      position = 0;
     }
-    if(meteors[m] > ledCount + 20) {
-      meteors[m] = -random(20, 100);
-      meteorColors[m] = Wheel(random(256));
-    }
+  }
+  
+  // Draw the head
+  if (position < ledCount) {
+    leds[position] = CHSV(0, 0, 255); // White head
   }
 }
 
 // Effect 2: Digital rain
+// Matrix style with CHSV and fading
 void effectDigitalRain() {
-  static uint8_t columns[16];
-  static uint8_t columnHeights[16];
-  static uint32_t lastDrop = 0;
-  
-  for(int i = 0; i < ledCount; i++) {
-    leds[i].fadeToBlackBy(10);
-  }
-  
-  if(millis() - lastDrop > 150) {
-    lastDrop = millis();
-    int col = random(16);
-    columns[col] = 1;
-    columnHeights[col] = random(5, 12);
-  }
-  
-  for(int col = 0; col < 16; col++) {
-    if(columns[col] > 0) {
-      for(int row = 0; row < columnHeights[col]; row++) {
-        int pos = col + (row * 16);
-        if(pos < ledCount) {
-          float intensity = 1.0 - (row * 0.15);
-          uint8_t brightness = 255 * intensity;
-          if(row == 0) setPixelColor(pos, brightness, brightness, brightness);
-          else setPixelColor(pos, 0, brightness, 0);
-        }
-      }
-      columns[col]++;
-      if(columns[col] > ledCount / 16 + columnHeights[col]) columns[col] = 0;
+  fadeToBlackBy(leds, ledCount, 20);
+
+  EVERY_N_MILLISECONDS(80) {
+    int pos = random16(ledCount);
+    leds[pos] = CHSV(96, 255, 255); // Green
+    // 10% chance of white tip
+    if (random8() < 25) {
+      leds[pos] = CRGB::White;
     }
   }
 }
 
 // Effect 3: Pulsing spheres
+// Using beatsin8 for smooth sine wave modulation
 void effectPulsingSpheres() {
-  static float spheres[3][3] = {{0.3, 0.2, 0.0}, {0.7, 0.5, 0.0}, {0.5, 0.8, 0.0}};
-  static uint8_t sphereHues[3] = {0, 85, 170};
+  fadeToBlackBy(leds, ledCount, 20);
   
-  fill_solid(leds, ledCount, stripColor(5, 5, 10));
+  // Three sine waves at different frequencies
+  uint8_t pos1 = beatsin8(20, 0, ledCount - 1);
+  uint8_t pos2 = beatsin8(27, 0, ledCount - 1);
+  uint8_t pos3 = beatsin8(31, 0, ledCount - 1);
   
-  for(int s = 0; s < 3; s++) {
-    spheres[s][1] += 0.02 + (s * 0.01);
-    spheres[s][2] = 0.1 + 0.15 * (sin(spheres[s][1]) + 1.0) / 2.0;
-    sphereHues[s] += 1;
-  }
+  // Add color with saturating math
+  leds[pos1] += CHSV(0, 255, 255);   // Red
+  leds[pos2] += CHSV(96, 255, 255);  // Green
+  leds[pos3] += CHSV(160, 255, 255); // Blue
   
-  for(int i = 0; i < ledCount; i++) {
-    float pos = (float)i / ledCount;
-    for(int s = 0; s < 3; s++) {
-      float dx = pos - spheres[s][0];
-      float distance = abs(dx);
-      if(distance < spheres[s][2]) {
-        float intensity = 1.0 - (distance / spheres[s][2]);
-        intensity = intensity * intensity;
-        uint32_t sphereColor = Wheel(sphereHues[s]);
-        uint8_t r = ((sphereColor >> 16) & 0xFF) * intensity;
-        uint8_t g = ((sphereColor >> 8) & 0xFF) * intensity;
-        uint8_t b = (sphereColor & 0xFF) * intensity;
-        leds[i].r = qadd8(leds[i].r, r);
-        leds[i].g = qadd8(leds[i].g, g);
-        leds[i].b = qadd8(leds[i].b, b);
-      }
-    }
-  }
+  // Blur to make them "spheres"
+  blur1d(leds, ledCount, 64);
 }
 
 // Effect 4: Binary clock
+// Keeping logic but using CRGB
 void effectBinaryClock() {
-  static uint32_t lastChange = 0;
-  static uint8_t binaryValue = 0;
   static uint8_t counter = 0;
   
-  if(millis() - lastChange > 300) {
-    lastChange = millis();
-    binaryValue = counter++;
+  EVERY_N_MILLISECONDS(500) {
+    counter++;
+    FastLED.clear();
+    
+    // Background grid
     for(int i = 0; i < ledCount; i++) {
-      if((i / 16) % 2 == (i % 2)) setPixelColor(i, 2, 5, 2);
-      else setPixelColor(i, 1, 3, 1);
+      if((i / 16) % 2 == (i % 2)) {
+        leds[i] = CRGB(2, 5, 2);
+      } else {
+        leds[i] = CRGB(1, 3, 1);
+      }
     }
+    
+    // Bits
     for(int bit = 0; bit < 8; bit++) {
-      if(binaryValue & (1 << bit)) {
+      if(counter & (1 << bit)) {
         int startPos = bit * (ledCount / 8);
         int barHeight = (bit + 1) * 2;
         for(int j = 0; j < barHeight && j < 11; j++) {
-          int pos = startPos + j * 16;
-          if(pos < ledCount) setPixelColor(pos, 0, 255 - (j * 20), 0);
+           int pos = startPos + j * 16;
+           if(pos < ledCount) leds[pos] = CRGB(0, 255 - (j*20), 0);
         }
       }
     }
@@ -190,330 +132,472 @@ void effectBinaryClock() {
 }
 
 // Effect 5: Vortex
+// Using beat8 for rotation and CHSV
 void effectVortex() {
-  static float angle = 0;
-  static float twist = 0;
+  uint8_t rotation = beat8(10); // 10 BPM
+  
   for(int i = 0; i < ledCount; i++) {
-    float pos = (float)i / ledCount;
-    float vortexAngle = angle + pos * 15.0 + twist;
-    float radius = pos * 8.0;
-    float pattern = (sin(vortexAngle) + cos(vortexAngle + radius) + 2.0) / 4.0;
-    uint32_t color = Wheel((int)(i * 3 + angle * 50) % 256);
-    setPixelColor(i, ((color >> 16) & 0xFF) * pattern, ((color >> 8) & 0xFF) * pattern, (color & 0xFF) * pattern);
+    // Hue depends on position + rotation
+    uint8_t hue = (i * 5) + rotation;
+    // Value depends on a second wave
+    uint8_t val = beatsin8(30, 100, 255, 0, i * 8); 
+    leds[i] = CHSV(hue, 255, val);
   }
-  angle += 0.05;
-  twist += 0.02;
 }
 
-// Effect 6: DNA helix
+// Effect 6: DNA Helix
+// Using phase-shifted sine waves
 void effectDNAHelix() {
-  static float phase = 0;
-  static float rotation = 0;
+  FastLED.clear();
+  uint8_t beat = beat8(20);
+  
   for(int i = 0; i < ledCount; i++) {
-    float pos = (float)i / ledCount;
-    float helix1 = sin(pos * 20.0 + phase);
-    float helix2 = sin(pos * 20.0 + phase + 3.14159);
-    float backbone = sin(pos * 5.0 + rotation) * 0.3 + 0.7;
-    if(helix1 > 0.7) setPixelColor(i, 255 * backbone, 50 * backbone, 50 * backbone);
-    else if(helix2 > 0.7) setPixelColor(i, 50 * backbone, 50 * backbone, 255 * backbone);
-    else if(abs(helix1) < 0.2) setPixelColor(i, 200 * backbone, 200 * backbone, 0);
-    else setPixelColor(i, 1, 2, 3);
+    // Strand 1
+    uint8_t y1 = cubicwave8((i * 10) + beat);
+    // Strand 2 (180 deg out of phase)
+    uint8_t y2 = cubicwave8((i * 10) + beat + 128);
+    
+    // Visualize "crossing" strands by brightness
+    // In a 1D strip, we can map "y" to brightness or color
+    leds[i] += CHSV(0, 255, map(y1, 0, 255, 0, 100));   // Red strand
+    leds[i] += CHSV(160, 255, map(y2, 0, 255, 0, 100)); // Blue strand
+    
+    // Connection points (where they cross)
+    if (abs(y1 - y2) < 20) {
+      leds[i] += CRGB(100, 100, 0); // Yellow bridge
+    }
   }
-  phase += 0.1;
-  rotation += 0.02;
+}
+
+// Effect 7: Audio visualizer
+// Simulating it with noise if no audio, or just using palette
+void effectAudioVisualizer() {
+  // Uses palette for "heat" map style
+  static uint8_t hueOffset = 0;
+  
+  // Shift hue slowly
+  EVERY_N_MILLISECONDS(50) { hueOffset++; }
+  
+  // Draw simulated bands (or real if connected)
+  for(int i = 0; i < ledCount; i++) {
+    // Just a placeholder visualization using noise
+    uint8_t noise = inoise8(i * 30, millis() / 5);
+    leds[i] = ColorFromPalette(RainbowColors_p, noise + hueOffset, noise);
+  }
 }
 
 // Effect 8: Lava lamp
+// Large, slow moving blobs using noise
 void effectLavaLamp() {
-  static float blobs[4][4] = {{0.2, 0.3, 0.1, 0.0}, {0.7, 0.2, 0.15, 1.57}, {0.3, 0.7, 0.12, 3.14}, {0.8, 0.6, 0.18, 4.71}};
-  static float velocities[4][2] = {{0.008, 0.012}, {-0.01, 0.008}, {0.007, -0.009}, {-0.006, -0.011}};
-  static uint8_t blobHues[4] = {0, 30, 60, 90};
-  fill_solid(leds, ledCount, stripColor(15, 0, 25));
-  for(int b = 0; b < 4; b++) {
-    blobs[b][0] += velocities[b][0];
-    blobs[b][1] += velocities[b][1];
-    blobs[b][2] = 0.1 + 0.1 * (sin(blobs[b][3]) + 1.0) / 2.0;
-    blobs[b][3] += 0.03;
-    blobHues[b] += 1;
-    if(blobs[b][0] < 0.1 || blobs[b][0] > 0.9) velocities[b][0] *= -1.0;
-    if(blobs[b][1] < 0.1 || blobs[b][1] > 0.9) velocities[b][1] *= -1.0;
-  }
+  uint32_t ms = millis();
   for(int i = 0; i < ledCount; i++) {
-    float x = (float)(i % 16) / 16.0;
-    float y = (float)(i / 16) / 11.0;
-    float totalBrightness = 0;
-    uint32_t blendedColor = 0;
-    for(int b = 0; b < 4; b++) {
-      float dx = x - blobs[b][0], dy = y - blobs[b][1];
-      float distance = sqrt(dx * dx + dy * dy);
-      if(distance < blobs[b][2]) {
-        float brightness = pow(1.0 - (distance / blobs[b][2]), 3);
-        totalBrightness += brightness;
-        if(blendedColor == 0) blendedColor = Wheel(blobHues[b]);
-        else blendedColor = colorBlend(blendedColor, Wheel(blobHues[b]), (uint8_t)(brightness * 128));
-      }
-    }
-    if(totalBrightness > 0) {
-      if(totalBrightness > 1.0) totalBrightness = 1.0;
-      setPixelColor(i, ((blendedColor >> 16) & 0xFF) * totalBrightness, ((blendedColor >> 8) & 0xFF) * totalBrightness, (blendedColor & 0xFF) * totalBrightness);
-    }
+    // Perlin noise for smooth organic movement
+    // Scale x by 20, time by 10 (slow)
+    uint8_t val = inoise8(i * 20, ms / 10);
+    // Sharpen the noise to make "blobs"
+    val = qsub8(val, 60); 
+    val = qmul8(val, 3);
+    
+    // Map to palette (LavaColors_p)
+    leds[i] = ColorFromPalette(LavaColors_p, val, 255);
   }
 }
 
 // Effect 9: Radar sweep
+// Rotating bright spot with fading tail
 void effectRadarSweep() {
-  static float angle = 0;
-  static uint8_t sweepHistory[256] = {0};
+  fadeToBlackBy(leds, ledCount, 10); // Short tail
   
-  for(int i = 0; i < ledCount; i++) {
-    if(sweepHistory[i] > 0) {
-      sweepHistory[i] = sweepHistory[i] * 9 / 10;
-      if(sweepHistory[i] < 5) sweepHistory[i] = 0;
-      setPixelColor(i, 0, sweepHistory[i], 0);
-    } else {
-      setPixelColor(i, 0, (i / 16) % 2 == 0 ? 1 : 0, 0);
-    }
-  }
+  uint16_t pos = beatsin16(15, 0, ledCount - 1);
+  leds[pos] = CRGB::Green;
   
-  int sweepPos = (angle / (2 * 3.14159)) * ledCount;
-  if(sweepPos < ledCount) {
-    sweepHistory[sweepPos] = 255;
-    setPixelColor(sweepPos, 0, 255, 0);
+  // Random blips
+  if(random8() < 5) {
+    leds[random16(ledCount)] = CRGB(0, 100, 0);
   }
-  angle += 0.08;
-  if(angle >= 2 * 3.14159) angle = 0;
 }
 
 // Effect 10: Quantum particles
+// Random flickering pixels
 void effectQuantumParticles() {
-  static float particles[10][3] = {0};
-  static uint8_t particleColors[10] = {0};
-  static uint32_t lastSpawn = 0;
-  for(int i = 0; i < ledCount; i++) {
-    if(random(1000) < 2) setPixelColor(i, 50, 50, 100);
-    else setPixelColor(i, 5, 5, 15);
-  }
-  if(millis() - lastSpawn > 200 && random(100) < 30) {
-    lastSpawn = millis();
-    for(int i = 0; i < 10; i++) {
-      if(particles[i][0] == 0) {
-        particles[i][0] = 0.01;
-        particles[i][1] = random(10, 30) / 100.0;
-        particles[i][2] = random(100) / 100.0 * 2 * 3.14159;
-        particleColors[i] = random(256);
-        break;
-      }
-    }
-  }
-  for(int i = 0; i < 10; i++) {
-    if(particles[i][0] > 0) {
-      particles[i][0] += particles[i][1];
-      particles[i][2] += 0.2;
-      int pos = particles[i][0] * ledCount;
-      if(pos < ledCount) {
-        for(int j = -2; j <= 2; j++) {
-          int qPos = pos + j;
-          if(qPos >= 0 && qPos < ledCount) {
-            float prob = 1.0 / (1.0 + abs(j));
-            uint8_t intensity = (uint8_t)(255 * prob * (sin(particles[i][2]) + 1.0) / 2.0);
-            uint32_t color = Wheel(particleColors[i]);
-            setPixelColor(qPos, ((color >> 16) & 0xFF) * intensity / 255, ((color >> 8) & 0xFF) * intensity / 255, (color & 0xFF) * intensity / 255);
-          }
-        }
-      }
-      if(particles[i][0] > 1.2) particles[i][0] = 0;
-    }
+  fadeToBlackBy(leds, ledCount, 20);
+  
+  if(random8() < 80) {
+    int pos = random16(ledCount);
+    leds[pos] += CHSV(random8(), 200, 255);
   }
 }
 
 // Effect 11: Neural network
+// Sending pulses down the strip
 void effectNeuralNetwork() {
-  static uint8_t neurons[20] = {0};
-  static uint8_t connections[20][20] = {0};
-  static uint32_t lastFire = 0;
-  fill_solid(leds, ledCount, stripColor(1, 1, 3));
-  if(millis() - lastFire > 50) {
-    lastFire = millis();
-    if(random(100) < 40) {
-      int n = random(20);
-      neurons[n] = 255;
-      for(int i = 0; i < 5; i++) {
-        int t = random(20);
-        if(t != n) connections[n][t] = 200;
-      }
+  fadeToBlackBy(leds, ledCount, 30);
+  
+  static int pulsePos = 0;
+  EVERY_N_MILLISECONDS(30) {
+    pulsePos++;
+    if(pulsePos >= ledCount) {
+      pulsePos = 0;
     }
-  }
-  for(int i = 0; i < 20; i++) {
-    int nPos = i * (ledCount / 20);
-    if(neurons[i] > 0) {
-      setPixelColor(nPos, neurons[i], neurons[i] / 2, neurons[i]);
-      neurons[i] = neurons[i] * 8 / 10;
-      if(neurons[i] < 5) neurons[i] = 0;
-    }
-    for(int j = 0; j < 20; j++) {
-      if(connections[i][j] > 0) {
-        int sPos = i * (ledCount / 20), ePos = j * (ledCount / 20);
-        int steps = abs(ePos - sPos);
-        for(int k = 0; k <= steps; k++) {
-          int pos = sPos + (ePos - sPos) * k / steps;
-          if(pos < ledCount) leds[pos].b = qadd8(leds[pos].b, connections[i][j] / 3);
-        }
-        connections[i][j] = connections[i][j] * 9 / 10;
-        if(connections[i][j] < 5) connections[i][j] = 0;
-      }
+    
+    leds[pulsePos] = CRGB::Blue;
+    // Synapse firing (random branching or sparking)
+    if(random8() < 20) {
+       leds[pulsePos] += CRGB::White;
     }
   }
 }
 
 // Effect 12: Galaxy spin
+// Purple/Blue palette with glitter
 void effectGalaxySpin() {
-  static float angle = 0;
-  for(int i = 0; i < ledCount; i++) {
-    float pos = (float)i / ledCount;
-    float arm1 = sin(pos * 15.0 + angle) * 0.5 + 0.5;
-    float arm2 = sin(pos * 15.0 + angle + 2.094) * 0.5 + 0.5;
-    float arm3 = sin(pos * 15.0 + angle + 4.189) * 0.5 + 0.5;
-    float br = max(max(arm1, arm2), arm3);
-    br = br * br;
-    float core = 1.0 - abs(pos - 0.5) * 2.0;
-    if(core > 0) br = max(br, core * core);
-    uint32_t color = Wheel(170 + (pos * 50));
-    if(random(1000) < 3 && br < 0.3) setPixelColor(i, 255, 255, 255);
-    else setPixelColor(i, ((color >> 16) & 0xFF) * br, ((color >> 8) & 0xFF) * br, (color & 0xFF) * br);
+  fill_palette(leds, ledCount, millis() / 10, 5, OceanColors_p, 255, LINEARBLEND);
+  
+  // Add stars
+  if(random8() < 10) {
+    leds[random16(ledCount)] += CRGB::White;
   }
-  angle += 0.03;
 }
 
 // Effect 13: Crystal growth
+// Slowly lighting up pixels and keeping them
 void effectCrystalGrowth() {
-  static uint8_t crystals[256] = {0};
-  static uint8_t crystalColors[256] = {0};
-  static uint32_t lastGrowth = 0;
-  static uint16_t activeSeeds = 0;
-  if(activeSeeds < 5 && random(100) < 10) {
-    int p = random(ledCount);
-    if(crystals[p] == 0) { crystals[p] = 1; crystalColors[p] = random(256); activeSeeds++; }
-  }
-  if(millis() - lastGrowth > 100) {
-    lastGrowth = millis();
-    for(int i = 0; i < ledCount; i++) {
-      if(crystals[i] > 0 && crystals[i] < 255) {
-        for(int dir = -1; dir <= 1; dir += 2) {
-          int n = i + dir;
-          if(n >= 0 && n < ledCount && random(100) < 30 && crystals[n] == 0) {
-            crystals[n] = 1; crystalColors[n] = crystalColors[i]; activeSeeds++;
-          }
-        }
-        crystals[i] = qadd8(crystals[i], 5);
+  static int activeSeeds = 0; 
+  static uint8_t crystals[256]; // Buffer for crystal states
+  EVERY_N_MILLISECONDS(100) {
+    int pos = random16(ledCount);
+    // Find a spot next to a lit pixel or random seed
+    if (leds[pos].getAverageLight() == 0) {
+      // Check neighbors
+      bool neighborLit = false;
+      if (pos > 0 && leds[pos-1].getAverageLight() > 0) neighborLit = true;
+      if (pos < ledCount-1 && leds[pos+1].getAverageLight() > 0) neighborLit = true;
+      
+      if (neighborLit || random8() < 2) { // 2/256 chance to seed new
+        leds[pos] = CHSV(180 + random8(60), 100, 255); // Cyan/Blue crystals
       }
     }
   }
-  for(int i = 0; i < ledCount; i++) {
-    if(crystals[i] > 0) {
-      uint32_t c = Wheel(crystalColors[i]);
-      setPixelColor(i, ((c >> 16) & 0xFF) * crystals[i] / 255, ((c >> 8) & 0xFF) * crystals[i] / 255, (c & 0xFF) * crystals[i] / 255);
-    } else setPixelColor(i, 0);
+  
+  // Reset if full
+  // (Simplified check)
+  if (random8() == 0 && leds[ledCount/2].getAverageLight() > 0) {
+    fadeToBlackBy(leds, ledCount, 20);
   }
   if(activeSeeds >= ledCount * 0.8 && random(100) < 5) { memset(crystals, 0, 256); activeSeeds = 0; }
 }
 
 // Effect 14: Lightning storm
+// Cloud background + flashes
 void effectLightningStorm() {
-  static uint8_t lightning[256] = {0};
-  static uint32_t lastStrike = 0;
-  static uint8_t strikeActive = 0, flash = 0;
-  for(int i = 0; i < ledCount; i++) setPixelColor(i, 10 + random(10), 10 + random(10), 20 + random(10));
-  if(!strikeActive && millis() - lastStrike > 1000 && random(100) < 10) {
-    strikeActive = 1; flash = 255; lastStrike = millis();
-    memset(lightning, 0, 256);
-    int p = random(ledCount);
-    for(int i = 0; i < 20; i++) {
-      if(p >= 0 && p < ledCount) { lightning[p] = 255; p += random(-2, 3); }
-    }
-  }
-  if(strikeActive) {
-    for(int i = 0; i < ledCount; i++) if(lightning[i] > 0) { setPixelColor(i, flash, flash, 255); lightning[i] = lightning[i] * 7 / 8; }
-    flash = flash * 8 / 10;
-    if(flash < 10) strikeActive = 0;
+  // Dark stormy clouds
+  uint8_t noise = inoise8(millis()/10);
+  fill_solid(leds, ledCount, CRGB(noise/4, noise/4, noise/3));
+  
+  // Lightning strike
+  if (random8() < 5) {
+    int section = random16(ledCount - 10);
+    fill_solid(&leds[section], 5 + random8(5), CRGB::White);
   }
 }
 
 // Effect 15: Ocean depth
+// Blue/Teal gradient with wave motion
 void effectOceanDepth() {
-  static float wavePhase = 0;
+  uint8_t wave1 = beat8(10);
+  uint8_t wave2 = beat8(15);
+  
   for(int i = 0; i < ledCount; i++) {
-    float depth = (float)i / ledCount;
-    float w1 = sin(i * 0.1 + wavePhase) * 0.3 + 0.7;
-    float w2 = sin(i * 0.05 + wavePhase * 0.7) * 0.2 + 0.8;
-    uint8_t g = (uint8_t)((50 * (1.0 - depth) + 100 * depth) * w2);
-    uint8_t b = (uint8_t)((100 + 155 * depth) * (w1 + w2) / 2.0);
-    setPixelColor(i, 0, g, b);
+    uint8_t index = (i * 5) + wave1 + wave2;
+    leds[i] = ColorFromPalette(OceanColors_p, index, 255, LINEARBLEND);
   }
-  wavePhase += 0.05;
 }
 
 // Effect 16: Northern lights
+// Green/Purple smooth noise
 void effectNorthernLights() {
-  static float p1 = 0, p2 = 0, p3 = 0;
+  static uint16_t x = 0;
+  x += 10;
   for(int i = 0; i < ledCount; i++) {
-    float pos = (float)i / ledCount;
-    float a1 = sin(pos * 8.0 + p1) * 0.5 + 0.5;
-    float a2 = sin(pos * 12.0 + p2) * 0.3 + 0.7;
-    float a3 = sin(pos * 6.0 + p3) * 0.4 + 0.6;
-    float br = pow((a1 + a2 + a3) / 3.0, 2);
-    setPixelColor(i, (uint8_t)(50 * br + 100 * a3), (uint8_t)(200 * br + 50 * a1), (uint8_t)(150 * br + 100 * a2));
+    uint8_t noise = inoise8(i * 30 + x);
+    // Map noise to Green -> Purple hue range (approx 96 to 192)
+    uint8_t hue = map(noise, 0, 255, 100, 200);
+    leds[i] = CHSV(hue, 255, noise); // Brightness varies with noise
   }
-  p1 += 0.02; p2 += 0.015; p3 += 0.025;
 }
 
 // Effect 17: Time tunnel
+// Concentric expanding rings (1D equivalent: moving out from center)
 void effectTimeTunnel() {
-  static float depth = 0, rot = 0;
-  for(int i = 0; i < ledCount; i++) {
-    float pos = (float)i / ledCount;
-    float val = (sin(rot + pos * 20.0) * cos(rot + pos * 20.0 * 2.0) * (0.5 + 0.3 * sin(pos * 10.0 + depth)) + 1.0) / 2.0;
-    uint32_t c = Wheel((uint8_t)(depth * 50 + pos * 100) % 256);
-    setPixelColor(i, ((c >> 16) & 0xFF) * val, ((c >> 8) & 0xFF) * val, (c & 0xFF) * val);
+  uint8_t beat = beat8(60);
+  int center = ledCount / 2;
+  
+  for(int i = 0; i <= center; i++) {
+    uint8_t colorIndex = (i * 10) - beat;
+    CRGB color = ColorFromPalette(RainbowColors_p, colorIndex, 255, LINEARBLEND);
+    leds[center + i] = color;
+    leds[center - i] = color;
   }
-  depth += 0.05; rot += 0.03;
 }
 
 // Effect 18: Cyber city
+// Pink/Cyan neon pulses
 void effectCyberCity() {
-  static uint8_t scan = 0;
-  FastLED.clear();
-  for(int col = 0; col < 16; col++) {
-    for(int row = 0; row < 8; row++) {
-      int pos = col + row * 16;
-      if(pos < ledCount) {
-        if(random(100) < 20) setPixelColor(pos, col % 2 ? 0xFF : 0, col % 3 ? 0xFF : 0, 0xFF);
-        else setPixelColor(pos, 5, 5, 10);
-      }
+  fadeToBlackBy(leds, ledCount, 40);
+  
+  EVERY_N_MILLISECONDS(200) {
+    int pos = random16(ledCount);
+    if(random8() > 128) {
+      leds[pos] = CRGB(255, 0, 255); // Magenta
+    } else {
+      leds[pos] = CRGB(0, 255, 255); // Cyan
     }
   }
-  scan = (scan + 1) % ledCount;
-  if(scan < ledCount) setPixelColor(scan, 0, 255, 0);
+  
+  // Car trails
+  static int carPos = 0;
+  leds[carPos] = CRGB::Red;
+  carPos = (carPos + 1) % ledCount;
 }
 
 // Effect 19: Solar flare
+// Heat colors with intense bursts
 void effectSolarFlare() {
-  static float phase = 0;
+  // Use Fire logic but across the whole strip as a surface
+  static uint8_t heat[255]; // Assumes max 255 for simplicity, better to dynamic alloc if needed
+  
+  // Cool down
   for(int i = 0; i < ledCount; i++) {
-    float turb = sin((float)i / ledCount * 20.0 + phase) * 0.3 + 0.7;
-    setPixelColor(i, 255 * turb, 100 * turb, 50 * turb);
+    heat[i] = qsub8(heat[i], random8(0, 10));
   }
-  phase += 0.04;
+  
+  // Ignite
+  if(random8() < 30) {
+    heat[random16(ledCount)] = qadd8(heat[random16(ledCount)], random8(50, 150));
+  }
+  
+  // Map to colors
+  for(int i = 0; i < ledCount; i++) {
+    leds[i] = HeatColor(heat[i]);
+  }
 }
 
-// Effect 20: Realistic fire simulation
+// Effect 20: VERY REALISTIC FIRE
+// Based on Fire2012WithPalette by Mark Kriegsman
 void effectFireSimulation() {
-  for (int i = 0; i < ledCount; i++) {
-    int f = random(0, 150);
-    setPixelColor(i, max(0, 255 - f), max(0, 100 - f / 2), 0);
+  // Array of temperature readings at each simulation cell
+  static byte heat[500]; // Fixed buffer, adjust if ledCount > 500
+
+  // 1. Cool down every cell a little
+  for( int i = 0; i < ledCount; i++) {
+    heat[i] = qsub8( heat[i],  random8(0, ((55 * 10) / ledCount) + 2));
+  }
+
+  // 2. Heat from each cell drifts 'up' and diffuses a little
+  for( int k= ledCount - 1; k >= 2; k--) {
+    heat[k] = (heat[k - 1] + heat[k - 2] + heat[k - 2] ) / 3;
+  }
+
+  // 3. Randomly ignite new 'sparks' of heat near the bottom
+  if( random8() < 120 ) {
+    int y = random8(7);
+    if(y < ledCount) heat[y] = qadd8( heat[y], random8(160,255) );
+  }
+
+  // 4. Map from heat cells to LED colors using a realistic palette
+  // Define a custom fire palette for extra realism
+  // Black -> Red -> Orange -> Yellow -> White
+  CRGBPalette16 firePalette = CRGBPalette16(
+    CRGB::Black, CRGB::Maroon, CRGB::Red, CRGB::OrangeRed,
+    CRGB::Orange, CRGB::Gold, CRGB::Yellow, CRGB::White,
+    CRGB::White, CRGB::White, CRGB::White, CRGB::White,
+    CRGB::White, CRGB::White, CRGB::White, CRGB::White
+  );
+
+  for( int j = 0; j < ledCount; j++) {
+    // Scale the heat value from 0-255 down to 0-240
+    // for best results with color palettes.
+    byte colorindex = scale8( heat[j], 240);
+    leds[j] = ColorFromPalette( firePalette, colorindex);
+  }
+  
+  // Add occasional sparks that fly up faster
+  if (random8() < 5) {
+    int sparkPos = random8(ledCount/4);
+    leds[sparkPos] += CRGB::White;
   }
 }
 
 // Effect 21: Solid Color
 void effectSolidColor() {
-  fill_solid(leds, ledCount, effectColor);
+  // Unpack effectColor (uint32_t 0xRRGGBB) to CRGB
+  CRGB color = CRGB(effectColor);
+  fill_solid(leds, ledCount, color);
+}
+
+
+// ============================================================================
+// NEW EFFECTS (33-42) - REVOLUTIONARY & COOL
+// ============================================================================
+
+// Effect 33: Plasma Waves
+// Complex oscillating noise patterns
+void effectPlasmaWaves() {
+  uint32_t ms = millis();
+  for(int i = 0; i < ledCount; i++) {
+    uint8_t v = sin8(i*10 + ms/2) + cos8(i*5 - ms/3) + sin8(i*20 + ms/4);
+    leds[i] = ColorFromPalette(PartyColors_p, v, 255, LINEARBLEND);
+  }
+}
+
+// Effect 34: Confetti Palettes
+// Random colored specks that fade, cycling palettes
+void effectConfettiPalettes() {
+  fadeToBlackBy(leds, ledCount, 10);
+  int pos = random16(ledCount);
+  leds[pos] += CHSV(millis()/50, 255, 255);
+}
+
+// Effect 35: Sinelon Dual
+// Two moving dots chasing each other with trails
+void effectSinelonDual() {
+  fadeToBlackBy(leds, ledCount, 20);
+  int pos1 = beatsin16(13, 0, ledCount-1);
+  int pos2 = beatsin16(17, 0, ledCount-1);
+  leds[pos1] += CRGB::Cyan;
+  leds[pos2] += CRGB::Magenta;
+}
+
+// Effect 36: BPM
+// Color pulses matching a specific beat per minute
+void effectBPM() {
+  uint8_t beat = beatsin8(62, 64, 255);
+  for(int i = 0; i < ledCount; i++) {
+    leds[i] = ColorFromPalette(PartyColors_p, millis()/20 + (i*2), beat-millis()/10 + (i*10));
+  }
+}
+
+// Effect 37: Juggle
+// Multiple colored dots weaving in and out
+void effectJuggle() {
+  fadeToBlackBy(leds, ledCount, 20);
+  byte dothue = 0;
+  for(int i = 0; i < 8; i++) {
+    leds[beatsin16(i+7, 0, ledCount-1)] |= CHSV(dothue, 200, 255);
+    dothue += 32;
+  }
+}
+
+// Effect 38: Glitter Rainbow
+// Rainbow with random white sparkles
+void effectGlitterRainbow() {
+  fill_rainbow(leds, ledCount, millis()/20, 7);
+  if(random8() < 80) {
+    leds[random16(ledCount)] += CRGB::White;
+  }
+}
+
+// Effect 39: Pacific
+// Gentle blue/aqua ocean waves using noise
+void effectPacific() {
+  CRGBPalette16 pacifica_palette_1 = 
+    { 0x000507, 0x000409, 0x00030B, 0x00030D, 0x000210, 0x000212, 0x000114, 0x000117, 
+      0x000019, 0x00001C, 0x000026, 0x000031, 0x00003B, 0x000046, 0x000051, 0x00005C };
+  CRGBPalette16 pacifica_palette_2 = 
+    { 0x000208, 0x00030E, 0x000514, 0x00061A, 0x000820, 0x000927, 0x000B2D, 0x000C33, 
+      0x000E39, 0x001040, 0x001450, 0x001860, 0x001C70, 0x002080, 0x002490, 0x0028A0 };
+  
+  uint32_t ms = millis();
+  for(int i = 0; i < ledCount; i++) {
+     uint8_t index = inoise8(i*10, ms/4);
+     leds[i] = ColorFromPalette(pacifica_palette_2, index, 255, LINEARBLEND);
+  }
+}
+
+// Effect 40: Twinkle Fox
+// Twinkling stars with specific colors
+void effectTwinkleFox() {
+  // Simplified implementation of TwinkleFox
+  EVERY_N_MILLISECONDS(50) {
+     if (random8() < 30) {
+        int pos = random16(ledCount);
+        if (leds[pos].getAverageLight() < 40) { // Only if dim
+            leds[pos] = ColorFromPalette(FairyLight_p, random8(), 255, LINEARBLEND);
+        }
+     }
+  }
+  
+  // Fade everything slowly
+  for(int i=0; i<ledCount; i++) {
+      leds[i].fadeToBlackBy(4);
+  }
+}
+
+// Effect 41: Color Waves
+// Smooth flowing color waves
+void effectColorWaves() {
+  static uint16_t sPseudotime = 0;
+  static uint16_t sLastMillis = 0;
+  static uint16_t sHue16 = 0;
+ 
+  uint8_t bright = 255;
+  uint16_t hue16 = sHue16;
+  uint16_t hueinc16 = beatsin16(11, 200, 1500);
+  
+  uint16_t ms = millis();
+  uint16_t deltams = ms - sLastMillis ;
+  sLastMillis  = ms;
+  sPseudotime += deltams * map(effectSpeed, 0, 255, 1, 3);
+  sHue16 += deltams * beatsin8(5, 50, 255);
+  
+  for( int i = 0 ; i < ledCount; i++) {
+    hue16 += hueinc16;
+    uint8_t hue8 = hue16 / 256;
+    uint16_t h16_128 = hue16 >> 7;
+    if( h16_128 & 0x100) {
+      hue8 = 255 - (h16_128 >> 1);
+    } else {
+      hue8 = h16_128 >> 1;
+    }
+
+    leds[i] = CHSV( hue8, 255, bright);
+  }
+}
+
+// Effect 42: Perlin Move
+// Perlin noise moving across the strip
+void effectPerlinMove() {
+  uint32_t ms = millis();
+  int scale = 10;
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t noise = inoise8(i * scale + ms / 3);
+    leds[i] = CHSV(noise, 255, 255);
+  }
+}
+
+
+// ============================================================================
+// HELPERS (Compat wrappers where needed)
+// ============================================================================
+
+void setAllLeds(uint32_t color) {
+  fill_solid(leds, ledCount, CRGB(color));
+}
+
+uint32_t Wheel(byte WheelPos) {
+  // Legacy compatibility for any missed calls
+  CRGB color = CHSV(WheelPos, 255, 255);
+  return ((uint32_t)color.r << 16) | ((uint32_t)color.g << 8) | color.b;
+}
+
+uint32_t colorBlend(uint32_t color1, uint32_t color2, uint8_t blend) {
+    CRGB c1 = CRGB(color1);
+    CRGB c2 = CRGB(color2);
+    CRGB blended = nblend(c1, c2, blend);
+    return ((uint32_t)blended.r << 16) | ((uint32_t)blended.g << 8) | blended.b;
+}
+
+uint32_t EffectHeatColor(uint8_t temperature) {
+    CRGB color = HeatColor(temperature);
+    return ((uint32_t)color.r << 16) | ((uint32_t)color.g << 8) | color.b;
 }

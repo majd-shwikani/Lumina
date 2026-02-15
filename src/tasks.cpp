@@ -176,6 +176,18 @@ void updateLEDs() {
     case 19: effectSolarFlare(); break;
     case 20: effectFireSimulation(); break;
     case 21: effectSolidColor(); break;
+ 
+    case 33: effectPlasmaWaves(); break;
+    case 34: effectConfettiPalettes(); break;
+    case 35: effectSinelonDual(); break;
+    case 36: effectBPM(); break;
+    case 37: effectJuggle(); break;
+    case 38: effectGlitterRainbow(); break;
+    case 39: effectPacific(); break;
+    case 40: effectTwinkleFox(); break;
+    case 41: effectColorWaves(); break;
+    case 42: effectPerlinMove(); break;
+    
     default: effectRainbow(); break;
   }
   FastLED.show();

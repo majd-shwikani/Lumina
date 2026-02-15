@@ -4,11 +4,35 @@
 #include <Arduino.h>
 #include <FastLED.h>
 
-// Helper functions
-uint32_t stripColor(uint8_t r, uint8_t g, uint8_t b);
-uint32_t getPixelColor(int i);
-void setPixelColor(int i, uint8_t r, uint8_t g, uint8_t b);
-void setPixelColor(int i, uint32_t c);
+// ============================================================================
+// EXTERNAL VARIABLE DECLARATIONS
+// ============================================================================
+
+extern CRGB *leds;
+extern volatile uint32_t effectColor;
+extern volatile uint32_t effectSpeed;
+
+
+
+// ============================================================================
+// NEW REVOLUTIONARY EFFECTS (33-42)
+// ============================================================================
+
+void effectPlasmaWaves();          // 33
+void effectConfettiPalettes();     // 34
+void effectSinelonDual();          // 35
+void effectBPM();                  // 36
+void effectJuggle();               // 37
+void effectGlitterRainbow();       // 38
+void effectPacific();              // 39
+void effectTwinkleFox();           // 40
+void effectColorWaves();           // 41
+void effectPerlinMove();           // 42
+
+// ============================================================================
+// HELPER FUNCTION DECLARATIONS
+// ============================================================================
+
 uint32_t Wheel(byte WheelPos);
 uint32_t colorBlend(uint32_t color1, uint32_t color2, uint8_t blend);
 void setAllLeds(uint32_t color);
