@@ -32,6 +32,13 @@ unsigned long lastGatewayContact = 0;
 const unsigned long GATEWAY_TIMEOUT = 60000; // 60 seconds
 int currentWifiChannel = 1;
 
+// ESP-NOW Variables
+uint8_t gatewayMAC[6] = {0};
+bool gatewayFound = false;
+unsigned long lastGatewayContact = 0;
+const unsigned long GATEWAY_TIMEOUT = 15000; // 15 seconds
+int currentWifiChannel = 1;
+
 String deviceID;
 String wifiSSID;
 String wifiPassword;
