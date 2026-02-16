@@ -515,6 +515,13 @@ bool startGitHubOTAUpdate(WiFiClient* client, int contentLength) {
   int progress = 0;
   int lastProgress = 0;
 
+  // Allocate larger buffer in PSRAM
+  const size_t bufferSize = 16384; // 16KB buffer
+  uint8_t *buffer = (uint8_t *)ps_malloc(bufferSize);
+  if (!buffer) {
+    Serial.println("   ⚠️  Failed to allocate PSRAM buffer, falling back to stack");
+  }
+
   const unsigned long timeoutDuration = 10 * 1000;
   unsigned long lastDataTime = millis();
 
@@ -522,10 +529,12 @@ bool startGitHubOTAUpdate(WiFiClient* client, int contentLength) {
     esp_task_wdt_reset();
     
     if (client->available()) {
-      uint8_t buffer[128];
-      size_t len = client->read(buffer, sizeof(buffer));
+      size_t toRead = client->available();
+      if (toRead > (buffer ? bufferSize : 128)) toRead = (buffer ? bufferSize : 128);
+      
+      size_t len = client->read(buffer ? buffer : (uint8_t*)alloca(128), toRead);
       if (len > 0) {
-        Update.write(buffer, len);
+        Update.write(buffer ? buffer : (uint8_t*)alloca(128), len);
         written += len;
         lastDataTime = millis();
 
@@ -539,12 +548,14 @@ bool startGitHubOTAUpdate(WiFiClient* client, int contentLength) {
     
     if (millis() - lastDataTime > timeoutDuration) {
       Serial.println("\n   ❌ Timeout: No data received. Aborting update...");
+      if (buffer) free(buffer);
       Update.abort();
       return false;
     }
 
     yield();
   }
+  if (buffer) free(buffer);
   Serial.println("\n   ✅ Writing complete");
 
   if (written != contentLength) {
