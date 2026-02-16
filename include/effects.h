@@ -97,6 +97,21 @@ void effectColorWaves();           // 41
 void effectPerlinMove();           // 42
 
 // ============================================================================
+// ORGANIC LAMP EFFECTS (43-52)
+// ============================================================================
+
+void effectPlasmaLamp();           // 43
+void effectBiolume();              // 44
+void effectDeepSeaVolcano();       // 45
+void effectMagicalAurora();        // 46
+void effectSolarWinds();           // 47
+void effectEtherealMist();         // 48
+void effectBioPulse();             // 49
+void effectRadioactiveGlow();      // 50
+void effectSupernova();            // 51
+void effectEnchantedStream();      // 52
+
+// ============================================================================
 // HELPER FUNCTION DECLARATIONS
 // ============================================================================
 

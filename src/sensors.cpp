@@ -1,4 +1,5 @@
 #include "sensors.h"
+#include "globals.h"
 #include <esp_task_wdt.h>
 #include "FS.h"
 #include "SPIFFS.h"
@@ -198,7 +199,10 @@ void setupFrequencyDetection() {
 
 void readI2SSamples() {
   size_t bytes_read = 0;
-  i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
+  if (i2sMutex != NULL && xSemaphoreTake(i2sMutex, 0) == pdTRUE) {
+    i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
+    xSemaphoreGive(i2sMutex);
+  }
   
   if (bytes_read == sizeof(raw_samples)) {
     for (int i = 0; i < N_SAMPLES; i++) {

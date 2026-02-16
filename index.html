@@ -525,6 +525,14 @@
 
                 <div style="margin: 20px 0;">
                     <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <span class="control-label">Master Brightness</span>
+                        <span id="brightnessValue" style="color:var(--primary); font-family:monospace;">255</span>
+                    </div>
+                    <input type="range" min="0" max="255" value="255" id="brightnessSlider">
+                </div>
+
+                <div style="margin: 20px 0;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                         <span class="control-label">Animation Speed</span>
                         <span id="speedValue" style="color:var(--primary); font-family:monospace;">50</span>
                     </div>
@@ -575,7 +583,23 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        const effects = ["Rainbow Cycle", "Meteor Shower", "Digital Rain", "Pulsing Spheres", "Binary Clock", "Vortex", "DNA Helix", "Audio Visualizer", "Lava Lamp", "Radar Sweep", "Quantum Particles", "Neural Network", "Galaxy Spin", "Crystal Growth", "Lightning Storm", "Ocean Depth", "Northern Lights", "Time Tunnel", "Cyber City", "Solar Flare", "Fire Simulation", "Solid Color", "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom", "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer", "Cascading Frequency", "Energy Orbits", "Audio Ripples", "Plasma Waves", "Confetti Palettes", "Sinelon Dual", "BPM", "Juggle", "Glitter Rainbow", "Pacific", "Twinkle Fox", "Color Waves", "Perlin Move"];
+        const effects = [
+            // Standard
+            "Rainbow Cycle", "Meteor Shower", "Digital Rain", "Pulsing Spheres", "Binary Clock", "Vortex", "DNA Helix", "Audio Visualizer", "Lava Lamp", "Radar Sweep", "Quantum Particles", "Neural Network", "Galaxy Spin", "Crystal Growth", "Lightning Storm", "Ocean Depth", "Northern Lights", "Time Tunnel", "Cyber City", "Solar Flare", "Fire Simulation", "Solid Color",
+            // Sound Reactive
+            "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom", "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer", "Cascading Frequency", "Energy Orbits", "Audio Ripples",
+            // Revolutionary
+            "Plasma Waves", "Confetti Palettes", "Sinelon Dual", "BPM", "Juggle", "Glitter Rainbow", "Pacific", "Twinkle Fox", "Color Waves", "Perlin Move",
+            // Organic Lamps
+            "Plasma Lamp", "Bioluminescence", "Deep Sea Volcano", "Magical Aurora", "Solar Winds", "Ethereal Mist", "Bio-Pulse", "Radioactive Glow", "Supernova", "Enchanted Stream"
+        ];
+
+        const effectCategories = [
+            { name: "✨ Standard", start: 0, end: 21 },
+            { name: "🎵 Sound Reactive", start: 22, end: 32 },
+            { name: "🚀 Revolutionary", start: 33, end: 42 },
+            { name: "💡 Organic Lamps", start: 43, end: 52 }
+        ];
 
         let currentState = {
             deviceId: localStorage.getItem('lastDeviceId') || 'friend1_leds',
@@ -588,6 +612,7 @@
         const mirrorControlContainer = document.getElementById('mirrorControlContainer');
         const powerToggle = document.getElementById('powerToggle');
         const speedSlider = document.getElementById('speedSlider');
+        const brightnessSlider = document.getElementById('brightnessSlider');
         const colorPicker = document.getElementById('colorPicker');
         const dropdownHeader = document.getElementById('dropdownHeader');
         const dropdownList = document.getElementById('dropdownList');
@@ -621,10 +646,8 @@
                 nodeList.appendChild(gatewayBtn);
                 Object.keys(currentState.activeNodes).forEach(mac => {
                     const btn = document.createElement('button');
-                    // Updated class names for new design while keeping JS logic work with .node-btn
                     btn.className = `node-btn ${currentState.currentTarget === mac ? 'active' : ''}`;
                     btn.dataset.target = mac;
-                    // Updated HTML structure for button content
                     btn.innerHTML = `<i class="fas fa-lightbulb"></i>
                                      <div class="node-info">
                                          <span class="node-name">Receiver</span>
@@ -650,6 +673,9 @@
                 
                 speedSlider.value = data.speed || 50;
                 document.getElementById('speedValue').textContent = data.speed || 50;
+
+                brightnessSlider.value = data.brightness !== undefined ? data.brightness : 255;
+                document.getElementById('brightnessValue').textContent = brightnessSlider.value;
                 
                 const color = data.color || "FF0000";
                 colorPicker.value = '#' + color;
@@ -690,6 +716,10 @@
         mirrorToggle.addEventListener('change', () => updateFirebaseValue('isMirror', mirrorToggle.checked));
         speedSlider.addEventListener('input', () => document.getElementById('speedValue').textContent = speedSlider.value);
         speedSlider.addEventListener('change', () => updateFirebaseValue('speed', parseInt(speedSlider.value)));
+        
+        brightnessSlider.addEventListener('input', () => document.getElementById('brightnessValue').textContent = brightnessSlider.value);
+        brightnessSlider.addEventListener('change', () => updateFirebaseValue('brightness', parseInt(brightnessSlider.value)));
+
         colorPicker.addEventListener('change', () => {
             const color = colorPicker.value.substring(1).toUpperCase();
             document.getElementById('colorPreview').style.backgroundColor = '#' + color;
@@ -701,15 +731,31 @@
         document.getElementById('timerOffTimeInput').addEventListener('change', (e) => updateFirebaseValue('timer_off', e.target.value));
 
         dropdownHeader.addEventListener('click', () => dropdownList.classList.toggle('show'));
-        effects.forEach((name, i) => {
-            const item = document.createElement('div');
-            item.className = 'dropdown-item';
-            item.textContent = name;
-            item.onclick = () => {
-                updateFirebaseValue('effect', i);
-                dropdownList.classList.remove('show');
-            };
-            dropdownList.appendChild(item);
+        
+        // Categorized dropdown generation
+        dropdownList.innerHTML = '';
+        effectCategories.forEach(cat => {
+            const catHeader = document.createElement('div');
+            catHeader.style.padding = '8px 12px';
+            catHeader.style.color = 'var(--primary)';
+            catHeader.style.fontSize = '0.8rem';
+            catHeader.style.fontWeight = 'bold';
+            catHeader.style.textTransform = 'uppercase';
+            catHeader.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+            catHeader.textContent = cat.name;
+            dropdownList.appendChild(catHeader);
+
+            for(let i = cat.start; i <= cat.end; i++) {
+                if (i >= effects.length) break;
+                const item = document.createElement('div');
+                item.className = 'dropdown-item';
+                item.textContent = effects[i];
+                item.onclick = () => {
+                    updateFirebaseValue('effect', i);
+                    dropdownList.classList.remove('show');
+                };
+                dropdownList.appendChild(item);
+            }
         });
 
         document.getElementById('calibrateMicBtn').addEventListener('click', () => {

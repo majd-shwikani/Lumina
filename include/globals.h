@@ -36,6 +36,7 @@ typedef struct {
     int effect;
     uint32_t speed;
     uint32_t color;
+    uint8_t brightness;
     bool enabled;
 } LuminaMessage;
 
@@ -45,6 +46,7 @@ typedef struct {
     int effect;
     uint32_t speed;
     uint32_t color;
+    uint8_t brightness;
     bool enabled;
     bool isMirror;
     bool registered;
@@ -62,6 +64,7 @@ void updateActiveNodesInFirebase();
 // CRITICAL FIX 1: Thread synchronization primitives
 // ============================================================================
 extern portMUX_TYPE stripMux;
+extern SemaphoreHandle_t i2sMutex;
 
 // ============================================================================
 // DEBUGGING AND SYSTEM MONITORING
@@ -101,9 +104,11 @@ extern FirebaseConfig config;
 extern volatile int currentEffect;
 extern volatile uint32_t effectSpeed;
 extern volatile uint32_t effectColor;
+extern volatile uint8_t globalBrightness;
 extern volatile bool updateEffect;
 extern volatile bool firebaseConnected;
 extern volatile bool stripEnabled;
+extern volatile bool isListening;
 extern volatile bool autoDarknessControl;
 extern volatile bool turnedOffByDarkness;
 extern bool defaultDataCreated;

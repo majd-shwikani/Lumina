@@ -1,4 +1,6 @@
 #include "globals.h"
+#include "smart_home.h"
+#include "voice_recognition.h"
 
 // ============================================================================
 // SETUP FUNCTION
@@ -50,6 +52,7 @@ void setup() {
   Serial.println("╚═══════════════════════════════════════════════════════════════╝\n");
   
   Serial.println("💡 Initializing LED strip...");
+  i2sMutex = xSemaphoreCreateMutex();
   leds = new CRGB[ledCount];
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, ledCount);
   FastLED.setBrightness(255);
@@ -110,6 +113,10 @@ void setup() {
   pinMode(RADAR_OUTPUT, INPUT);
   Serial.println("      ✅ LD2410 radar presence detection on GPIO " + String(RADAR_OUTPUT));
   
+  Serial.println("🎤 [8.5/9] Setting up smart home and voice detection...");
+  setupSmartHome();
+  setupVoiceRecognition();
+
   Serial.println("⚙️  [9/9] Creating FreeRTOS tasks...");
   
   xTaskCreatePinnedToCore(firebaseTask, "FirebaseTask", 4000, NULL, 1, &firebaseTaskHandle, 0);
@@ -117,6 +124,12 @@ void setup() {
 
   xTaskCreatePinnedToCore(ledTask, "LEDTask", 4000, NULL, 1, &ledTaskHandle, 1);
   Serial.println("      ✅ LED task created (Core 1, 4KB stack)");
+
+  xTaskCreatePinnedToCore(smartHomeTask, "SmartHomeTask", 8192, NULL, 1, NULL, 0);
+  Serial.println("      ✅ Smart Home task created (Core 0, 8KB stack)");
+
+  xTaskCreatePinnedToCore(voiceRecognitionTask, "VoiceTask", 4000, NULL, 1, NULL, 0);
+  Serial.println("      ✅ Voice Detection task created (Core 0, 4KB stack)");
 
   xTaskCreatePinnedToCore(sensorDataTask, "SensorDataTask", 12000, NULL, 1, &sensorTaskHandle, 0);
   Serial.println("      ✅ Sensor task created (Core 0, 12KB stack)");

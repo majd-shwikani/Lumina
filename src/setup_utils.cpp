@@ -4,6 +4,7 @@
 // GLOBAL VARIABLE DEFINITIONS
 // ============================================================================
 portMUX_TYPE stripMux = portMUX_INITIALIZER_UNLOCKED;
+SemaphoreHandle_t i2sMutex = NULL;
 unsigned long lastSystemStatsReport = 0;
 const unsigned long SYSTEM_STATS_INTERVAL = 30000;
 UBaseType_t firebaseTaskStack = 0;
@@ -31,9 +32,11 @@ FirebaseConfig config;
 volatile int currentEffect = 0;
 volatile uint32_t effectSpeed = 50;
 volatile uint32_t effectColor = 0xFF0000;
+volatile uint8_t globalBrightness = 255;
 volatile bool updateEffect = false;
 volatile bool firebaseConnected = false;
 volatile bool stripEnabled = true;
+volatile bool isListening = false;
 volatile bool autoDarknessControl = true;
 volatile bool turnedOffByDarkness = false;
 bool defaultDataCreated = false;
@@ -157,12 +160,14 @@ void routeCommandToReceiver(int index) {
     msg.effect = currentEffect;
     msg.speed = effectSpeed;
     msg.color = effectColor;
+    msg.brightness = globalBrightness;
     msg.enabled = stripEnabled;
     portEXIT_CRITICAL(&stripMux);
   } else {
     msg.effect = receivers[index].effect;
     msg.speed = receivers[index].speed;
     msg.color = receivers[index].color;
+    msg.brightness = receivers[index].brightness;
     msg.enabled = receivers[index].enabled;
   }
   

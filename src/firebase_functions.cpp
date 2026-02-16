@@ -57,6 +57,16 @@ void readInitialFirebaseData() {
     Firebase.RTDB.setInt(&fbdoUpload, speedPath.c_str(), effectSpeed);
   }
   
+  String brightnessPath = localPath + "/brightness";
+  if (Firebase.RTDB.getInt(&fbdoUpload, brightnessPath.c_str())) {
+    globalBrightness = fbdoUpload.intData();
+    FastLED.setBrightness(globalBrightness);
+    Serial.printf("      Brightness: %d\n", globalBrightness);
+  } else {
+    globalBrightness = 255;
+    Firebase.RTDB.setInt(&fbdoUpload, brightnessPath.c_str(), globalBrightness);
+  }
+  
   String colorPath = localPath + "/color";
   if (Firebase.RTDB.getString(&fbdoUpload, colorPath.c_str())) {
     String colorStr = fbdoUpload.stringData();
@@ -205,6 +215,12 @@ void streamCallback(FirebaseStream data) {
       Serial.printf("   [Local] Speed: %d\n", effectSpeed);
       syncAllMirrors();
     }
+    else if (subPath == "/brightness") {
+      globalBrightness = data.intData();
+      FastLED.setBrightness(globalBrightness);
+      Serial.printf("   [Local] Brightness: %d\n", globalBrightness);
+      syncAllMirrors();
+    }
     else if (subPath == "/color") {
       String colorStr = data.stringData();
       if (colorStr.length() == 6) {
@@ -273,6 +289,7 @@ void streamCallback(FirebaseStream data) {
       if (idx != -1) {
         if (property == "/effect") receivers[idx].effect = data.intData();
         else if (property == "/speed") receivers[idx].speed = data.intData();
+        else if (property == "/brightness") receivers[idx].brightness = data.intData();
         else if (property == "/color") {
           String colorStr = data.stringData();
           if (colorStr.length() == 6) receivers[idx].color = strtoul(colorStr.c_str(), NULL, 16);
@@ -323,6 +340,12 @@ void createDefaultFirebaseData() {
   
   if (Firebase.RTDB.setInt(&fbdoUpload, (localPath + "/speed").c_str(), 50)) {
     Serial.println("Speed set to default: 50");
+  } else {
+    allSuccess = false;
+  }
+  
+  if (Firebase.RTDB.setInt(&fbdoUpload, (localPath + "/brightness").c_str(), 255)) {
+    Serial.println("Brightness set to default: 255");
   } else {
     allSuccess = false;
   }

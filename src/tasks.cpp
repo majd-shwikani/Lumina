@@ -30,6 +30,17 @@ void updateLEDs() {
     return;
   }
   
+  if (isListening) {
+    // Pulsing blue animation for listening
+    uint8_t pulse = beatsin8(30, 50, 255);
+    for(int i = 0; i < ledCount; i++) {
+      leds[i] = CRGB::Blue;
+      leds[i].nscale8(pulse);
+    }
+    FastLED.show();
+    return;
+  }
+  
   if (currentEnabled && !lastStripEnabled) {
     lastStripEnabled = true;
   }
@@ -77,10 +88,19 @@ void updateLEDs() {
     case 39: effectPacific(); break;
     case 40: effectTwinkleFox(); break;
     case 41: effectColorWaves(); break;
-    case 42: effectPerlinMove(); break;
-    
-    default: effectRainbow(); break;
-  }
+          case 42: effectPerlinMove(); break;
+          case 43: effectPlasmaLamp(); break;
+          case 44: effectBiolume(); break;
+          case 45: effectDeepSeaVolcano(); break;
+          case 46: effectMagicalAurora(); break;
+          case 47: effectSolarWinds(); break;
+          case 48: effectEtherealMist(); break;
+          case 49: effectBioPulse(); break;
+          case 50: effectRadioactiveGlow(); break;
+          case 51: effectSupernova(); break;
+          case 52: effectEnchantedStream(); break;
+          default: effectRainbow(); break;
+        }
   FastLED.show();
 }
 
