@@ -130,7 +130,7 @@ void setupI2SMicrophone() {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
     .sample_rate = SAMPLE_RATE,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+    .channel_format = I2S_CHANNEL_FMT_ALL_LEFT,
     .communication_format = I2S_COMM_FORMAT_STAND_I2S,
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
     .dma_buf_count = 4,
@@ -200,13 +200,20 @@ void setupFrequencyDetection() {
 void readI2SSamples() {
   size_t bytes_read = 0;
   if (i2sMutex != NULL && xSemaphoreTake(i2sMutex, 0) == pdTRUE) {
+    // We read into raw_samples. Since it's configured as ONLY_LEFT,
+    // raw_samples should contain 16-bit mono data.
     i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
     xSemaphoreGive(i2sMutex);
   }
   
-  if (bytes_read == sizeof(raw_samples)) {
+  if (bytes_read > 0) {
+    int samples_count = bytes_read / sizeof(int16_t);
     for (int i = 0; i < N_SAMPLES; i++) {
-      vReal[i] = (double)raw_samples[i];
+      if (i < samples_count) {
+        vReal[i] = (double)raw_samples[i];
+      } else {
+        vReal[i] = 0.0;
+      }
       vImag[i] = 0.0;
     }
   }

@@ -9,22 +9,26 @@
 #define LED_PIN 17
 
 // Button for configuration/reset
-#define BUTTON_PIN 4
+#define BUTTON_PIN 10
 
 // Radar sensor (LD2410)
 #define RADAR_RX_PIN 16
-#define RADAR_TX_PIN 17
-#define RADAR_OUTPUT 23
+#define RADAR_TX_PIN 15
+#define RADAR_OUTPUT 14
+
+// I2C Pins (for VEML7700 Light Sensor)
+#define I2C_SDA 8
+#define I2C_SCL 9
 
 // Audio/Microphone pins
 // I2S Configuration (for ICS43434 microphone)
-#define I2S_WS_PIN   25    // Word select/LRCLK
-#define I2S_SD_PIN   32    // Serial data/DOUT  
-#define I2S_SCK_PIN  33    // Serial clock/BCLK
+#define I2S_WS_PIN   5     // Word select/LRCLK
+#define I2S_SD_PIN   4     // Serial data/DOUT  
+#define I2S_SCK_PIN  2     // Serial clock/BCLK
 #define I2S_PORT     I2S_NUM_0
 
 // Analog Configuration (for MAX9814 microphone)
-#define ANALOG_MIC_PIN 27
+#define ANALOG_MIC_PIN 1
 
 // Firebase configuration
 #define FIREBASE_HOST "test-dbd7a-default-rtdb.firebaseio.com"

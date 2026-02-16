@@ -7,9 +7,9 @@
 #include <FastLED.h>
 
 // Your SinricPro Credentials - placeholders for user
-#define APP_KEY    "YOUR_APP_KEY"
-#define APP_SECRET "YOUR_APP_SECRET"
-#define LIGHT_ID   "YOUR_LIGHT_ID"
+#define APP_KEY    "8c8a8770-8da2-4b37-921b-647573117fc5"
+#define APP_SECRET "37c469aa-2ff3-4483-af84-6ceab5e2f29f-30508049-c51e-48b3-bcdb-24e0daa399f5"
+#define LIGHT_ID   "69938bb7decdf0b6f1803148"
 
 SinricProLight &lumina = SinricPro[LIGHT_ID];
 Espalexa espalexa;
