@@ -168,6 +168,8 @@ extern bool buttonActive;
 const char* getResetReason(int cpu);
 void printSystemStats();
 void initSPIFFS();
+void checkBootCount();
+void clearBootCount(void *parameter);
 bool loadConfig();
 bool shouldStartConfigPortal();
 void startConfigPortal();

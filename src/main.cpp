@@ -24,6 +24,7 @@ void setup() {
   
   Serial.println("📁 Initializing SPIFFS...");
   initSPIFFS();
+  checkBootCount();
   
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   Serial.println("🔘 Button configured on pin " + String(BUTTON_PIN));
@@ -164,20 +165,7 @@ void loop() {
     if (!buttonActive) {
       buttonActive = true;
       buttonPressStart = millis();
-      Serial.println("\n🔘 Button pressed - hold for 7 seconds to reset config");
-    }
-    
-    if (millis() - buttonPressStart > 7000) {
-      Serial.println("⚠️  7-second button press detected - resetting configuration...");
-      
-      if (SPIFFS.exists("/config.json")) {
-        SPIFFS.remove("/config.json");
-        Serial.println("✅ Configuration file deleted");
-      }
-      
-      Serial.println("🔄 Restarting to enter config portal...");
-      delay(1000);
-      ESP.restart();
+      Serial.println("\n🔘 Button pressed");
     }
   } else {
     buttonActive = false;

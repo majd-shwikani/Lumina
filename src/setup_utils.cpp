@@ -281,6 +281,48 @@ void initSPIFFS() {
   Serial.println("✅ SPIFFS mounted successfully");
 }
 
+void checkBootCount() {
+  int bootCount = 0;
+  if (SPIFFS.exists("/boot_count")) {
+    File f = SPIFFS.open("/boot_count", "r");
+    if (f) {
+      String val = f.readString();
+      bootCount = val.toInt();
+      f.close();
+    }
+  }
+  
+  bootCount++;
+  Serial.printf("🔄 [Boot] Boot counter: %d/3\n", bootCount);
+  
+  if (bootCount >= 3) {
+    Serial.println("⚠️ [Boot] Reset threshold reached! Deleting configuration...");
+    if (SPIFFS.exists("/config.json")) SPIFFS.remove("/config.json");
+    if (SPIFFS.exists("/boot_count")) SPIFFS.remove("/boot_count");
+    Serial.println("✅ Configuration wiped. Proceeding to config portal.");
+    // No need to restart, setup() will call shouldStartConfigPortal()
+  } else {
+    File f = SPIFFS.open("/boot_count", "w");
+    if (f) {
+      f.print(bootCount);
+      f.close();
+      Serial.println("📂 [Boot] Boot counter saved to SPIFFS");
+    }
+    
+    // Create a task to clear the boot counter after 10 seconds
+    xTaskCreate(clearBootCount, "ClearBootTask", 2048, NULL, 1, NULL);
+  }
+}
+
+void clearBootCount(void *parameter) {
+  vTaskDelay(10000 / portTICK_PERIOD_MS);
+  if (SPIFFS.exists("/boot_count")) {
+    SPIFFS.remove("/boot_count");
+    Serial.println("🧹 [Boot] 10 seconds passed. Boot counter cleared from SPIFFS.");
+  }
+  vTaskDelete(NULL);
+}
+
 bool loadConfig() {
   File configFile = SPIFFS.open("/config.json", "r");
   if (!configFile) return false;
