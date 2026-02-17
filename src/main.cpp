@@ -119,8 +119,8 @@ void setup() {
 
   Serial.println("⚙️  [9/9] Creating FreeRTOS tasks...");
   
-  xTaskCreatePinnedToCore(firebaseTask, "FirebaseTask", 4000, NULL, 1, &firebaseTaskHandle, 0);
-  Serial.println("      ✅ Firebase task created (Core 0, 4KB stack)");
+  xTaskCreatePinnedToCore(firebaseTask, "FirebaseTask", 12000, NULL, 1, &firebaseTaskHandle, 0);
+  Serial.println("      ✅ Firebase task created (Core 0, 12KB stack)");
 
   xTaskCreatePinnedToCore(ledTask, "LEDTask", 4000, NULL, 1, &ledTaskHandle, 1);
   Serial.println("      ✅ LED task created (Core 1, 4KB stack)");

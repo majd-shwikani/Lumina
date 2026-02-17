@@ -8,12 +8,14 @@ void setupFirebase() {
   Serial.println("   Configuring Firebase...");
   config.host = FIREBASE_HOST;
   config.signer.tokens.legacy_token = FIREBASE_SECRET;
-  config.timeout.serverResponse = 10 * 1000;
+  config.timeout.serverResponse = 15 * 1000; // Increase timeout to 15s
   
   fbdoStream.setResponseSize(2048);
   
   Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
   Firebase.reconnectNetwork(true);
+  Firebase.setDoubleDigits(5);
   
   Serial.println("   Waiting for connection...");
   delay(1000);
