@@ -128,8 +128,8 @@ void setup() {
   xTaskCreatePinnedToCore(smartHomeTask, "SmartHomeTask", 8192, NULL, 1, NULL, 0);
   Serial.println("      ✅ Smart Home task created (Core 0, 8KB stack)");
 
-  xTaskCreatePinnedToCore(voiceRecognitionTask, "VoiceTask", 4000, NULL, 1, NULL, 0);
-  Serial.println("      ✅ Voice Detection task created (Core 0, 4KB stack)");
+  xTaskCreatePinnedToCore(voiceRecognitionTask, "VoiceTask", 10000, NULL, 1, NULL, 0);
+  Serial.println("      ✅ Voice Detection task created (Core 0, 10KB stack)");
 
   xTaskCreatePinnedToCore(sensorDataTask, "SensorDataTask", 12000, NULL, 1, &sensorTaskHandle, 0);
   Serial.println("      ✅ Sensor task created (Core 0, 12KB stack)");
