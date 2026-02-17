@@ -262,6 +262,7 @@ void automationtask(void *parameter) {
         portENTER_CRITICAL(&stripMux);
         stripEnabled = false;
         portEXIT_CRITICAL(&stripMux);
+        syncAllMirrors();
       }
       vTaskDelay(xDelay);
       continue;

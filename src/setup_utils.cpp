@@ -129,6 +129,14 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
   }
 }
 
+void onDataSentGateway(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  // Optional: log failures
+  if (status != ESP_NOW_SEND_SUCCESS) {
+    // Serial.printf("⚠️ [Gateway] Delivery Fail to %02X:%02X:%02X:%02X:%02X:%02X\n", 
+    //               mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  }
+}
+
 void setupEspNowGateway() {
   if (esp_now_init() != ESP_OK) {
     Serial.println("❌ ESP-NOW Init Failed");
@@ -136,6 +144,7 @@ void setupEspNowGateway() {
   }
   
   esp_now_register_recv_cb(onDataRecvGateway);
+  esp_now_register_send_cb(onDataSentGateway);
   
   // Register broadcast peer
   esp_now_peer_info_t peerInfo = {};
@@ -153,16 +162,15 @@ void routeCommandToReceiver(int index) {
   
   LuminaMessage msg;
   strcpy(msg.msgType, "LUMINA_CMD");
-  memcpy(msg.targetMac, receivers[index].mac, 6); // Set target MAC
+  memcpy(msg.targetMac, receivers[index].mac, 6);
   
+  portENTER_CRITICAL(&stripMux);
   if (receivers[index].isMirror) {
-    portENTER_CRITICAL(&stripMux);
     msg.effect = currentEffect;
     msg.speed = effectSpeed;
     msg.color = effectColor;
     msg.brightness = globalBrightness;
     msg.enabled = stripEnabled;
-    portEXIT_CRITICAL(&stripMux);
   } else {
     msg.effect = receivers[index].effect;
     msg.speed = receivers[index].speed;
@@ -170,13 +178,20 @@ void routeCommandToReceiver(int index) {
     msg.brightness = receivers[index].brightness;
     msg.enabled = receivers[index].enabled;
   }
+  portEXIT_CRITICAL(&stripMux);
   
-  esp_err_t result = esp_now_send(receivers[index].mac, (uint8_t *)&msg, sizeof(msg));
+  // Retry mechanism for robustness
+  int maxRetries = 3;
+  esp_err_t result;
+  for (int i = 0; i < maxRetries; i++) {
+    result = esp_now_send(receivers[index].mac, (uint8_t *)&msg, sizeof(msg));
+    if (result == ESP_OK) break;
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+  }
+
   if (result == ESP_OK) {
-    Serial.printf("📡 [Gateway] Sent CMD to %s: Eff=%d, En=%s, Mirror=%s\n", 
-                  receivers[index].macStr.c_str(), msg.effect, 
-                  msg.enabled ? "YES" : "NO",
-                  receivers[index].isMirror ? "YES" : "NO");
+    // Serial.printf("📡 [Gateway] Sent CMD to %s: Eff=%d, En=%s\n", 
+    //               receivers[index].macStr.c_str(), msg.effect, msg.enabled ? "YES" : "NO");
   }
 }
 
