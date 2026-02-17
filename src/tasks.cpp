@@ -609,6 +609,15 @@ void statusLedTask(void *parameter) {
   for(;;) {
     esp_task_wdt_reset();
     
+    if (configPortalActive) {
+      // AP Mode: Rainbow Cycle
+      static uint8_t hue = 0;
+      onboardLed[0] = CHSV(hue++, 255, 255);
+      FastLED.show();
+      vTaskDelay(20 / portTICK_PERIOD_MS);
+      continue;
+    }
+
     bool wifiOk = (WiFi.status() == WL_CONNECTED);
     bool firebaseOk = firebaseConnected;
 

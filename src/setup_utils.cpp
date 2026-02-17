@@ -25,6 +25,7 @@ unsigned long lastLoopTime = 0;
 unsigned long loopCounter = 0;
 bool systemHealthy = true;
 bool systemInitialized = false;
+volatile bool configPortalActive = false;
 CRGB *leds = nullptr;
 CRGB onboardLed[1];
 FirebaseData fbdoStream;

@@ -89,6 +89,7 @@ extern unsigned long lastLoopTime;
 extern unsigned long loopCounter;
 extern bool systemHealthy;
 extern bool systemInitialized;
+extern volatile bool configPortalActive;
 
 // ============================================================================
 // GLOBAL OBJECTS

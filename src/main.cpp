@@ -30,6 +30,7 @@ void setup() {
   Serial.println("🔘 Button configured on pin " + String(BUTTON_PIN));
 
   if (shouldStartConfigPortal()) {
+    configPortalActive = true;
     Serial.println("⚙️  No configuration found. Starting config portal...");
     startConfigPortal();
     return;
