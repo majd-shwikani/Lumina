@@ -260,15 +260,27 @@ const char* getResetReason(int cpu) {
 }
 
 void printSystemStats() {
+  uint32_t freeHeap   = ESP.getFreeHeap();
+  uint32_t totalHeap  = ESP.getHeapSize();
+  uint32_t usedHeap   = totalHeap - freeHeap;
+  uint32_t freePsram  = ESP.getFreePsram();
+  uint32_t totalPsram = ESP.getPsramSize();
+  uint32_t usedPsram  = totalPsram - freePsram;
+
   Serial.println("\n╔══════════════════════════════════════════════════════════════════════╗");
   Serial.println("║              SYSTEM HEALTH & DIAGNOSTICS REPORT                      ║");
   Serial.println("╠══════════════════════════════════════════════════════════════════════╣");
-  Serial.printf("║ Free Heap: %7d bytes | Uptime: %lu s                                ║\n", 
-                ESP.getFreeHeap(), millis() / 1000);
-  Serial.printf("║ WiFi Channel: %-2d | Discovered Receivers: %-2d                        ║\n", 
+  Serial.printf("║  RAM   used: %5u KB / %5u KB  (%2u%% used)                         ║\n",
+                usedHeap / 1024, totalHeap / 1024, (usedHeap * 100) / totalHeap);
+  Serial.printf("║  PSRAM used: %5u KB / %5u KB  (%2u%% used)                         ║\n",
+                usedPsram / 1024, totalPsram / 1024, (usedPsram * 100) / totalPsram);
+  Serial.printf("║  Uptime: %lu s                                                      ║\n",
+                millis() / 1000);
+  Serial.println("╠══════════════════════════════════════════════════════════════════════╣");
+  Serial.printf("║  WiFi Channel: %-2d  |  Discovered Receivers: %-2d                      ║\n",
                 WiFi.channel(), receiverCount);
-  Serial.printf("║ Current Effect: %-2d | Speed: %-4d ms | Strip Enabled: %-3s          ║\n", 
-                currentEffect, effectSpeed, stripEnabled ? "YES" : "NO");
+  Serial.printf("║  Effect: %-2d  |  Speed: %-4d ms  |  Strip: %-3s                      ║\n",
+                currentEffect, effectSpeed, stripEnabled ? "ON" : "OFF");
   Serial.println("╚══════════════════════════════════════════════════════════════════════╝\n");
 }
 
