@@ -601,6 +601,56 @@ void otaUpdateTask(void *parameter) {
   }
 }
 
+void statusLedTask(void *parameter) {
+  Serial.println("🚨 Status LED Task started");
+  bool readySignalDone = false;
+  unsigned long readyStartTime = 0;
+
+  for(;;) {
+    esp_task_wdt_reset();
+    
+    bool wifiOk = (WiFi.status() == WL_CONNECTED);
+    bool firebaseOk = firebaseConnected;
+
+    if (!wifiOk || !firebaseOk) {
+      // Disconnected: Solid Red
+      onboardLed[0] = CRGB::Red;
+      FastLED.show();
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+    } 
+    else if (!systemInitialized) {
+      // Booting/Initializing: Flash Green (1s)
+      static bool toggle = false;
+      onboardLed[0] = toggle ? CRGB::Green : CRGB::Black;
+      toggle = !toggle;
+      FastLED.show();
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+    } 
+    else {
+      // Ready (WiFi + Firebase connected and init done)
+      if (!readySignalDone) {
+        if (readyStartTime == 0) readyStartTime = millis();
+        
+        if (millis() - readyStartTime < 10000) {
+          // Solid Green for 10s
+          onboardLed[0] = CRGB::Green;
+          FastLED.show();
+        } else {
+          // Turn OFF after 10s
+          onboardLed[0] = CRGB::Black;
+          FastLED.show();
+          readySignalDone = true;
+        }
+      } else {
+        // Keep OFF while healthy
+        onboardLed[0] = CRGB::Black;
+        FastLED.show();
+      }
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+    }
+  }
+}
+
 // ============================================================================
 // NOTE: statsTask() function has been REMOVED - merged into sensorDataTask()
 // ============================================================================

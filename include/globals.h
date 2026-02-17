@@ -88,11 +88,13 @@ extern TaskHandle_t otaTaskHandle;
 extern unsigned long lastLoopTime;
 extern unsigned long loopCounter;
 extern bool systemHealthy;
+extern bool systemInitialized;
 
 // ============================================================================
 // GLOBAL OBJECTS
 // ============================================================================
 extern CRGB *leds;
+extern CRGB onboardLed[1];
 extern FirebaseData fbdoStream;
 extern FirebaseData fbdoUpload;
 extern FirebaseAuth auth;
@@ -195,6 +197,7 @@ void automationtask(void *parameter);
 void sensorDataTask(void *parameter);
 void timerTask(void *parameter);
 void otaUpdateTask(void *parameter);
+void statusLedTask(void *parameter);
 String formatUptime(unsigned long milliseconds);
 
 // ESP-NOW Gateway Functions

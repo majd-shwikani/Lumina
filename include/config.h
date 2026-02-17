@@ -7,6 +7,7 @@
 
 // NeoPixel LED strip
 #define LED_PIN 17
+#define ONBOARD_LED_PIN 48
 
 // Button for configuration/reset
 #define BUTTON_PIN 10

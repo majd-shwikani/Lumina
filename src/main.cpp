@@ -56,9 +56,13 @@ void setup() {
   i2sMutex = xSemaphoreCreateMutex();
   leds = new CRGB[ledCount];
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, ledCount);
+  FastLED.addLeds<WS2812B, ONBOARD_LED_PIN, GRB>(onboardLed, 1);
   FastLED.setBrightness(255);
   FastLED.show();
-  Serial.printf("   ✅ %d LEDs initialized\n", ledCount);
+  Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
+  
+  // Start Status LED Task early to indicate boot
+  xTaskCreatePinnedToCore(statusLedTask, "StatusLEDTask", 2048, NULL, 1, NULL, 0);
   
   Serial.println("⏱️  Initializing watchdog timer (30s)...");
   esp_task_wdt_init(30, true);
@@ -146,6 +150,8 @@ void setup() {
 
   xTaskCreatePinnedToCore(otaUpdateTask, "OTAUpdateTask", 7000, NULL, 0, &otaTaskHandle, 0);
   Serial.println("      ✅ OTA Update task created (Core 0, 7KB stack)");
+  
+  systemInitialized = true;
   
   Serial.println("\n╔═══════════════════════════════════════════════════════════════╗");
   Serial.println("║              🎉 ALL SYSTEMS INITIALIZED 🎉                     ║");
