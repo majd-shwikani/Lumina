@@ -12,3 +12,11 @@ serial_reader.py
 Summary.txt
 Todo.txt
 guide.txt
+tasks.txt
+Voice Reco Example/.vscode/extensions.json
+Voice Reco Example/include/README
+Voice Reco Example/lib/README
+Voice Reco Example/partitions.csv
+Voice Reco Example/platformio.ini
+Voice Reco Example/src/main.cpp
+Voice Reco Example/test/README
