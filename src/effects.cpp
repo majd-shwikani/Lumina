@@ -574,6 +574,138 @@ void effectPerlinMove() {
     leds[i] = CHSV(noise, 255, 255);
   }
 }
+// ============================================================================
+// ORGANIC LAMP EFFECTS (43-52)
+// ============================================================================
+
+// Effect 43: Plasma Lamp (Classic)
+// Smoothly shifting plasma colors using multiple noise layers
+void effectPlasmaLamp() {
+  uint32_t ms = millis();
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t noise1 = inoise8(i * 15 + ms / 5, ms / 12);
+    uint8_t noise2 = inoise8(ms / 10, i * 20 - ms / 8);
+    uint8_t index = (noise1 + noise2) / 2;
+    leds[i] = ColorFromPalette(PartyColors_p, index, 255, LINEARBLEND);
+  }
+}
+
+// Effect 44: Bioluminescence
+// Deep sea bioluminescent forest feel
+void effectBiolume() {
+  fadeToBlackBy(leds, ledCount, 10);
+  uint32_t ms = millis();
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t val = inoise8(i * 40, ms / 15);
+    if (val > 180) {
+      uint8_t hue = 140 + (val % 30); // Teal to Blue
+      leds[i] |= CHSV(hue, 200, val - 180);
+    }
+  }
+}
+
+// Effect 45: Deep Sea Volcano
+// Dark blues with pulsing orange/red cracks
+void effectDeepSeaVolcano() {
+  uint32_t ms = millis();
+  CRGBPalette16 volcano_p = CRGBPalette16(
+    CRGB::Black, CRGB::DarkBlue, CRGB::DarkBlue, CRGB::Blue,
+    CRGB::Blue, CRGB::DarkRed, CRGB::Red, CRGB::OrangeRed,
+    CRGB::Orange, CRGB::Red, CRGB::DarkRed, CRGB::Black,
+    CRGB::Black, CRGB::Black, CRGB::Black, CRGB::Black
+  );
+  
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t noise = inoise8(i * 25, ms / 8);
+    leds[i] = ColorFromPalette(volcano_p, noise, 255, LINEARBLEND);
+  }
+}
+
+// Effect 46: Magical Aurora
+// Shifting green and purple ribbons
+void effectMagicalAurora() {
+  uint32_t ms = millis();
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t hue = inoise8(i * 10, ms / 20);
+    hue = map(hue, 0, 255, 96, 200); // Green to Purple
+    uint8_t bri = inoise8(ms / 15, i * 15);
+    leds[i] = CHSV(hue, 255, bri);
+  }
+  blur1d(leds, ledCount, 32);
+}
+
+// Effect 47: Solar Winds
+// Hot gas movement simulation
+void effectSolarWinds() {
+  uint32_t ms = millis();
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t val = inoise8(i * 15 - ms / 5, ms / 10);
+    leds[i] = ColorFromPalette(HeatColors_p, val, 255, LINEARBLEND);
+  }
+}
+
+// Effect 48: Ethereal Mist
+// Soft, slow white/cyan/blue movement
+void effectEtherealMist() {
+  uint32_t ms = millis();
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t n = inoise8(i * 30, ms / 30);
+    uint8_t hue = 160 + (n / 8); // Cyan range
+    uint8_t sat = qsub8(255, n / 2);
+    leds[i] = CHSV(hue, sat, n);
+  }
+}
+
+// Effect 49: Bio-Pulse
+// Heartbeat-like pulsing of organic matter
+void effectBioPulse() {
+  uint8_t pulse = beatsin8(15, 40, 255);
+  uint32_t ms = millis();
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t n = inoise8(i * 50, ms / 10);
+    leds[i] = CHSV(100, 255, scale8(n, pulse)); // Green organic pulse
+  }
+}
+
+// Effect 50: Radioactive Glow
+// Toxic green with bubbling effects
+void effectRadioactiveGlow() {
+  uint32_t ms = millis();
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t n = inoise8(i * 40 + ms / 4, ms / 12);
+    uint8_t hue = 80 + (n / 10); // Green to Lime
+    leds[i] = CHSV(hue, 255, n);
+    if (random8() < 2) leds[i] += CRGB::White; // Bubbles
+  }
+}
+
+// Effect 51: Supernova
+// Intense white center expanding outwards
+void effectSupernova() {
+  fadeToBlackBy(leds, ledCount, 40);
+  static uint8_t stage = 0;
+  uint16_t center = ledCount / 2;
+  
+  uint8_t radius = beatsin8(10, 0, ledCount / 2);
+  for (int i = center - radius; i < center + radius; i++) {
+    if (i >= 0 && i < ledCount) {
+      uint8_t dist = abs(i - center);
+      uint8_t bri = qsub8(255, dist * (255 / (radius + 1)));
+      leds[i] |= ColorFromPalette(HeatColors_p, bri, bri, LINEARBLEND);
+    }
+  }
+}
+
+// Effect 52: Enchanted Stream
+// Moving water with sparkling magic
+void effectEnchantedStream() {
+  uint32_t ms = millis();
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t n = inoise8(i * 20 - ms / 6, ms / 20);
+    leds[i] = ColorFromPalette(OceanColors_p, n, 255, LINEARBLEND);
+    if (random8() < 5) leds[i] += CRGB::White; // Magic sparkles
+  }
+}
 
 
 // ============================================================================

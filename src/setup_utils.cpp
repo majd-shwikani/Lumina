@@ -21,6 +21,7 @@ CRGB *leds = nullptr;
 volatile int currentEffect = 0;
 volatile uint32_t effectSpeed = 50;
 volatile uint32_t effectColor = 0xFF0000;
+volatile uint8_t globalBrightness = 255;
 volatile bool updateEffect = false;
 volatile bool stripEnabled = true;
 OperatingMode currentMode = MODE_MIRROR;

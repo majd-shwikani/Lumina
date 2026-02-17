@@ -28,6 +28,7 @@ typedef struct {
     int effect;
     uint32_t speed;
     uint32_t color;
+    uint8_t brightness;
     bool enabled;
 } LuminaMessage;
 
@@ -70,6 +71,7 @@ extern CRGB *leds;
 extern volatile int currentEffect;
 extern volatile uint32_t effectSpeed;
 extern volatile uint32_t effectColor;
+extern volatile uint8_t globalBrightness;
 extern volatile bool updateEffect;
 extern volatile bool stripEnabled;
 

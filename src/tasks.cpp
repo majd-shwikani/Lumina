@@ -75,12 +75,13 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
         currentEffect = msg->effect;
         effectSpeed = msg->speed;
         effectColor = msg->color;
+        globalBrightness = msg->brightness;
         stripEnabled = msg->enabled;
         portEXIT_CRITICAL(&stripMux);
         
-        Serial.printf("🎮 [%s] Received Command: Effect=%d, Speed=%d, Color=%06X, Enabled=%s\n", 
+        Serial.printf("🎮 [%s] Received Command: Effect=%d, Speed=%d, Color=%06X, Brightness=%d, Enabled=%s\n", 
                       (currentMode == MODE_MIRROR ? "Mirror" : "Standalone"),
-                      msg->effect, msg->speed, msg->color, msg->enabled ? "ON" : "OFF");
+                      msg->effect, msg->speed, msg->color, msg->brightness, msg->enabled ? "ON" : "OFF");
       }
     } else {
       // Ignore messages intended for other devices
@@ -139,9 +140,11 @@ void discoveryTask(void *parameter) {
 void updateLEDs() {
   static bool lastStripEnabled = true;
   bool currentEnabled;
+  uint8_t currentBrightness;
 
   portENTER_CRITICAL(&stripMux);
   currentEnabled = stripEnabled;
+  currentBrightness = globalBrightness;
   portEXIT_CRITICAL(&stripMux);
   
   if (!currentEnabled && lastStripEnabled) {
@@ -153,6 +156,8 @@ void updateLEDs() {
   
   if (!currentEnabled) return;
   if (currentEnabled && !lastStripEnabled) lastStripEnabled = true;
+
+  FastLED.setBrightness(currentBrightness);
   
   switch(currentEffect) {
     case 0: effectRainbow(); break;
@@ -187,8 +192,17 @@ void updateLEDs() {
     case 40: effectTwinkleFox(); break;
     case 41: effectColorWaves(); break;
     case 42: effectPerlinMove(); break;
-    
-    default: effectRainbow(); break;
+          case 43: effectPlasmaLamp(); break;
+          case 44: effectBiolume(); break;
+          case 45: effectDeepSeaVolcano(); break;
+          case 46: effectMagicalAurora(); break;
+          case 47: effectSolarWinds(); break;
+          case 48: effectEtherealMist(); break;
+          case 49: effectBioPulse(); break;
+          case 50: effectRadioactiveGlow(); break;
+          case 51: effectSupernova(); break;
+          case 52: effectEnchantedStream(); break;
+          default: effectRainbow(); break;
   }
   FastLED.show();
 }
