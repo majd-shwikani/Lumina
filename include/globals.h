@@ -166,6 +166,14 @@ extern unsigned long buttonPressStart;
 extern bool buttonActive;
 
 // ============================================================================
+// SYSTEM MONITORING & PSRAM LOGGING
+// ============================================================================
+extern char* circularLog;
+extern size_t logWriteIdx;
+const size_t CIRCULAR_LOG_SIZE = 1024 * 1024; // 1MB
+void logToPSRAM(const char* format, ...);
+
+// ============================================================================
 // FUNCTION DECLARATIONS
 // ============================================================================
 const char* getResetReason(int cpu);

@@ -70,6 +70,42 @@ unsigned long buttonPressStart = 0;
 bool buttonActive = false;
 
 // ============================================================================
+// PSRAM LOGGING SYSTEM
+// ============================================================================
+char* circularLog = nullptr;
+size_t logWriteIdx = 0;
+portMUX_TYPE logMux = portMUX_INITIALIZER_UNLOCKED;
+
+void logToPSRAM(const char* format, ...) {
+  if (!circularLog) return;
+  
+  char temp[256];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(temp, sizeof(temp), format, args);
+  va_end(args);
+  
+  portENTER_CRITICAL(&logMux);
+  size_t len = strlen(temp);
+  
+  // Basic circular logic (simple version)
+  if (logWriteIdx + len + 2 >= CIRCULAR_LOG_SIZE) {
+    logWriteIdx = 0; // Wrap around
+  }
+  
+  // Add timestamp and write
+  unsigned long ms = millis();
+  int timestampLen = snprintf(circularLog + logWriteIdx, 20, "[%lu] ", ms);
+  logWriteIdx += timestampLen;
+  
+  memcpy(circularLog + logWriteIdx, temp, len);
+  logWriteIdx += len;
+  circularLog[logWriteIdx++] = '\n';
+  circularLog[logWriteIdx] = '\0';
+  portEXIT_CRITICAL(&logMux);
+}
+
+// ============================================================================
 // ESP-NOW GATEWAY LOGIC
 // ============================================================================
 volatile bool registryChanged = false;
@@ -107,6 +143,7 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
       receiverCount++;
       registryChanged = true; // Signal the firebase task
       Serial.printf("🆕 [Gateway] Discovered new receiver: %s\n", macStr);
+      logToPSRAM("Discovered new receiver: %s", macStr);
     } else {
       // If already found, just log it occasionally
       // Serial.printf("📡 [Gateway] Discovery heartbeat from known node: %s\n", macStr);
@@ -124,11 +161,13 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
     strcpy(offer.msgType, "LUMINA_OFFER");
     memset(offer.targetMac, 0, 6);
     esp_now_send(mac, (uint8_t *)&offer, sizeof(offer));
+    logToPSRAM("Sent OFFER to %s", macStr);
   }
   // 2. Log if we see commands from others
   else if (strcmp(incoming->msgType, "LUMINA_CMD") == 0) {
     Serial.printf("ℹ️ [Gateway] Observed CMD packet from %02X:%02X... (Effect=%d)\n", 
                   mac[0], mac[1], incoming->effect);
+    logToPSRAM("Observed CMD packet from %02X:%02X... (Effect=%d)", mac[0], mac[1], incoming->effect);
   }
 }
 
@@ -195,6 +234,9 @@ void routeCommandToReceiver(int index) {
   if (result == ESP_OK) {
     // Serial.printf("📡 [Gateway] Sent CMD to %s: Eff=%d, En=%s\n", 
     //               receivers[index].macStr.c_str(), msg.effect, msg.enabled ? "YES" : "NO");
+    logToPSRAM("Sent CMD to %s: Eff=%d, Bright=%d, En=%s, Mirror=%s", 
+               receivers[index].macStr.c_str(), msg.effect, msg.brightness, 
+               msg.enabled ? "ON" : "OFF", receivers[index].isMirror ? "YES" : "NO");
   }
 }
 
