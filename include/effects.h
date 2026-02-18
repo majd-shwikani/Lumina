@@ -112,6 +112,21 @@ void effectSupernova();            // 51
 void effectEnchantedStream();      // 52
 
 // ============================================================================
+// FIRE SIMULATION EFFECTS (53-62)
+// ============================================================================
+
+void effectBlueGasFlame();         // 53: Blue gas burner flame
+void effectWildfire();             // 54: Wind-fanned wildfire with embers
+void effectCandleFlame();          // 55: Intimate single candle flicker
+void effectCampfire();             // 56: Roaring campfire / bonfire
+void effectPlasmaFire();           // 57: Supernatural violet-magenta plasma fire
+void effectInferno();              // 58: Maximum-intensity furnace blaze
+void effectSmolderingEmbers();     // 59: Dying embers glowing with radiant heat
+void effectLavaFlow();             // 60: Slow molten lava with hardening crust
+void effectEmberStorm();           // 61: Wind-gusted fire with ember ejection
+void effectHearthFire();           // 62: Cosy living-room hearth
+
+// ============================================================================
 // HELPER FUNCTION DECLARATIONS
 // ============================================================================
 

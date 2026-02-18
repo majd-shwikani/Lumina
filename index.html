@@ -584,21 +584,24 @@
         const database = firebase.database();
 
         const effects = [
-            // Standard
+            // Standard (0-21)
             "Rainbow Cycle", "Meteor Shower", "Digital Rain", "Pulsing Spheres", "Binary Clock", "Vortex", "DNA Helix", "Audio Visualizer", "Lava Lamp", "Radar Sweep", "Quantum Particles", "Neural Network", "Galaxy Spin", "Crystal Growth", "Lightning Storm", "Ocean Depth", "Northern Lights", "Time Tunnel", "Cyber City", "Solar Flare", "Fire Simulation", "Solid Color",
-            // Sound Reactive
+            // Sound Reactive (22-32)
             "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom", "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer", "Cascading Frequency", "Energy Orbits", "Audio Ripples",
-            // Revolutionary
+            // Revolutionary (33-42)
             "Plasma Waves", "Confetti Palettes", "Sinelon Dual", "BPM", "Juggle", "Glitter Rainbow", "Pacific", "Twinkle Fox", "Color Waves", "Perlin Move",
-            // Organic Lamps
-            "Plasma Lamp", "Bioluminescence", "Deep Sea Volcano", "Magical Aurora", "Solar Winds", "Ethereal Mist", "Bio-Pulse", "Radioactive Glow", "Supernova", "Enchanted Stream"
+            // Organic Lamps (43-52)
+            "Plasma Lamp", "Bioluminescence", "Deep Sea Volcano", "Magical Aurora", "Solar Winds", "Ethereal Mist", "Bio-Pulse", "Radioactive Glow", "Supernova", "Enchanted Stream",
+            // Fire Simulations (53-62)
+            "Blue Gas Flame", "Wildfire", "Candle Flame", "Campfire", "Plasma Fire", "Inferno", "Smoldering Embers", "Lava Flow", "Ember Storm", "Hearth Fire"
         ];
 
         const effectCategories = [
             { name: "✨ Standard", start: 0, end: 21 },
             { name: "🎵 Sound Reactive", start: 22, end: 32 },
             { name: "🚀 Revolutionary", start: 33, end: 42 },
-            { name: "💡 Organic Lamps", start: 43, end: 52 }
+            { name: "💡 Organic Lamps", start: 43, end: 52 },
+            { name: "🔥 Fire Simulations", start: 53, end: 62 }
         ];
 
         let currentState = {

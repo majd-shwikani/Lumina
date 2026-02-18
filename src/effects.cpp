@@ -379,50 +379,478 @@ void effectSolarFlare() {
   }
 }
 
-// Effect 20: VERY REALISTIC FIRE
+// Effect 20: VERY REALISTIC FIRE (Horizontal Strip)
 // Based on Fire2012WithPalette by Mark Kriegsman
+// HORIZONTAL FIX: For a horizontal strip there is no "up". Heat is ignited
+// randomly across the ENTIRE strip and diffuses symmetrically left+right using
+// Perlin noise so every pixel flickers independently — no directional gradient.
 void effectFireSimulation() {
-  // Array of temperature readings at each simulation cell
-  static byte heat[500]; // Fixed buffer, adjust if ledCount > 500
+  static byte heat[500];
 
-  // 1. Cool down every cell a little
-  for( int i = 0; i < ledCount; i++) {
-    heat[i] = qsub8( heat[i],  random8(0, ((55 * 10) / ledCount) + 2));
+  // 1. Cool every cell uniformly — no position bias
+  for (int i = 0; i < ledCount; i++)
+    heat[i] = qsub8(heat[i], random8(0, ((55 * 10) / ledCount) + 2));
+
+  // 2. Local diffusion: average with neighbours (no direction)
+  for (int k = 1; k < ledCount - 1; k++)
+    heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+
+  // 3. Ignite random sparks anywhere on the strip
+  for (int s = 0; s < 3; s++) {
+    if (random8() < 80) {
+      int y = random16(ledCount);
+      heat[y] = qadd8(heat[y], random8(160, 255));
+    }
   }
 
-  // 2. Heat from each cell drifts 'up' and diffuses a little
-  for( int k= ledCount - 1; k >= 2; k--) {
-    heat[k] = (heat[k - 1] + heat[k - 2] + heat[k - 2] ) / 3;
+  // 4. Perlin turbulence overlay — gives each pixel an organic flicker
+  uint32_t ms = millis();
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t turb = inoise8(i * 25, ms / 4);
+    heat[i] = scale8(heat[i], map(turb, 0, 255, 180, 255));
   }
 
-  // 3. Randomly ignite new 'sparks' of heat near the bottom
-  if( random8() < 120 ) {
-    int y = random8(7);
-    if(y < ledCount) heat[y] = qadd8( heat[y], random8(160,255) );
-  }
-
-  // 4. Map from heat cells to LED colors using a realistic palette
-  // Define a custom fire palette for extra realism
-  // Black -> Red -> Orange -> Yellow -> White
+  // Black → Deep Red → Red → Orange → Gold → Yellow → White
   CRGBPalette16 firePalette = CRGBPalette16(
-    CRGB::Black, CRGB::Maroon, CRGB::Red, CRGB::OrangeRed,
-    CRGB::Orange, CRGB::Gold, CRGB::Yellow, CRGB::White,
-    CRGB::White, CRGB::White, CRGB::White, CRGB::White,
-    CRGB::White, CRGB::White, CRGB::White, CRGB::White
+    CRGB::Black,      CRGB(60,0,0),     CRGB::Maroon,     CRGB::DarkRed,
+    CRGB::Red,        CRGB::OrangeRed,  CRGB::Orange,     CRGB::Gold,
+    CRGB::Yellow,     CRGB(255,230,100),CRGB::White,       CRGB::White,
+    CRGB::White,      CRGB::White,      CRGB::White,       CRGB::White
   );
 
-  for( int j = 0; j < ledCount; j++) {
-    // Scale the heat value from 0-255 down to 0-240
-    // for best results with color palettes.
-    byte colorindex = scale8( heat[j], 240);
-    leds[j] = ColorFromPalette( firePalette, colorindex);
+  for (int j = 0; j < ledCount; j++)
+    leds[j] = ColorFromPalette(firePalette, scale8(heat[j], 240));
+
+  // Random sparks
+  if (random8() < 12) leds[random16(ledCount)] += CRGB(255, 200, 80);
+}
+
+// ============================================================================
+// FIRE SIMULATION EFFECTS (53-62) — Ten ultra-realistic fire variants
+// All use the horizontal model: uniform ignition + noise-based flickering.
+// No directional heat drift — fire looks the same from any viewing angle.
+// ============================================================================
+
+// ---- Effect 53: Blue Gas Flame -----------------------------------------------
+// The cool, intensely hot flame of a gas burner — cobalt blue core fading to
+// pale cyan. Each pixel flickers independently like a true gas ring.
+void effectBlueGasFlame() {
+  static byte heat[500];
+  uint32_t ms = millis();
+
+  for (int i = 0; i < ledCount; i++)
+    heat[i] = qsub8(heat[i], random8(0, ((60 * 10) / ledCount) + 2));
+
+  for (int k = 1; k < ledCount - 1; k++)
+    heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+
+  for (int s = 0; s < 3; s++) {
+    if (random8() < 100) {
+      int y = random16(ledCount);
+      heat[y] = qadd8(heat[y], random8(170, 255));
+    }
   }
-  
-  // Add occasional sparks that fly up faster
-  if (random8() < 5) {
-    int sparkPos = random8(ledCount/4);
-    leds[sparkPos] += CRGB::White;
+
+  // Turbulence — makes the blue flame roll
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t turb = inoise8(i * 30, ms / 5);
+    heat[i] = scale8(heat[i], map(turb, 0, 255, 170, 255));
   }
+
+  // Black → Deep Blue → Royal Blue → Dodger Blue → Cyan → Ice White
+  CRGBPalette16 blueFire = CRGBPalette16(
+    CRGB::Black,       CRGB(0,0,40),      CRGB(0,0,100),     CRGB(0,30,180),
+    CRGB(0,80,255),    CRGB(0,160,255),   CRGB(40,200,255),  CRGB(120,230,255),
+    CRGB(200,245,255), CRGB::White,       CRGB::White,        CRGB::White,
+    CRGB::White,       CRGB::White,       CRGB::White,        CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++)
+    leds[j] = ColorFromPalette(blueFire, scale8(heat[j], 240));
+
+  if (random8() < 10) leds[random16(ledCount)] += CRGB(180, 230, 255);
+}
+
+// ---- Effect 54: Wildfire / Forest Fire ----------------------------------------
+// Rolling, unpredictable wildfire. Wind modulates the whole strip at once —
+// the flame surges and subsides in waves across the full length.
+void effectWildfire() {
+  static byte heat[500];
+  static uint8_t windOffset = 0;
+  uint32_t ms = millis();
+
+  EVERY_N_MILLISECONDS(80) { windOffset = inoise8(ms / 200); }
+  uint8_t windCooling = map(windOffset, 0, 255, 2, 12);
+
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t cool = random8(windCooling, windCooling + ((50 * 10) / ledCount) + 2);
+    heat[i] = qsub8(heat[i], cool);
+  }
+
+  for (int k = 1; k < ledCount - 1; k++)
+    heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+
+  // Multiple fuel pockets igniting across the strip
+  for (int z = 0; z < 4; z++) {
+    if (random8() < 70) {
+      int y = random16(ledCount);
+      heat[y] = qadd8(heat[y], random8(140, 255));
+    }
+  }
+
+  // Wind turbulence sweeps left to right, making the fire lean
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t turb = inoise8(i * 20 - ms / 8, ms / 12);
+    heat[i] = scale8(heat[i], map(turb, 0, 255, 160, 255));
+  }
+
+  CRGBPalette16 wildPal = CRGBPalette16(
+    CRGB::Black,       CRGB(20,5,0),      CRGB(60,10,0),     CRGB::Maroon,
+    CRGB(180,30,0),    CRGB::OrangeRed,   CRGB(255,100,0),   CRGB(255,160,10),
+    CRGB(255,200,30),  CRGB(255,230,80),  CRGB::Yellow,       CRGB::White,
+    CRGB::White,       CRGB::White,       CRGB::White,        CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++)
+    leds[j] = ColorFromPalette(wildPal, scale8(heat[j], 240));
+
+  // Flying embers — sparks anywhere on the strip
+  if (random8() < 25) leds[random16(ledCount)] += CRGB(255, 120, 0);
+}
+
+// ---- Effect 55: Candle Flame --------------------------------------------------
+// Intimate, slow single-candle flicker across the whole strip.
+// Very gentle turbulence — the flame breathes more than it flickers.
+void effectCandleFlame() {
+  static byte heat[500];
+  static uint8_t draughtStrength = 0;
+  uint32_t ms = millis();
+
+  // Very light cooling — candle is calm
+  for (int i = 0; i < ledCount; i++)
+    heat[i] = qsub8(heat[i], random8(0, ((38 * 10) / ledCount) + 2));
+
+  for (int k = 1; k < ledCount - 1; k++)
+    heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+
+  // Soft ignition scattered across the strip
+  for (int s = 0; s < 2; s++) {
+    if (random8() < 70) {
+      int y = random16(ledCount);
+      heat[y] = qadd8(heat[y], random8(100, 190));
+    }
+  }
+
+  // Slow, smooth Perlin flicker — candle sways gently
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t sway = inoise8(i * 15, ms / 20);
+    heat[i] = scale8(heat[i], map(sway, 0, 255, 185, 255));
+  }
+
+  // Occasional draught dims everything briefly
+  EVERY_N_MILLISECONDS(300) {
+    if (random8() < 15) draughtStrength = random8(20, 70);
+    draughtStrength = qsub8(draughtStrength, 5);
+  }
+
+  CRGBPalette16 candlePal = CRGBPalette16(
+    CRGB::Black,       CRGB(30,5,0),      CRGB(80,15,0),     CRGB(150,30,0),
+    CRGB(220,60,0),    CRGB(255,100,5),   CRGB(255,150,20),  CRGB(255,190,50),
+    CRGB(255,215,80),  CRGB(255,235,120), CRGB(255,245,180), CRGB::White,
+    CRGB::White,       CRGB::White,       CRGB::White,        CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++) {
+    byte val = scale8(qsub8(heat[j], draughtStrength), 240);
+    leds[j] = ColorFromPalette(candlePal, val);
+  }
+}
+
+// ---- Effect 56: Campfire / Bonfire -------------------------------------------
+// Big roaring campfire — rich amber-gold with heavy ignition everywhere and
+// embers that pop brightly at random positions.
+void effectCampfire() {
+  static byte heat[500];
+  uint32_t ms = millis();
+
+  for (int i = 0; i < ledCount; i++)
+    heat[i] = qsub8(heat[i], random8(1, ((65 * 10) / ledCount) + 3));
+
+  for (int k = 1; k < ledCount - 1; k++)
+    heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+
+  // Dense, spread-out ignition — campfire burns wide
+  for (int ig = 0; ig < 6; ig++) {
+    if (random8() < 90) {
+      int y = random16(ledCount);
+      heat[y] = qadd8(heat[y], random8(150, 255));
+    }
+  }
+
+  // Rumbling turbulence — the fire roars
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t turb = inoise8(i * 22, ms / 6);
+    heat[i] = scale8(heat[i], map(turb, 0, 255, 155, 255));
+  }
+
+  CRGBPalette16 campPal = CRGBPalette16(
+    CRGB::Black,       CRGB(30,8,0),      CRGB::Maroon,      CRGB(160,20,0),
+    CRGB::Red,         CRGB(255,60,0),    CRGB::Orange,      CRGB(255,170,0),
+    CRGB(255,210,20),  CRGB(255,235,60),  CRGB::Yellow,       CRGB(255,250,150),
+    CRGB::White,       CRGB::White,       CRGB::White,        CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++)
+    leds[j] = ColorFromPalette(campPal, scale8(heat[j], 240));
+
+  // Log snap — sudden bright flash anywhere
+  if (random8() < 4) leds[random16(ledCount)] = CRGB(255, 255, 200);
+  // Drifting embers
+  if (random8() < 20) leds[random16(ledCount)] += CRGB(255, 80, 0);
+}
+
+// ---- Effect 57: Plasma Fire ---------------------------------------------------
+// Supernatural violet-to-magenta plasma. Turbulence makes it crackle and pulse
+// like electricity — otherworldly but unmistakably hot.
+void effectPlasmaFire() {
+  static byte heat[500];
+  uint32_t ms = millis();
+
+  for (int i = 0; i < ledCount; i++)
+    heat[i] = qsub8(heat[i], random8(0, ((58 * 10) / ledCount) + 2));
+
+  for (int k = 1; k < ledCount - 1; k++)
+    heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+
+  for (int s = 0; s < 3; s++) {
+    if (random8() < 85) {
+      int y = random16(ledCount);
+      heat[y] = qadd8(heat[y], random8(160, 255));
+    }
+  }
+
+  // Fast, chaotic turbulence — plasma crackles
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t turb = inoise8(i * 35, ms / 3);
+    heat[i] = scale8(heat[i], map(turb, 0, 255, 150, 255));
+  }
+
+  CRGBPalette16 plasmaPal = CRGBPalette16(
+    CRGB::Black,       CRGB(10,0,25),     CRGB(30,0,80),     CRGB(80,0,160),
+    CRGB(140,0,200),   CRGB(200,0,200),   CRGB(255,0,180),   CRGB(255,40,140),
+    CRGB(255,100,180), CRGB(255,160,220), CRGB::White,        CRGB::White,
+    CRGB::White,       CRGB::White,       CRGB::White,        CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++)
+    leds[j] = ColorFromPalette(plasmaPal, scale8(heat[j], 240));
+
+  // Electric discharge sparks
+  if (random8() < 18) leds[random16(ledCount)] += CRGB(200, 100, 255);
+}
+
+// ---- Effect 58: Inferno -------------------------------------------------------
+// Maximum-intensity furnace. Very little cooling, constant ignition — the strip
+// is almost never dark. Brilliant gold-white with deep red edges.
+void effectInferno() {
+  static byte heat[500];
+  uint32_t ms = millis();
+
+  // Minimal cooling — this fire BURNS
+  for (int i = 0; i < ledCount; i++)
+    heat[i] = qsub8(heat[i], random8(0, ((35 * 10) / ledCount) + 1));
+
+  for (int k = 1; k < ledCount - 1; k++)
+    heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+
+  // Dense ignition everywhere — the furnace never goes out
+  for (int ig = 0; ig < 5; ig++) {
+    int y = random16(ledCount);
+    heat[y] = qadd8(heat[y], random8(200, 255));
+  }
+
+  // Violent turbulence
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t turb = inoise8(i * 28, ms / 4);
+    heat[i] = scale8(heat[i], map(turb, 0, 255, 170, 255));
+  }
+
+  CRGBPalette16 infernoPal = CRGBPalette16(
+    CRGB(40,0,0),      CRGB::Maroon,      CRGB::Red,         CRGB(220,30,0),
+    CRGB(255,80,0),    CRGB(255,140,0),   CRGB(255,200,0),   CRGB(255,230,50),
+    CRGB(255,245,120), CRGB(255,252,200), CRGB::White,        CRGB::White,
+    CRGB::White,       CRGB::White,       CRGB::White,        CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++)
+    leds[j] = ColorFromPalette(infernoPal, scale8(heat[j], 240));
+
+  if (random8() < 35) leds[random16(ledCount)] = CRGB(255, 255, 180);
+}
+
+// ---- Effect 59: Smoldering Embers --------------------------------------------
+// Dying coals — purely noise-driven, no flame physics at all.
+// Each position glows independently based on Perlin noise.
+void effectSmolderingEmbers() {
+  static uint32_t noiseOffset = 0;
+  EVERY_N_MILLISECONDS(50) { noiseOffset += 3; }
+
+  CRGBPalette16 emberPal = CRGBPalette16(
+    CRGB::Black,       CRGB(15,2,0),      CRGB(40,5,0),      CRGB(80,10,0),
+    CRGB(130,20,0),    CRGB(180,35,0),    CRGB(220,60,5),    CRGB(255,90,5),
+    CRGB(255,130,10),  CRGB(255,165,25),  CRGB(255,200,50),  CRGB(255,215,80),
+    CRGB(255,230,120), CRGB(255,240,160), CRGB(255,248,200), CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++) {
+    uint8_t coal = inoise8(j * 40 + noiseOffset, noiseOffset / 2);
+    coal = scale8(coal, 200);
+    if (random8() < 5) coal = qadd8(coal, random8(40, 100));
+    leds[j] = ColorFromPalette(emberPal, scale8(coal, 240));
+  }
+}
+
+// ---- Effect 60: Lava Flow ----------------------------------------------------
+// Slow molten lava. Perlin noise creates the hardening crust texture across the
+// full strip — no single end is hotter than the other.
+void effectLavaFlow() {
+  static byte heat[500];
+  uint32_t ms = millis();
+
+  for (int i = 0; i < ledCount; i++)
+    heat[i] = qsub8(heat[i], random8(0, ((45 * 10) / ledCount) + 1));
+
+  for (int k = 1; k < ledCount - 1; k++)
+    heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+
+  // Lava surges from pressure pockets — random ignition anywhere
+  for (int s = 0; s < 2; s++) {
+    if (random8() < 50) {
+      int y = random16(ledCount);
+      heat[y] = qadd8(heat[y], random8(180, 255));
+    }
+  }
+
+  // Hardening crust: Perlin noise darkens some patches
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t crust = inoise8(i * 30 + ms / 20);
+    if (crust < 80) heat[i] = qsub8(heat[i], 40);
+  }
+
+  // Very slow flow turbulence
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t turb = inoise8(i * 18, ms / 25);
+    heat[i] = scale8(heat[i], map(turb, 0, 255, 175, 255));
+  }
+
+  CRGBPalette16 lavaPal = CRGBPalette16(
+    CRGB(5,0,0),       CRGB(25,2,0),      CRGB(70,5,0),      CRGB(130,10,0),
+    CRGB(200,20,0),    CRGB(240,50,0),    CRGB(255,100,0),   CRGB(255,150,10),
+    CRGB(255,200,30),  CRGB(255,230,80),  CRGB(255,245,150), CRGB::White,
+    CRGB::White,       CRGB::White,       CRGB::White,        CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++)
+    leds[j] = ColorFromPalette(lavaPal, scale8(heat[j], 240));
+}
+
+// ---- Effect 61: Ember Storm --------------------------------------------------
+// Gusty fire with heavy spark ejection everywhere. Wind turbulence sweeps
+// the heat in waves — the whole strip participates.
+void effectEmberStorm() {
+  static byte heat[500];
+  static uint16_t windBurstPos = 0;
+  static bool burstActive = false;
+  uint32_t ms = millis();
+
+  for (int i = 0; i < ledCount; i++)
+    heat[i] = qsub8(heat[i], random8(2, ((55 * 10) / ledCount) + 3));
+
+  for (int k = 1; k < ledCount - 1; k++)
+    heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+
+  // Normal ignition spread across strip
+  for (int s = 0; s < 4; s++) {
+    if (random8() < 75) {
+      int y = random16(ledCount);
+      heat[y] = qadd8(heat[y], random8(140, 255));
+    }
+  }
+
+  // Wind gust: a wave of extra heat sweeps across the strip periodically
+  EVERY_N_MILLISECONDS(600) {
+    if (random8() < 55) { windBurstPos = 0; burstActive = true; }
+  }
+  if (burstActive) {
+    windBurstPos += 3;
+    if (windBurstPos < (uint16_t)ledCount) {
+      heat[windBurstPos] = qadd8(heat[windBurstPos], random8(80, 160));
+    } else { burstActive = false; }
+  }
+
+  // Gusting turbulence — fire leans with the wind
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t turb = inoise8(i * 22 - ms / 7, ms / 10);
+    heat[i] = scale8(heat[i], map(turb, 0, 255, 145, 255));
+  }
+
+  CRGBPalette16 stormPal = CRGBPalette16(
+    CRGB::Black,       CRGB(25,4,0),      CRGB::DarkRed,     CRGB(180,25,0),
+    CRGB::Red,         CRGB(255,70,0),    CRGB::Orange,       CRGB(255,180,5),
+    CRGB(255,215,30),  CRGB::Yellow,      CRGB(255,250,140), CRGB::White,
+    CRGB::White,       CRGB::White,       CRGB::White,        CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++)
+    leds[j] = ColorFromPalette(stormPal, scale8(heat[j], 240));
+
+  // Heavy ember ejection — sparks fly everywhere
+  for (int e = 0; e < 4; e++) {
+    if (random8() < 45) leds[random16(ledCount)] += CRGB(255, random8(60, 160), 0);
+  }
+}
+
+// ---- Effect 62: Hearth Fire --------------------------------------------------
+// Gentle, cosy hearth — smooth double-diffusion and slow Perlin sway makes the
+// whole strip glow warmly and evenly, like staring into a fireplace.
+void effectHearthFire() {
+  static byte heat[500];
+  uint32_t ms = millis();
+
+  for (int i = 0; i < ledCount; i++)
+    heat[i] = qsub8(heat[i], random8(0, ((42 * 10) / ledCount) + 2));
+
+  // Two diffusion passes — silky smooth flame movement
+  for (int pass = 0; pass < 2; pass++) {
+    for (int k = 1; k < ledCount - 1; k++)
+      heat[k] = (heat[k - 1] + heat[k] + heat[k] + heat[k + 1]) / 4;
+  }
+
+  // Steady ignition scattered everywhere
+  for (int s = 0; s < 3; s++) {
+    if (random8() < 65) {
+      int y = random16(ledCount);
+      heat[y] = qadd8(heat[y], random8(120, 210));
+    }
+  }
+
+  // Slow, calming Perlin sway — the hearth breathes
+  for (int i = 0; i < ledCount; i++) {
+    uint8_t sway = inoise8(i * 18, ms / 22);
+    heat[i] = scale8(heat[i], map(sway, 0, 255, 190, 255));
+  }
+
+  CRGBPalette16 hearthPal = CRGBPalette16(
+    CRGB::Black,       CRGB(25,4,0),      CRGB(70,12,0),     CRGB(130,22,0),
+    CRGB(200,45,0),    CRGB(240,80,5),    CRGB(255,120,10),  CRGB(255,160,20),
+    CRGB(255,195,40),  CRGB(255,220,70),  CRGB(255,238,120), CRGB(255,246,175),
+    CRGB(255,251,210), CRGB::White,       CRGB::White,        CRGB::White
+  );
+
+  for (int j = 0; j < ledCount; j++)
+    leds[j] = ColorFromPalette(hearthPal, scale8(heat[j], 240));
+
+  if (random8() < 8) leds[random16(ledCount)] += CRGB(255, 210, 100);
 }
 
 // Effect 21: Solid Color

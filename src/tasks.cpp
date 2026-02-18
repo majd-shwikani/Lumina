@@ -45,62 +45,82 @@ void updateLEDs() {
     lastStripEnabled = true;
   }
   
-  switch(currentEffect) {
-    case 0: effectRainbow(); break;
-    case 1: effectMeteorShower(); break;
-    case 2: effectDigitalRain(); break;
-    case 3: effectPulsingSpheres(); break;
-    case 4: effectBinaryClock(); break;
-    case 5: effectVortex(); break;
-    case 6: effectDNAHelix(); break;
-    case 7: effectAudioVisualizer(); break;
-    case 8: effectLavaLamp(); break;
-    case 9: effectRadarSweep(); break;
-    case 10: effectQuantumParticles(); break;
-    case 11: effectNeuralNetwork(); break;
-    case 12: effectGalaxySpin(); break;
-    case 13: effectCrystalGrowth(); break;
-    case 14: effectLightningStorm(); break;
-    case 15: effectOceanDepth(); break;
-    case 16: effectNorthernLights(); break;
-    case 17: effectTimeTunnel(); break;
-    case 18: effectCyberCity(); break;
-    case 19: effectSolarFlare(); break;
-    case 20: effectFireSimulation(); break;
-    case 21: effectSolidColor(); break;
-    case 22: effectFrequencySpectrum(); break;
-    case 23: effectReactiveWaveform(); break;
-    case 24: effectBeatPulse(); break;
-    case 25: effectFrequencyBloom(); break;
-    case 26: effectAudioReactiveFire(); break;
-    case 27: effectMusicalRainbow(); break;
-    case 28: effectReactiveStrobe(); break;
-    case 29: effectGuitarVisualizer(); break;
+   switch (currentEffect) {
+    // ---- Original Animation Effects (0-21) ----------------------------------
+    case  0: effectRainbow();            break;
+    case  1: effectMeteorShower();       break;
+    case  2: effectDigitalRain();        break;
+    case  3: effectPulsingSpheres();     break;
+    case  4: effectBinaryClock();        break;
+    case  5: effectVortex();             break;
+    case  6: effectDNAHelix();           break;
+    case  7: effectAudioVisualizer();    break;
+    case  8: effectLavaLamp();           break;
+    case  9: effectRadarSweep();         break;
+    case 10: effectQuantumParticles();   break;
+    case 11: effectNeuralNetwork();      break;
+    case 12: effectGalaxySpin();         break;
+    case 13: effectCrystalGrowth();      break;
+    case 14: effectLightningStorm();     break;
+    case 15: effectOceanDepth();         break;
+    case 16: effectNorthernLights();     break;
+    case 17: effectTimeTunnel();         break;
+    case 18: effectCyberCity();          break;
+    case 19: effectSolarFlare();         break;
+    case 20: effectFireSimulation();     break;
+    case 21: effectSolidColor();         break;
+
+    // ---- Sound-Reactive Effects (22-32) -------------------------------------
+    case 22: effectFrequencySpectrum();  break;
+    case 23: effectReactiveWaveform();   break;
+    case 24: effectBeatPulse();          break;
+    case 25: effectFrequencyBloom();     break;
+    case 26: effectAudioReactiveFire();  break;
+    case 27: effectMusicalRainbow();     break;
+    case 28: effectReactiveStrobe();     break;
+    case 29: effectGuitarVisualizer();   break;
     case 30: effectCascadingFrequency(); break;
-    case 31: effectEnergyOrbits(); break;
-    case 32: effectAudioRipples(); break;
-    case 33: effectPlasmaWaves(); break;
-    case 34: effectConfettiPalettes(); break;
-    case 35: effectSinelonDual(); break;
-    case 36: effectBPM(); break;
-    case 37: effectJuggle(); break;
-    case 38: effectGlitterRainbow(); break;
-    case 39: effectPacific(); break;
-    case 40: effectTwinkleFox(); break;
-    case 41: effectColorWaves(); break;
-          case 42: effectPerlinMove(); break;
-          case 43: effectPlasmaLamp(); break;
-          case 44: effectBiolume(); break;
-          case 45: effectDeepSeaVolcano(); break;
-          case 46: effectMagicalAurora(); break;
-          case 47: effectSolarWinds(); break;
-          case 48: effectEtherealMist(); break;
-          case 49: effectBioPulse(); break;
-          case 50: effectRadioactiveGlow(); break;
-          case 51: effectSupernova(); break;
-          case 52: effectEnchantedStream(); break;
-          default: effectRainbow(); break;
-        }
+    case 31: effectEnergyOrbits();       break;
+    case 32: effectAudioRipples();       break;
+
+    // ---- Revolutionary Effects (33-42) --------------------------------------
+    case 33: effectPlasmaWaves();        break;
+    case 34: effectConfettiPalettes();   break;
+    case 35: effectSinelonDual();        break;
+    case 36: effectBPM();                break;
+    case 37: effectJuggle();             break;
+    case 38: effectGlitterRainbow();     break;
+    case 39: effectPacific();            break;
+    case 40: effectTwinkleFox();         break;
+    case 41: effectColorWaves();         break;
+    case 42: effectPerlinMove();         break;
+
+    // ---- Organic Lamp Effects (43-52) ---------------------------------------
+    case 43: effectPlasmaLamp();         break;
+    case 44: effectBiolume();            break;
+    case 45: effectDeepSeaVolcano();     break;
+    case 46: effectMagicalAurora();      break;
+    case 47: effectSolarWinds();         break;
+    case 48: effectEtherealMist();       break;
+    case 49: effectBioPulse();           break;
+    case 50: effectRadioactiveGlow();    break;
+    case 51: effectSupernova();          break;
+    case 52: effectEnchantedStream();    break;
+
+    // ---- Fire Simulation Effects (53-62) ------------------------------------
+    case 53: effectBlueGasFlame();       break;
+    case 54: effectWildfire();           break;
+    case 55: effectCandleFlame();        break;
+    case 56: effectCampfire();           break;
+    case 57: effectPlasmaFire();         break;
+    case 58: effectInferno();            break;
+    case 59: effectSmolderingEmbers();   break;
+    case 60: effectLavaFlow();           break;
+    case 61: effectEmberStorm();         break;
+    case 62: effectHearthFire();         break;
+
+    default: effectRainbow();            break;
+  }
   FastLED.show();
 }
 
