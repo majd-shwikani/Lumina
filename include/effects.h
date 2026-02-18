@@ -45,7 +45,7 @@ void effectPulsingSpheres();       // 3
 void effectBinaryClock();          // 4
 void effectVortex();               // 5
 void effectDNAHelix();             // 6
-// effectAudioVisualizer (7) is skipped
+void effectAudioVisualizer();         // 7
 void effectLavaLamp();             // 8
 void effectRadarSweep();           // 9
 void effectQuantumParticles();     // 10
@@ -74,4 +74,29 @@ void effectBioPulse();             // 49
 void effectRadioactiveGlow();      // 50
 void effectSupernova();            // 51
 void effectEnchantedStream();      // 52
+
+// ============================================================================
+// FIRE SIMULATION EFFECTS (53-62)
+// ============================================================================
+
+void effectBlueGasFlame();         // 53: Blue gas burner flame
+void effectWildfire();             // 54: Wind-fanned wildfire with embers
+void effectCandleFlame();          // 55: Intimate single candle flicker
+void effectCampfire();             // 56: Roaring campfire / bonfire
+void effectPlasmaFire();           // 57: Supernatural violet-magenta plasma fire
+void effectInferno();              // 58: Maximum-intensity furnace blaze
+void effectSmolderingEmbers();     // 59: Dying embers glowing with radiant heat
+void effectLavaFlow();             // 60: Slow molten lava with hardening crust
+void effectEmberStorm();           // 61: Wind-gusted fire with ember ejection
+void effectHearthFire();           // 62: Cosy living-room hearth
+
+// ============================================================================
+// HELPER FUNCTION DECLARATIONS
+// ============================================================================
+
+uint32_t Wheel(byte WheelPos);
+uint32_t EffectHeatColor(uint8_t temperature);
+uint32_t colorBlend(uint32_t color1, uint32_t color2, uint8_t blend);
+void setAllLeds(uint32_t color);
+
 #endif

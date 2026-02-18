@@ -41,7 +41,7 @@ int ledCount;
 
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmwareC3.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/versionC3.txt";
-const char* currentFirmwareVersion = "2.0.0";
+const char* currentFirmwareVersion = "2.1.0";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
 unsigned long lastUpdateCheck = 0;
 
