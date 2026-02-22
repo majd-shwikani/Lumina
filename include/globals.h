@@ -3,6 +3,8 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
 #include <Firebase_ESP_Client.h>
 #include <ArduinoOTA.h>
 #include <Wire.h>
@@ -25,6 +27,36 @@
 #include "sensors.h"
 #include "mqtt_integration.h"
 #include "web_config_portal.h"
+
+// ============================================================================
+// ESP-NOW STRUCTURES (Must match Receiver exactly)
+// ============================================================================
+typedef struct {
+    char msgType[20];   // "LUMINA_DISCOVERY", "LUMINA_OFFER", "LUMINA_CMD"
+    uint8_t targetMac[6]; // [0,0,0,0,0,0] for broadcast
+    int effect;
+    uint32_t speed;
+    uint32_t color;
+    uint8_t brightness;
+    bool enabled;
+} LuminaMessage;
+
+typedef struct {
+    uint8_t mac[6];
+    String macStr;
+    int effect;
+    uint32_t speed;
+    uint32_t color;
+    uint8_t brightness;
+    bool enabled;
+    bool isMirror;
+    bool registered;
+    bool needsFirebaseSync; // Flag to signal cloud update
+} Receiver;
+
+extern Receiver receivers[10];
+extern int receiverCount;
+extern volatile bool registryChanged;
 
 // ============================================================================
 // CRITICAL FIX 1: Thread synchronization primitives
@@ -71,6 +103,7 @@ extern FirebaseConfig config;
 extern volatile int currentEffect;
 extern volatile uint32_t effectSpeed;
 extern volatile uint32_t effectColor;
+extern volatile uint8_t globalBrightness;
 extern volatile bool updateEffect;
 extern volatile bool firebaseConnected;
 extern volatile bool stripEnabled;
@@ -129,6 +162,14 @@ extern unsigned long lastUpdateCheck;
 extern unsigned long buttonPressStart;
 extern bool buttonActive;
 
+// ================= ::::::::::::::::: =================
+// SYSTEM MONITORING & PSRAM LOGGING
+// ================= ::::::::::::::::: =================
+extern char* circularLog;
+extern size_t logWriteIdx;
+const size_t CIRCULAR_LOG_SIZE = 1024 * 1024; // 1MB
+void logToPSRAM(const char* format, ...);
+
 // ============================================================================
 // FUNCTION DECLARATIONS
 // ============================================================================
@@ -160,5 +201,13 @@ void sensorDataTask(void *parameter); // Now includes stats collection
 void timerTask(void *parameter);
 void otaUpdateTask(void *parameter);
 String formatUptime(unsigned long milliseconds); // Kept for sensorDataTask
+
+// ESP-NOW Gateway Functions
+void setupEspNowGateway();
+void broadcastGatewayState();
+void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len);
+void routeCommandToReceiver(int index);
+void syncAllMirrors();
+void updateActiveNodesInFirebase();
 
 #endif // GLOBALS_H

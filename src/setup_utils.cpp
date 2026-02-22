@@ -40,6 +40,15 @@ volatile bool autoDarknessControl = true;
 volatile bool turnedOffByDarkness = false;
 bool defaultDataCreated = false;
 volatile bool manuallyTurnedOff = false;
+
+// New variables for Firebase structure support
+Receiver receivers[10];
+int receiverCount = 0;
+volatile bool registryChanged = false;
+volatile uint8_t globalBrightness = 255;
+char* circularLog = NULL;
+size_t logWriteIdx = 0;
+
 unsigned long lastStateChangeTime = 0;
 const unsigned long STATE_CHANGE_DEBOUNCE = 5000;
 float luxHysteresis = 5.0;
