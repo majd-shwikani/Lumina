@@ -7,20 +7,16 @@ portMUX_TYPE stripMux = portMUX_INITIALIZER_UNLOCKED;
 SemaphoreHandle_t i2sMutex = NULL;
 unsigned long lastSystemStatsReport = 0;
 const unsigned long SYSTEM_STATS_INTERVAL = 30000;
+
+// Task Stack Monitoring Variables (Only for PROTECTED tasks)
 UBaseType_t firebaseTaskStack = 0;
 UBaseType_t ledTaskStack = 0;
-UBaseType_t automationTaskStack = 0;
-UBaseType_t sensorTaskStack = 0;
-UBaseType_t timerTaskStack = 0;
-UBaseType_t mqttTaskStack = 0;
-UBaseType_t otaTaskStack = 0;
+UBaseType_t voiceTaskStack = 0;
+
 TaskHandle_t firebaseTaskHandle = NULL;
 TaskHandle_t ledTaskHandle = NULL;
-TaskHandle_t automationTaskHandle = NULL;
-TaskHandle_t sensorTaskHandle = NULL;
-TaskHandle_t timerTaskHandle = NULL;
-TaskHandle_t mqttTaskHandle = NULL;
-TaskHandle_t otaTaskHandle = NULL;
+TaskHandle_t voiceTaskHandle = NULL;
+
 unsigned long lastLoopTime = 0;
 unsigned long loopCounter = 0;
 bool systemHealthy = true;
@@ -115,13 +111,11 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
   
   LuminaMessage *incoming = (LuminaMessage *)data;
   
-  // 1. Respond to Discovery requests
   if (strcmp(incoming->msgType, "LUMINA_DISCOVERY") == 0) {
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
              
-    // Check if already in registry
     bool found = false;
     for (int i = 0; i < receiverCount; i++) {
       if (receivers[i].macStr == String(macStr)) {
@@ -139,15 +133,12 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
       receivers[receiverCount].speed = 50;
       receivers[receiverCount].color = 0xFF0000;
       receivers[receiverCount].enabled = true;
-      receivers[receiverCount].needsFirebaseSync = true; // Mark for task sync
+      receivers[receiverCount].needsFirebaseSync = true;
       receiverCount++;
-      registryChanged = true; // Signal the firebase task
+      registryChanged = true;
       Serial.printf("🆕 [Gateway] Discovered new receiver: %s\n", macStr);
       logToPSRAM("Discovered new receiver: %s", macStr);
-    } else {
-      // If already found, just log it occasionally
-      // Serial.printf("📡 [Gateway] Discovery heartbeat from known node: %s\n", macStr);
-    }
+    } 
     
     if (!esp_now_is_peer_exist(mac)) {
       esp_now_peer_info_t peerInfo = {};
@@ -163,19 +154,10 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
     esp_now_send(mac, (uint8_t *)&offer, sizeof(offer));
     logToPSRAM("Sent OFFER to %s", macStr);
   }
-  // 2. Log if we see commands from others
   else if (strcmp(incoming->msgType, "LUMINA_CMD") == 0) {
     Serial.printf("ℹ️ [Gateway] Observed CMD packet from %02X:%02X... (Effect=%d)\n", 
                   mac[0], mac[1], incoming->effect);
     logToPSRAM("Observed CMD packet from %02X:%02X... (Effect=%d)", mac[0], mac[1], incoming->effect);
-  }
-}
-
-void onDataSentGateway(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  // Optional: log failures
-  if (status != ESP_NOW_SEND_SUCCESS) {
-    // Serial.printf("⚠️ [Gateway] Delivery Fail to %02X:%02X:%02X:%02X:%02X:%02X\n", 
-    //               mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
   }
 }
 
@@ -186,9 +168,7 @@ void setupEspNowGateway() {
   }
   
   esp_now_register_recv_cb(onDataRecvGateway);
-  esp_now_register_send_cb(onDataSentGateway);
   
-  // Register broadcast peer
   esp_now_peer_info_t peerInfo = {};
   uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
@@ -222,7 +202,6 @@ void routeCommandToReceiver(int index) {
   }
   portEXIT_CRITICAL(&stripMux);
   
-  // Retry mechanism for robustness
   int maxRetries = 3;
   esp_err_t result;
   for (int i = 0; i < maxRetries; i++) {
@@ -232,11 +211,9 @@ void routeCommandToReceiver(int index) {
   }
 
   if (result == ESP_OK) {
-    // Serial.printf("📡 [Gateway] Sent CMD to %s: Eff=%d, En=%s\n", 
-    //               receivers[index].macStr.c_str(), msg.effect, msg.enabled ? "YES" : "NO");
-    logToPSRAM("Sent CMD to %s: Eff=%d, Bright=%d, En=%s, Mirror=%s", 
-               receivers[index].macStr.c_str(), msg.effect, msg.brightness, 
-               msg.enabled ? "ON" : "OFF", receivers[index].isMirror ? "YES" : "NO");
+    logToPSRAM("Sent CMD to %s: Eff=%d, En=%s", 
+               receivers[index].macStr.c_str(), msg.effect, 
+               msg.enabled ? "ON" : "OFF");
   }
 }
 
@@ -261,25 +238,17 @@ void updateActiveNodesInFirebase() {
 }
 
 void broadcastGatewayState() {
-  // 1. Sync Mirrors (Forces them to match Gateway state)
   syncAllMirrors();
-
-  // 2. Heartbeat for Standalone Nodes
-  // We send them their own current registered state as a "Keep-Alive"
-  // This ensures they reset their lastGatewayContact timer without switching modes.
   for (int i = 0; i < receiverCount; i++) {
     if (!receivers[i].isMirror) {
       LuminaMessage msg;
       strcpy(msg.msgType, "LUMINA_CMD");
       memcpy(msg.targetMac, receivers[i].mac, 6);
-      
       msg.effect = receivers[i].effect;
       msg.speed = receivers[i].speed;
       msg.color = receivers[i].color;
       msg.enabled = receivers[i].enabled;
-
       esp_now_send(receivers[i].mac, (uint8_t *)&msg, sizeof(msg));
-      // Serial.printf("💓 [Gateway] Heartbeat sent to Standalone: %s\n", receivers[i].macStr.c_str());
     }
   }
 }
@@ -309,6 +278,18 @@ void printSystemStats() {
   uint32_t totalPsram = ESP.getPsramSize();
   uint32_t usedPsram  = totalPsram - freePsram;
 
+  // Task assigned stack sizes (must match main.cpp)
+  const uint32_t firebaseAssigned   = 12000;
+  const uint32_t ledAssigned        = 4000;
+  const uint32_t voiceAssigned      = 10000;
+
+  auto stackUsed = [](uint32_t assigned, UBaseType_t watermark) -> uint32_t {
+    return (watermark < assigned) ? (assigned - (uint32_t)watermark) : 0;
+  };
+  auto stackPct = [&stackUsed](uint32_t assigned, UBaseType_t watermark) -> uint32_t {
+    return (assigned == 0) ? 0 : (stackUsed(assigned, watermark) * 100) / assigned;
+  };
+
   Serial.println("\n╔══════════════════════════════════════════════════════════════════════╗");
   Serial.println("║              SYSTEM HEALTH & DIAGNOSTICS REPORT                      ║");
   Serial.println("╠══════════════════════════════════════════════════════════════════════╣");
@@ -319,10 +300,21 @@ void printSystemStats() {
   Serial.printf("║  Uptime: %lu s                                                      ║\n",
                 millis() / 1000);
   Serial.println("╠══════════════════════════════════════════════════════════════════════╣");
-  Serial.printf("║  WiFi Channel: %-2d  |  Discovered Receivers: %-2d                      ║\n",
-                WiFi.channel(), receiverCount);
   Serial.printf("║  Effect: %-2d  |  Speed: %-4d ms  |  Strip: %-3s                      ║\n",
                 currentEffect, effectSpeed, stripEnabled ? "ON" : "OFF");
+  Serial.println("╠══════════════════════════════════════════════════════════════════════╣");
+  Serial.println("║                    TASK STACK USAGE (peak)                           ║");
+  Serial.println("║  Task              Assigned    Used    Free    Usage                 ║");
+  Serial.println("║  ──────────────────────────────────────────────────────────────────  ║");
+  Serial.printf( "║  FirebaseTask      %5u B  %5u B  %5u B   %3u%%                   ║\n",
+                firebaseAssigned,   stackUsed(firebaseAssigned,   firebaseTaskStack),
+                (uint32_t)firebaseTaskStack,   stackPct(firebaseAssigned,   firebaseTaskStack));
+  Serial.printf( "║  LEDTask           %5u B  %5u B  %5u B   %3u%%                   ║\n",
+                ledAssigned,        stackUsed(ledAssigned,        ledTaskStack),
+                (uint32_t)ledTaskStack,        stackPct(ledAssigned,        ledTaskStack));
+  Serial.printf( "║  VoiceTask         %5u B  %5u B  %5u B   %3u%%                   ║\n",
+                voiceAssigned,      stackUsed(voiceAssigned,      voiceTaskStack),
+                (uint32_t)voiceTaskStack,      stackPct(voiceAssigned,      voiceTaskStack));
   Serial.println("╚══════════════════════════════════════════════════════════════════════╝\n");
 }
 
@@ -357,7 +349,6 @@ void checkBootCount() {
     if (SPIFFS.exists("/config.json")) SPIFFS.remove("/config.json");
     if (SPIFFS.exists("/boot_count")) SPIFFS.remove("/boot_count");
     Serial.println("✅ Configuration wiped. Proceeding to config portal.");
-    // No need to restart, setup() will call shouldStartConfigPortal()
   } else {
     File f = SPIFFS.open("/boot_count", "w");
     if (f) {
@@ -366,7 +357,6 @@ void checkBootCount() {
       Serial.println("📂 [Boot] Boot counter saved to SPIFFS");
     }
     
-    // Create a task to clear the boot counter after 10 seconds
     xTaskCreate(clearBootCount, "ClearBootTask", 2048, NULL, 1, NULL);
   }
 }

@@ -1,9 +1,9 @@
 #include "globals.h"
+#include "ota_manager.h" // For OTA references if needed, though mostly moved
 
 // ============================================================================
 // VARIABLE DEFINITIONS
 // ============================================================================
-// Note: statsTaskStack and statsTaskHandle removed - merged into sensor task
 Receiver receivers[10];
 int receiverCount = 0;
 
@@ -164,8 +164,35 @@ void updateTimerState(bool state) {
   esp_task_wdt_reset();
 }
 
+void handleTimers() {
+  static bool lastOnTriggered = false;
+  static bool lastOffTriggered = false;
+  
+  if (firebaseConnected && timerEnabled) {
+    if (checkTimeMatch(timerOnTime)) {
+      if (!lastOnTriggered) {
+        Serial.println("⏰ Timer ON triggered");
+        updateTimerState(true);
+        lastOnTriggered = true;
+      }
+    } else {
+      lastOnTriggered = false;
+    }
+    
+    if (checkTimeMatch(timerOffTime)) {
+      if (!lastOffTriggered) {
+        Serial.println("⏰ Timer OFF triggered");
+        updateTimerState(false);
+        lastOffTriggered = true;
+      }
+    } else {
+      lastOffTriggered = false;
+    }
+  }
+}
+
 // ============================================================================
-// UPTIME FORMATTER - MOVED FROM STATS TASK
+// UPTIME FORMATTER
 // ============================================================================
 
 String formatUptime(unsigned long milliseconds) {
@@ -191,6 +218,10 @@ String formatUptime(unsigned long milliseconds) {
 
 void firebaseTask(void *parameter) {
   Serial.println("🔥 Firebase Task started on Core " + String(xPortGetCoreID()));
+  
+  // Timer for stats upload
+  unsigned long lastStatsUpload = 0;
+  const unsigned long STATS_UPLOAD_INTERVAL = 2000;
   
   for(;;) {
     esp_task_wdt_reset();
@@ -228,6 +259,38 @@ void firebaseTask(void *parameter) {
           registryChanged = false;
         }
       }
+      
+      // 3. Upload Sensor/System Stats (Migrated from SensorDataTask)
+      if (millis() - lastStatsUpload > STATS_UPLOAD_INTERVAL) {
+        lastStatsUpload = millis();
+        
+        uint32_t freeHeap = ESP.getFreeHeap();
+        uint32_t totalHeap = ESP.getHeapSize();
+        
+        FirebaseJson json;
+        FirebaseJson sensors;
+        FirebaseJson stats;
+        
+        // Add sensor data (Updated by handleSensorsAndAutomation in main loop)
+        sensors.set("lux", currentLux);
+        sensors.set("presence", lastPresence);
+        
+        // Add system stats
+        stats.set("uptime", formatUptime(millis()));
+        stats.set("status", systemHealthy ? "ALL SYSTEMS NOMINAL" : "SYSTEM WARNINGS");
+        stats.set("free_heap_kb", freeHeap / 1024);
+        stats.set("wifi_rssi", WiFi.RSSI());
+        stats.set("loop_counter", loopCounter);
+        stats.set("firmware_version", currentFirmwareVersion);
+        
+        json.set("sensors", sensors);
+        json.set("stats", stats);
+        
+        String combinedPath = basePath + "/local/sensor_stats";
+        // Fire and forget (best effort), don't block too long
+        Firebase.RTDB.setJSON(&fbdoUpload, combinedPath.c_str(), &json);
+      }
+      
     } else {
       firebaseConnected = false;
       if (WiFi.status() != WL_CONNECTED) {
@@ -236,7 +299,7 @@ void firebaseTask(void *parameter) {
       }
     }
     
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS); // Run at 10Hz
   }
 }
 
@@ -247,377 +310,6 @@ void ledTask(void *parameter) {
     esp_task_wdt_reset();
     updateLEDs();
     vTaskDelay(effectSpeed / portTICK_PERIOD_MS);
-  }
-}
-
-void automationtask(void *parameter) {
-  Serial.println("⚙️  Automation Task started on Core " + String(xPortGetCoreID()));
-  
-  const TickType_t xDelay = 100 / portTICK_PERIOD_MS;
-  static unsigned long lastStateChangeTime = 0;
-  const unsigned long CHANGE_LOCKOUT_MS = 3000;
-  
-  static bool lastPresenceDetected = false;
-  static bool lastTargetState = false;
-  static unsigned long lastLogTime = 0;
-  
-  vTaskDelay(3000 / portTICK_PERIOD_MS);
-
-  for(;;) {
-    esp_task_wdt_reset();
-    
-    if (sensorAvailable) {
-      updateSensorData();
-    }
-    bool presenceDetected = (digitalRead(RADAR_OUTPUT) == HIGH);
-    lastPresence = presenceDetected;
-
-    if (manuallyTurnedOff) {
-      bool currentEnabled;
-      portENTER_CRITICAL(&stripMux);
-      currentEnabled = stripEnabled;
-      portEXIT_CRITICAL(&stripMux);
-      
-      if (currentEnabled) {
-        portENTER_CRITICAL(&stripMux);
-        stripEnabled = false;
-        portEXIT_CRITICAL(&stripMux);
-        syncAllMirrors();
-      }
-      vTaskDelay(xDelay);
-      continue;
-    }
-
-    bool targetState = false;
-    String reason = "";
-
-    bool presenceCondition = true;
-    bool darknessCondition = true;
-    
-    if (presenceDetectionEnabled) {
-      presenceCondition = presenceDetected;
-    }
-    
-    if (autoDarknessControl) {
-      bool currentEnabled;
-      portENTER_CRITICAL(&stripMux);
-      currentEnabled = stripEnabled;
-      portEXIT_CRITICAL(&stripMux);
-      
-      if (currentEnabled) {
-        darknessCondition = (currentLux < luxThreshold);
-      } else {
-        darknessCondition = (currentLux < luxThreshold);
-      }
-    }
-    
-    if (presenceDetectionEnabled && autoDarknessControl) {
-      targetState = presenceCondition && darknessCondition;
-      if (targetState) {
-        reason = "Presence + Darkness";
-      } else if (!presenceCondition) {
-        reason = "No presence";
-      } else {
-        reason = "Too bright";
-      }
-    }
-    else if (presenceDetectionEnabled && !autoDarknessControl) {
-      targetState = presenceCondition;
-      reason = presenceCondition ? "Presence detected" : "No presence";
-    }
-    else if (!presenceDetectionEnabled && autoDarknessControl) {
-      targetState = darknessCondition;
-      reason = darknessCondition ? "Dark enough" : "Too bright";
-    }
-    else {
-      targetState = true;
-      reason = "Always ON";
-    }
-
-    bool currentEnabled;
-    portENTER_CRITICAL(&stripMux);
-    currentEnabled = stripEnabled;
-    portEXIT_CRITICAL(&stripMux);
-
-    if (presenceDetected != lastPresenceDetected || targetState != lastTargetState || (millis() - lastLogTime > 5000)) {
-      Serial.printf("[Automation] State: presence: %d, presenceEnabled: %d, darknessEnabled: %d, lux: %.2f | Target: %d, Current: %d, Reason: %s\n",
-          presenceDetected, presenceDetectionEnabled, autoDarknessControl, currentLux, targetState, currentEnabled, reason.c_str());
-      lastPresenceDetected = presenceDetected;
-      lastTargetState = targetState;
-      lastLogTime = millis();
-    }
-
-    // CRITICAL FIX 7: Thread-safe state changes
-    if (targetState != currentEnabled) {
-      if (millis() - lastStateChangeTime > CHANGE_LOCKOUT_MS) {
-        // Use critical section
-        portENTER_CRITICAL(&stripMux);
-        stripEnabled = targetState;
-        portEXIT_CRITICAL(&stripMux);
-        
-        lastStateChangeTime = millis();
-        
-        if (targetState) {
-          Serial.printf("\n💡 LEDs ON: %s (Presence: %s, Lux: %.2f)\n", 
-                       reason.c_str(), presenceDetected ? "Yes" : "No", currentLux);
-        } else {
-          Serial.printf("\n🌙 LEDs OFF: %s (Presence: %s, Lux: %.2f)\n", 
-                       reason.c_str(), presenceDetected ? "Yes" : "No", currentLux);
-        }
-        syncAllMirrors();
-      }
-    }
-
-    vTaskDelay(xDelay);
-  }
-}
-
-// ============================================================================
-// SENSOR DATA TASK - NOW INCLUDES STATS COLLECTION
-// ============================================================================
-
-void sensorDataTask(void *parameter) {
-  Serial.println("📊 Sensor+Stats Task started on Core " + String(xPortGetCoreID()));
-  Serial.println("   📡 Sending combined data every 2 seconds to /sensor_stats");
-  
-  const TickType_t xDelay = 2000 / portTICK_PERIOD_MS; // Every 2 seconds
-  const unsigned long FIREBASE_OPERATION_TIMEOUT = 10000;
-  const unsigned long NETWORK_CHECK_TIMEOUT = 5000;
-  
-  static unsigned long lastNetworkCheck = 0;
-  static unsigned long taskStartTime = millis(); // For uptime calculation
-  
-  unsigned long operationStart = 0;
-  unsigned long operationDuration = 0;
-  
-  int consecutiveFailures = 0;
-  const int MAX_CONSECUTIVE_FAILURES = 5;
-  
-  for(;;) {
-    esp_task_wdt_reset();
-    
-    // ========================================================================
-    // 1. CHECK NETWORK CONNECTION (every 5 seconds)
-    // ========================================================================
-    if (millis() - lastNetworkCheck > NETWORK_CHECK_TIMEOUT) {
-      lastNetworkCheck = millis();
-      
-      if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("⚠️  [SensorTask] WiFi disconnected - skipping Firebase operations");
-        firebaseConnected = false;
-        esp_task_wdt_reset();
-        vTaskDelay(xDelay);
-        continue;
-      }
-      
-      if (!Firebase.ready()) {
-        Serial.println("⚠️  [SensorTask] Firebase not ready - skipping operations");
-        firebaseConnected = false;
-        esp_task_wdt_reset();
-        vTaskDelay(xDelay);
-        continue;
-      }
-    }
-    
-    // ========================================================================
-    // 2. COLLECT SENSOR DATA (always do this - other tasks depend on it)
-    // ========================================================================
-    if (sensorAvailable) {
-      esp_task_wdt_reset();
-      updateSensorData(); // Reads currentLux
-    }
-    
-    esp_task_wdt_reset();
-    bool present = (digitalRead(RADAR_OUTPUT) == HIGH);
-    lastPresence = present; // Update global for automation task
-    
-    // ========================================================================
-    // 3. SEND COMBINED DATA TO FIREBASE (if connected)
-    // ========================================================================
-    if (firebaseConnected && WiFi.status() == WL_CONNECTED) {
-      esp_task_wdt_reset();
-      operationStart = millis();
-      
-      // ----------------------------------------------------------------------
-      // 3A. COLLECT SYSTEM STATS
-      // ----------------------------------------------------------------------
-      uint32_t freeHeap = ESP.getFreeHeap();
-      uint32_t totalHeap = ESP.getHeapSize();
-      uint32_t minFreeHeap = ESP.getMinFreeHeap();
-      uint32_t usedHeap = totalHeap - freeHeap;
-      float heapUsagePercent = (usedHeap * 100.0) / totalHeap;
-      
-      // Get PSRAM stats if available
-      #ifdef BOARD_HAS_PSRAM
-        uint32_t psramSize = ESP.getPsramSize();
-        uint32_t freePsram = ESP.getFreePsram();
-      #else
-        uint32_t psramSize = 0;
-        uint32_t freePsram = 0;
-      #endif
-      
-      String systemStatus = systemHealthy ? "ALL SYSTEMS NOMINAL" : "SYSTEM WARNINGS";
-      
-      // ----------------------------------------------------------------------
-      // 3B. CREATE COMBINED JSON WITH SENSORS AND STATS
-      // ----------------------------------------------------------------------
-      FirebaseJson json;
-      FirebaseJson sensors;
-      FirebaseJson stats;
-      
-      // Add sensor data
-      sensors.set("lux", currentLux);
-      sensors.set("presence", present);
-      
-      // Add system stats
-      stats.set("uptime", formatUptime(millis() - taskStartTime));
-      stats.set("status", systemStatus);
-      stats.set("heap_usage_percent", heapUsagePercent);
-      stats.set("free_heap_kb", freeHeap / 1024);
-      stats.set("min_free_heap", minFreeHeap);
-      stats.set("total_heap_kb", totalHeap / 1024);
-      stats.set("wifi_rssi", WiFi.RSSI());
-      stats.set("loop_counter", loopCounter);
-      stats.set("firmware_version", currentFirmwareVersion);
-      
-      if (psramSize > 0) {
-        stats.set("psram_size_kb", psramSize / 1024);
-        stats.set("free_psram_kb", freePsram / 1024);
-        stats.set("min_free_psram", ESP.getMinFreePsram());
-      }
-      
-      // Combine into main JSON with your specified structure
-      json.set("sensors", sensors);
-      json.set("stats", stats);
-      
-      // ----------------------------------------------------------------------
-      // 3C. SEND SINGLE FIREBASE UPDATE EVERY 2 SECONDS
-      // ----------------------------------------------------------------------
-      String combinedPath = basePath + "/local/sensor_stats";
-      bool success = false;
-      
-      try {
-        success = Firebase.RTDB.setJSON(&fbdoUpload, combinedPath.c_str(), &json);
-      } catch (...) {
-        Serial.println("⚠️  [SensorTask] CAUGHT Firebase exception - continuing...");
-        success = false;
-      }
-      
-      operationDuration = millis() - operationStart;
-      
-      if (success) {
-        consecutiveFailures = 0;
-        
-        // Optional debug - uncomment to see when data is sent
-        // Serial.printf("✅ [SensorTask] Combined data sent in %lu ms\n", operationDuration);
-        
-        if (operationDuration > 3000) {
-          Serial.printf("⚠️  [SensorTask] Combined upload took %lu ms (slow but successful)\n", operationDuration);
-        }
-      } else {
-        consecutiveFailures++;
-        Serial.printf("⚠️  [SensorTask] Failed to send combined data (%d/%d): %s\n", 
-                     consecutiveFailures, MAX_CONSECUTIVE_FAILURES, 
-                     fbdoUpload.errorReason().c_str());
-        
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          Serial.println("❌ [SensorTask] Too many consecutive failures - marking Firebase as disconnected");
-          firebaseConnected = false;
-          consecutiveFailures = 0;
-        }
-      }
-      
-      if (operationDuration > FIREBASE_OPERATION_TIMEOUT) {
-        Serial.printf("❌ [SensorTask] Combined upload TIMEOUT (%lu ms) - may need to reset Firebase connection\n", 
-                     operationDuration);
-        firebaseConnected = false;
-      }
-      
-    } else {
-      if (!firebaseConnected) {
-        // Firebase not connected - wait and retry
-      } else if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("⚠️  [SensorTask] WiFi disconnected - skipping Firebase uploads");
-      }
-    }
-    
-    esp_task_wdt_reset();
-    
-    // ========================================================================
-    // 4. MONITOR TASK STACK USAGE
-    // ========================================================================
-    if (sensorTaskHandle != NULL) {
-      sensorTaskStack = uxTaskGetStackHighWaterMark(sensorTaskHandle);
-      if (sensorTaskStack < 1000 && sensorTaskStack > 0) {
-        Serial.printf("⚠️  [SensorTask] Stack running low: %d bytes remaining\n", 
-                     sensorTaskStack * sizeof(StackType_t));
-      }
-    }
-    
-    esp_task_wdt_reset();
-    
-    // ========================================================================
-    // 5. DELAY FOR NEXT CYCLE (2 seconds)
-    // ========================================================================
-    vTaskDelay(xDelay);
-  }
-}
-
-void timerTask(void *parameter) {
-  Serial.println("⏰ Timer Task started on Core " + String(xPortGetCoreID()));
-  
-  const TickType_t xDelay = 1000 / portTICK_PERIOD_MS;
-  bool lastOnTriggered = false;
-  bool lastOffTriggered = false;
-  
-  for(;;) {
-    esp_task_wdt_reset();
-    
-    if (firebaseConnected && timerEnabled) {
-      if (checkTimeMatch(timerOnTime)) {
-        if (!lastOnTriggered) {
-          Serial.println("⏰ Timer ON triggered");
-          updateTimerState(true);
-          lastOnTriggered = true;
-        }
-      } else {
-        lastOnTriggered = false;
-      }
-      
-      if (checkTimeMatch(timerOffTime)) {
-        if (!lastOffTriggered) {
-          Serial.println("⏰ Timer OFF triggered");
-          updateTimerState(false);
-          lastOffTriggered = true;
-        }
-      } else {
-        lastOffTriggered = false;
-      }
-    }
-    
-    vTaskDelay(xDelay);
-  }
-}
-
-void otaUpdateTask(void *parameter) {
-  Serial.println("🔄 OTA Update Task started on Core " + String(xPortGetCoreID()));
-  
-  const TickType_t xDelay = UPDATE_CHECK_INTERVAL / portTICK_PERIOD_MS;
-  
-  vTaskDelay(30000 / portTICK_PERIOD_MS);
-  
-  for(;;) {
-    esp_task_wdt_reset();
-    
-    if (WiFi.status() == WL_CONNECTED && firebaseConnected) {
-      Serial.println("🔍 Checking for firmware updates...");
-      checkForGitHubUpdate();
-    } else {
-      Serial.println("⚠️  Skipping update check - network not ready");
-    }
-    
-    esp_task_wdt_reset();
-    vTaskDelay(xDelay);
   }
 }
 
@@ -679,7 +371,3 @@ void statusLedTask(void *parameter) {
     }
   }
 }
-
-// ============================================================================
-// NOTE: statsTask() function has been REMOVED - merged into sensorDataTask()
-// ============================================================================

@@ -1,6 +1,9 @@
 #include "globals.h"
 #include "smart_home.h"
 #include "voice_recognition.h"
+#include "ota_manager.h"
+#include "mqtt_integration.h"
+#include "sensors.h"
 
 // ============================================================================
 // SETUP FUNCTION
@@ -67,7 +70,6 @@ void setup() {
   Serial.println("💡 Initializing LED strip...");
   i2sMutex = xSemaphoreCreateMutex();
   
-  // Allocate Framebuffer in PSRAM
   leds = (CRGB*)ps_malloc(ledCount * sizeof(CRGB));
   if (leds) {
     memset(leds, 0, ledCount * sizeof(CRGB));
@@ -84,7 +86,6 @@ void setup() {
   FastLED.show();
   Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
   
-  // Start Status LED Task early to indicate boot
   xTaskCreatePinnedToCore(statusLedTask, "StatusLEDTask", 2048, NULL, 1, NULL, 0);
   
   Serial.println("⏱️  Initializing watchdog timer (30s)...");
@@ -127,7 +128,6 @@ void setup() {
   Serial.println("🎤 [6/9] Initializing audio processing...");
   setupFrequencyDetection();
   Serial.println("      ✅ Frequency detection initialized");
-  Serial.println("      🎵 Starting microphone calibration...");
   
   Serial.println("📨 [7/9] Setting up MQTT...");
   setupMQTT();
@@ -147,49 +147,35 @@ void setup() {
 
   Serial.println("⚙️  [9/9] Creating FreeRTOS tasks...");
   
+  // PROTECTED TASKS
   xTaskCreatePinnedToCore(firebaseTask, "FirebaseTask", 12000, NULL, 1, &firebaseTaskHandle, 0);
   Serial.println("      ✅ Firebase task created (Core 0, 12KB stack)");
 
   xTaskCreatePinnedToCore(ledTask, "LEDTask", 4000, NULL, 1, &ledTaskHandle, 1);
   Serial.println("      ✅ LED task created (Core 1, 4KB stack)");
 
-  xTaskCreatePinnedToCore(smartHomeTask, "SmartHomeTask", 8192, NULL, 1, NULL, 0);
-  Serial.println("      ✅ Smart Home task created (Core 0, 8KB stack)");
-
-  xTaskCreatePinnedToCore(voiceRecognitionTask, "VoiceTask", 10000, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(voiceRecognitionTask, "VoiceTask", 10000, NULL, 1, &voiceTaskHandle, 0);
   Serial.println("      ✅ Voice Detection task created (Core 0, 10KB stack)");
 
-  xTaskCreatePinnedToCore(sensorDataTask, "SensorDataTask", 12000, NULL, 1, &sensorTaskHandle, 0);
-  Serial.println("      ✅ Sensor task created (Core 0, 12KB stack)");
-
-  xTaskCreatePinnedToCore(automationtask, "AutomationTask", 4000, NULL, 0, &automationTaskHandle, 0);
-  Serial.println("      ✅ Automation task created (Core 0, 4KB stack)");
-
-  xTaskCreatePinnedToCore(timerTask, "TimerTask", 4000, NULL, 1, &timerTaskHandle, 0);
-  Serial.println("      ✅ Timer task created (Core 0, 4KB stack)");
-
-  xTaskCreatePinnedToCore(mqttTask, "MQTTTask", 8000, NULL, 1, &mqttTaskHandle, 0);
-  Serial.println("      ✅ MQTT task created (Core 0, 4KB stack)");
-
-  xTaskCreatePinnedToCore(otaUpdateTask, "OTAUpdateTask", 7000, NULL, 0, &otaTaskHandle, 0);
-  Serial.println("      ✅ OTA Update task created (Core 0, 7KB stack)");
+  Serial.println("      ℹ️  Lightweight tasks consolidated into Main Loop Dispatcher");
   
   systemInitialized = true;
   
   Serial.println("\n╔═══════════════════════════════════════════════════════════════╗");
   Serial.println("║              🎉 ALL SYSTEMS INITIALIZED 🎉                     ║");
-  Serial.println("║       Combined sensor+stats data sent every 2 seconds          ║");
+  Serial.println("║       Consolidated dispatcher loop active every 10ms           ║");
   Serial.println("╚═══════════════════════════════════════════════════════════════╝\n");
 }
 
 // ============================================================================
-// MAIN LOOP
+// MAIN LOOP - CLEAN DISPATCHER PATTERN
 // ============================================================================
 
 void loop() {
   unsigned long loopStart = millis();
   loopCounter++;
   
+  // 1. Button Handling
   if (digitalRead(BUTTON_PIN) == LOW) {
     if (!buttonActive) {
       buttonActive = true;
@@ -200,40 +186,48 @@ void loop() {
     buttonActive = false;
   }
   
+  // 2. Dispatcher Timers
+  static unsigned long lastSensorRun = 0;
+  static unsigned long lastTimerRun = 0;
+  
+  // 3. FAST DISPATCH (Every Loop)
+  handleSmartHome();
+  handleMQTT();
+  
+  // 4. MEDIUM DISPATCH (Every 100ms)
+  if (millis() - lastSensorRun > 100) {
+    lastSensorRun = millis();
+    handleSensorsAndAutomation();
+  }
+  
+  // 5. SLOW DISPATCH (Every 1000ms)
+  if (millis() - lastTimerRun > 1000) {
+    lastTimerRun = millis();
+    handleTimers();
+  }
+  
+  // 6. VERY SLOW DISPATCH (OTA Check)
+  handleOTAUpdate();
+  
+  // 7. Gateway Broadcast (every 5s)
   static unsigned long lastBroadcastTime = 0;
   if (millis() - lastBroadcastTime > 5000) {
     lastBroadcastTime = millis();
     broadcastGatewayState();
   }
   
+  // 8. System Stats Reporting
   if (millis() - lastSystemStatsReport > SYSTEM_STATS_INTERVAL) {
     lastSystemStatsReport = millis();
     
-    if (firebaseTaskHandle != NULL) {
-      firebaseTaskStack = uxTaskGetStackHighWaterMark(firebaseTaskHandle);
-    }
-    if (ledTaskHandle != NULL) {
-      ledTaskStack = uxTaskGetStackHighWaterMark(ledTaskHandle);
-    }
-    if (automationTaskHandle != NULL) {
-      automationTaskStack = uxTaskGetStackHighWaterMark(automationTaskHandle);
-    }
-    if (sensorTaskHandle != NULL) {
-      sensorTaskStack = uxTaskGetStackHighWaterMark(sensorTaskHandle);
-    }
-    if (timerTaskHandle != NULL) {
-      timerTaskStack = uxTaskGetStackHighWaterMark(timerTaskHandle);
-    }
-    if (mqttTaskHandle != NULL) {
-      mqttTaskStack = uxTaskGetStackHighWaterMark(mqttTaskHandle);
-    }
-    if (otaTaskHandle != NULL) {
-      otaTaskStack = uxTaskGetStackHighWaterMark(otaTaskHandle);
-    }
+    if (firebaseTaskHandle != NULL) firebaseTaskStack = uxTaskGetStackHighWaterMark(firebaseTaskHandle);
+    if (ledTaskHandle != NULL) ledTaskStack = uxTaskGetStackHighWaterMark(ledTaskHandle);
+    if (voiceTaskHandle != NULL) voiceTaskStack = uxTaskGetStackHighWaterMark(voiceTaskHandle);
     
     printSystemStats();
   }
 
+  // 9. Watchdog & Loop Timing
   lastLoopTime = millis();
   unsigned long loopDuration = lastLoopTime - loopStart;
   
@@ -241,5 +235,5 @@ void loop() {
     Serial.printf("⚠️  WARNING: Loop took %lu ms (expected <100ms)\n", loopDuration);
   }
   
-  vTaskDelay(100 / portTICK_PERIOD_MS);
+  vTaskDelay(10 / portTICK_PERIOD_MS); 
 }

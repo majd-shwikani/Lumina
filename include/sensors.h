@@ -6,70 +6,55 @@
 #include <Adafruit_VEML7700.h>
 #include <driver/i2s.h>
 #include <arduinoFFT.h>
-#include <FastLED.h>
-#include "config.h"
 
-// ============================================================================
-// LIGHT SENSOR CONFIGURATION
-// ============================================================================
-extern Adafruit_VEML7700 veml;
-extern volatile float currentLux;
-extern volatile bool sensorAvailable;
-extern volatile float luxThreshold;
+// I2S Microphone Defines (ICS-43434)
+#ifndef I2S_SCK_PIN
+#define I2S_SCK_PIN 14
+#endif
 
-// ============================================================================
-// AUDIO SENSOR CONFIGURATION
-// ============================================================================
+#ifndef I2S_WS_PIN
+#define I2S_WS_PIN  15
+#endif
 
-// Microphone type selection
+#ifndef I2S_SD_PIN
+#define I2S_SD_PIN  32
+#endif
+
+#define I2S_PORT I2S_NUM_0
+
+// Audio Processing Defines
+#define SAMPLE_RATE 16000
+#define N_SAMPLES 512
+#define BUFFER_LEN 512
+#define I2S_DMA_BUF_LEN 512
+
+// Analog Microphone Defines (MAX9814)
+#ifndef ANALOG_MIC_PIN
+#define ANALOG_MIC_PIN 36 // VP pin on many ESP32 boards
+#endif
+
+// Microphone Selection
 #define MIC_I2S_ICS43434 0
 #define MIC_ANALOG_MAX9814 1
 
-// Active microphone selection
-extern volatile int activeMicrophone;
+// Calibration & Gain
+#define CALIBRATION_DURATION 3000
+#define TARGET_PEAK_LEVEL 1000.0
+#define INITIAL_GAIN_MULTIPLIER 1.0
+#define GAIN_ADJUSTMENT_RATE 0.05
+#define NOISE_FLOOR_MULTIPLIER 1.2
 
-
-// Audio FFT Configuration
-#define SAMPLE_RATE 16000
-#define N_SAMPLES 256
-#define BUFFER_LEN N_SAMPLES
+// Freq Bands
 #define NUM_FREQ_BANDS 8
 
-// ============================================================================
-// AUTO-CALIBRATION CONFIGURATION
-// ============================================================================
-
-// Calibration constants
-#define CALIBRATION_DURATION 3000        // 3 seconds of calibration
-#define NOISE_FLOOR_MULTIPLIER 1.5       // Noise floor * this = detection threshold (lowered for sensitivity)
-#define TARGET_PEAK_LEVEL 0.8             // Target peak magnitude (0-1 scale) - aim higher
-#define GAIN_ADJUSTMENT_RATE 0.05         // Rate of gain adjustment per cycle (faster adaptation)
-#define INITIAL_GAIN_MULTIPLIER 5.0       // Start with higher gain (instead of 1.0)
-
-// Manual calibration trigger
+extern volatile int activeMicrophone;
+extern volatile double noiseFloor;
+extern volatile double gainMultiplier;
+extern volatile bool calibrationComplete;
 extern volatile bool triggerMicCalibration;
 extern volatile bool isCalibrating;
 
-// Microphone calibration state
-extern volatile bool calibrationComplete;
-extern volatile double noiseFloor;
-extern volatile double gainMultiplier;
-extern unsigned long lastCalibrationTime;
-
-// FFT Variables
-extern int16_t raw_samples[BUFFER_LEN];
-extern ArduinoFFT<double> FFT;
-extern double vReal[N_SAMPLES];
-extern double vImag[N_SAMPLES];
-
-// Frequency Band Analysis
-extern double bandMagnitudes[NUM_FREQ_BANDS];
-extern double bandMaxima[NUM_FREQ_BANDS];
-extern double frequencyResponse[N_SAMPLES];
-
-// Audio Analysis Variables
-extern volatile double detectedFrequency;
-extern volatile double frequencyMagnitude;
+// Audio levels
 extern volatile double globalAudioLevel;
 extern volatile double bassLevel;
 extern volatile double midLevel;
@@ -77,41 +62,32 @@ extern volatile double trebleLevel;
 extern volatile bool beatDetected;
 extern volatile float beatEnergy;
 
-// Smoothing variables
-extern double smoothedBandMagnitudes[NUM_FREQ_BANDS];
+extern volatile float currentLux;
+extern volatile bool sensorAvailable;
+extern volatile float luxThreshold;
 
-// FastLED reference
-extern CRGB *leds;
-extern volatile bool stripEnabled;
-
-// ============================================================================
-// FUNCTION DECLARATIONS
-// ============================================================================
-
-// Light Sensor Functions
 void setupVEML7700();
 void updateSensorData();
 bool shouldTurnOffDueToDarkness();
 
-// Audio Sensor Setup
 void setupFrequencyDetection();
-void selectMicrophone(int micType);
-
-// Audio Processing Functions
 void updateFrequencyDetection();
-void analyzeAudioBands();
-void detectBeat();
-void normalizeAudioLevels();
+uint32_t frequencyToColor(double freq);
+double getAudioLevelSmoothed(int index, double currentValue);
 
-// Auto-calibration Functions
+void selectMicrophone(int micType);
 void calibrateMicrophone();
-void performAutoGainControl();
-void checkAndRecalibrate();
 void saveMicCalibration();
 bool loadMicCalibration();
 
-// Utility Functions
-uint32_t frequencyToColor(double freq);
-double getAudioLevelSmoothed(int index, double currentValue);
+// NEW:
+void handleSensorsAndAutomation();
+
+// Helpers
+void analyzeAudioBands();
+void detectBeat();
+void normalizeAudioLevels();
+void performAutoGainControl();
+void checkAndRecalibrate();
 
 #endif
