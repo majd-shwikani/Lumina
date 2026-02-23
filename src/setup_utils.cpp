@@ -267,21 +267,69 @@ void printSystemStats() {
   uint32_t totalPsram = ESP.getPsramSize();
   uint32_t usedPsram  = totalPsram - freePsram;
 
-  Serial.println("\n╔══════════════════════════════════════════════════════════════════════╗");
-  Serial.println("║              SYSTEM HEALTH & DIAGNOSTICS REPORT                      ║");
-  Serial.println("╠══════════════════════════════════════════════════════════════════════╣");
-  Serial.printf("║  RAM   used: %5u KB / %5u KB  (%2u%% used)                         ║\n",
-                usedHeap / 1024, totalHeap / 1024, (usedHeap * 100) / totalHeap);
-  Serial.printf("║  PSRAM used: %5u KB / %5u KB  (%2u%% used)                         ║\n",
-                usedPsram / 1024, totalPsram / 1024, (usedPsram * 100) / totalPsram);
-  Serial.printf("║  Uptime: %lu s                                                      ║\n",
-                millis() / 1000);
-  Serial.println("╠══════════════════════════════════════════════════════════════════════╣");
-  Serial.printf("║  WiFi Channel: %-2d  |  Discovered Receivers: %-2d                      ║\n",
-                WiFi.channel(), receiverCount);
-  Serial.printf("║  Effect: %-2d  |  Speed: %-4d ms  |  Strip: %-3s                      ║\n",
-                currentEffect, effectSpeed, stripEnabled ? "ON" : "OFF");
-  Serial.println("╚══════════════════════════════════════════════════════════════════════╝\n");
+  struct TaskInfo {
+    const char*  name;
+    TaskHandle_t handle;
+    uint32_t     allocKB; // allocated stack in KB (words * 4 / 1024)
+  };
+
+  // Stack sizes: words from xTaskCreatePinnedToCore * 4 bytes / 1024 = KB
+  TaskInfo tasks[] = {
+    { "Firebase  ", firebaseTaskHandle,   (12000 * 4) / 1024 },
+    { "LED       ", ledTaskHandle,         (4000 * 4) / 1024 },
+    { "SmartHome ", NULL,                  (8192 * 4) / 1024 },
+    { "Voice     ", NULL,                 (10000 * 4) / 1024 },
+    { "Sensor    ", sensorTaskHandle,     (12000 * 4) / 1024 },
+    { "Automation", automationTaskHandle,  (4000 * 4) / 1024 },
+    { "Timer     ", timerTaskHandle,       (4000 * 4) / 1024 },
+    { "MQTT      ", mqttTaskHandle,        (8000 * 4) / 1024 },
+    { "OTA       ", otaTaskHandle,         (7000 * 4) / 1024 },
+    { "StatusLED ", NULL,                  (2048 * 4) / 1024 },
+  };
+  const int taskCount = sizeof(tasks) / sizeof(tasks[0]);
+
+  Serial.println("\n┌─────────────────────────────────────────────────────┐");
+  Serial.println("│              SYSTEM HEALTH REPORT                   │");
+  Serial.println("├─────────────────────────────────────────────────────┤");
+  Serial.printf( "│  RAM    %4u / %4u KB  (%2u%%)  │  Uptime: %lus\n",
+                 usedHeap / 1024, totalHeap / 1024,
+                 (usedHeap * 100) / totalHeap,
+                 millis() / 1000);
+  if (totalPsram > 0) {
+    Serial.printf("│  PSRAM  %4u / %4u KB  (%2u%%)\n",
+                  usedPsram / 1024, totalPsram / 1024,
+                  (usedPsram * 100) / totalPsram);
+  }
+  Serial.println("├──────────────┬────────┬────────┬────────┬──────────┤");
+  Serial.println("│ Task         │ Total  │  Used  │  Free  │  Usage   │");
+  Serial.println("├──────────────┼────────┼────────┼────────┼──────────┤");
+
+  for (int i = 0; i < taskCount; i++) {
+    TaskInfo& t = tasks[i];
+
+    if (t.handle == NULL) {
+      Serial.printf("│ %-12s │ %4u KB │  n/a   │  n/a   │  no hdl  │\n",
+                    t.name, t.allocKB);
+      continue;
+    }
+
+    UBaseType_t freeWords = uxTaskGetStackHighWaterMark(t.handle);
+    uint32_t freeKB  = ((uint32_t)freeWords * sizeof(StackType_t)) / 1024;
+    uint32_t usedKB  = t.allocKB - freeKB;
+    uint32_t usedPct = (usedKB * 100) / t.allocKB;
+
+    const char* flag = (usedPct >= 90) ? " !!CRIT" :
+                       (usedPct >= 75) ? " !HIGH " :
+                                         "       ";
+
+    Serial.printf("│ %-12s │ %4u KB │ %4u KB │ %4u KB │  %3u%%%s│\n",
+                  t.name, t.allocKB, usedKB, freeKB, usedPct, flag);
+  }
+
+  Serial.println("├──────────────┴────────┴────────┴────────┴──────────┤");
+  Serial.printf( "│  Effect: %-2d  Speed: %-4lums  Strip: %-3s  CH: %-2d      │\n",
+                 currentEffect, effectSpeed, stripEnabled ? "ON" : "OFF", WiFi.channel());
+  Serial.println("└─────────────────────────────────────────────────────┘\n");
 }
 
 // ============================================================================
