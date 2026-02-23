@@ -83,8 +83,10 @@ void setupVEML7700() {
   Serial.println("VEML7700 light sensor initialized successfully");
 }
 
+// Update this section in sensors.cpp
+
 void updateSensorData() {
-  // Simple non-blocking read
+  esp_task_wdt_reset();
   if (sensorAvailable) {
     float newLux = veml.readLux();
     
@@ -95,12 +97,18 @@ void updateSensorData() {
       // Apply a smoothing filter (Low Pass Filter) 
       // This makes the transition 30% new data and 70% old data to prevent jumps
       currentLux = (newLux * 0.3) + (currentLux * 0.7);
+    } else {
+      // If the sensor goes "crazy", we ignore the reading and keep the last good value
+      // Serial.printf("⚠️ Glitch detected (%.2f lux). Ignoring.\n", newLux);
     }
   }
 }
 
 // Improved logic to prevent "Optical Feedback" (LEDs turning themselves off)
 bool shouldTurnOffDueToDarkness() {
+  // Use a hysteresis buffer:
+  // If LEDs are OFF, they turn ON at 'luxThreshold' (e.g., 1.0)
+  // If LEDs are ON, they only turn OFF if lux is 'luxThreshold + 8.0'
   float effectiveThreshold = luxThreshold;
 
   if (stripEnabled) {
@@ -111,107 +119,6 @@ bool shouldTurnOffDueToDarkness() {
 
   // Return true if it is dark enough to warrant LEDs being ON
   return currentLux < effectiveThreshold;
-}
-
-// ============================================================================
-// HANDLE SENSORS AND AUTOMATION (Replaces separate tasks)
-// ============================================================================
-
-void handleSensorsAndAutomation() {
-  static unsigned long lastStateChangeTime = 0;
-  const unsigned long CHANGE_LOCKOUT_MS = 3000;
-  
-  // 1. Update Sensors
-  updateSensorData();
-  
-  bool presenceDetected = (digitalRead(RADAR_OUTPUT) == HIGH);
-  lastPresence = presenceDetected; // Update global
-
-  // 2. Check Manual Override
-  if (manuallyTurnedOff) {
-    // If manually off, we ensure it stays off unless user turns it on
-    // But if automation tries to turn it on, we ignore it.
-    // However, if the user manually turned it off, we need to respect that.
-    // The logic in the old task was: if manuallyTurnedOff, ensure strip is off.
-    
-    bool currentEnabled;
-    portENTER_CRITICAL(&stripMux);
-    currentEnabled = stripEnabled;
-    portEXIT_CRITICAL(&stripMux);
-    
-    if (currentEnabled) {
-      portENTER_CRITICAL(&stripMux);
-      stripEnabled = false;
-      portEXIT_CRITICAL(&stripMux);
-      syncAllMirrors();
-    }
-    return; // Skip automation logic
-  }
-
-  // 3. Automation Logic
-  bool targetState = false;
-  
-  bool presenceCondition = true;
-  bool darknessCondition = true;
-  
-  if (presenceDetectionEnabled) {
-    presenceCondition = presenceDetected;
-  }
-  
-  if (autoDarknessControl) {
-    // Check if we are currently ON to use hysteresis
-    bool currentEnabled;
-    portENTER_CRITICAL(&stripMux);
-    currentEnabled = stripEnabled;
-    portEXIT_CRITICAL(&stripMux);
-    
-    if (currentEnabled) {
-      // If ON, stay ON until much brighter (hysteresis handled in logic or simple threshold + offset)
-      // Original code used `currentLux < luxThreshold` but we should probably use the helper
-      // `shouldTurnOffDueToDarkness` logic or keep it simple as it was.
-      // The old task code:
-      // if (currentEnabled) darknessCondition = (currentLux < luxThreshold);
-      // else darknessCondition = (currentLux < luxThreshold);
-      // Wait, the old code had identical branches. Let's stick to the prompt's logic which was:
-      darknessCondition = (currentLux < luxThreshold);
-    } else {
-      darknessCondition = (currentLux < luxThreshold);
-    }
-  }
-  
-  if (presenceDetectionEnabled && autoDarknessControl) {
-    targetState = presenceCondition && darknessCondition;
-  }
-  else if (presenceDetectionEnabled && !autoDarknessControl) {
-    targetState = presenceCondition;
-  }
-  else if (!presenceDetectionEnabled && autoDarknessControl) {
-    targetState = darknessCondition;
-  }
-  else {
-    targetState = true; // Always ON if both automations disabled
-  }
-
-  // 4. Apply State Change with Debounce
-  bool currentEnabled;
-  portENTER_CRITICAL(&stripMux);
-  currentEnabled = stripEnabled;
-  portEXIT_CRITICAL(&stripMux);
-
-  if (targetState != currentEnabled) {
-    if (millis() - lastStateChangeTime > CHANGE_LOCKOUT_MS) {
-      portENTER_CRITICAL(&stripMux);
-      stripEnabled = targetState;
-      portEXIT_CRITICAL(&stripMux);
-      
-      lastStateChangeTime = millis();
-      
-      Serial.printf("🤖 [Automation] State changed to %s (Lux: %.2f, Presence: %d)\n", 
-                    targetState ? "ON" : "OFF", currentLux, presenceDetected);
-      
-      syncAllMirrors();
-    }
-  }
 }
 
 // ============================================================================
@@ -234,10 +141,10 @@ void setupI2SMicrophone() {
   };
   
   const i2s_pin_config_t pin_config = {
-    .bck_io_num = I2S_SCK_PIN,    
-    .ws_io_num = I2S_WS_PIN,      
+    .bck_io_num = I2S_SCK_PIN,    // Changed from I2S_SCK to I2S_SCK_PIN
+    .ws_io_num = I2S_WS_PIN,      // Changed from I2S_WS to I2S_WS_PIN
     .data_out_num = -1,
-    .data_in_num = I2S_SD_PIN     
+    .data_in_num = I2S_SD_PIN     // Changed from I2S_SD to I2S_SD_PIN
   };
   
   esp_err_t err = i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
@@ -293,6 +200,8 @@ void setupFrequencyDetection() {
 void readI2SSamples() {
   size_t bytes_read = 0;
   if (i2sMutex != NULL && xSemaphoreTake(i2sMutex, 0) == pdTRUE) {
+    // We read into raw_samples. Since it's configured as ONLY_LEFT,
+    // raw_samples should contain 16-bit mono data.
     i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
     xSemaphoreGive(i2sMutex);
   }

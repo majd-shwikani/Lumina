@@ -5,6 +5,6 @@
 
 void setupSmartHome();
 void handleSmartHome();
-// void smartHomeTask(void *pvParameters); // Removed
+void smartHomeTask(void *pvParameters);
 
 #endif

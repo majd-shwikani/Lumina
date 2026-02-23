@@ -71,16 +71,20 @@ extern SemaphoreHandle_t i2sMutex;
 // ============================================================================
 extern unsigned long lastSystemStatsReport;
 extern const unsigned long SYSTEM_STATS_INTERVAL;
-
-// Only remaining monitored tasks
 extern UBaseType_t firebaseTaskStack;
 extern UBaseType_t ledTaskStack;
-extern UBaseType_t voiceTaskStack;
-
+extern UBaseType_t automationTaskStack;
+extern UBaseType_t sensorTaskStack;
+extern UBaseType_t timerTaskStack;
+extern UBaseType_t mqttTaskStack;
+extern UBaseType_t otaTaskStack;
 extern TaskHandle_t firebaseTaskHandle;
 extern TaskHandle_t ledTaskHandle;
-extern TaskHandle_t voiceTaskHandle;
-
+extern TaskHandle_t automationTaskHandle;
+extern TaskHandle_t sensorTaskHandle;
+extern TaskHandle_t timerTaskHandle;
+extern TaskHandle_t mqttTaskHandle;
+extern TaskHandle_t otaTaskHandle;
 extern unsigned long lastLoopTime;
 extern unsigned long loopCounter;
 extern bool systemHealthy;
@@ -192,9 +196,16 @@ void streamTimeoutCallback(bool timeout);
 void updateLEDs();
 bool checkTimeMatch(const char* scheduledTime);
 void updateTimerState(bool state);
-void handleTimers(); 
+void checkForGitHubUpdate();
+String fetchLatestVersion();
+bool startGitHubOTAUpdate(WiFiClient* client, int contentLength);
+void downloadAndApplyFirmware();
 void firebaseTask(void *parameter);
 void ledTask(void *parameter);
+void automationtask(void *parameter);
+void sensorDataTask(void *parameter);
+void timerTask(void *parameter);
+void otaUpdateTask(void *parameter);
 void statusLedTask(void *parameter);
 String formatUptime(unsigned long milliseconds);
 

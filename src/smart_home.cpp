@@ -76,3 +76,11 @@ void handleSmartHome() {
   SinricPro.handle();
   espalexa.loop();
 }
+
+void smartHomeTask(void *pvParameters) {
+  Serial.println("🏠 Smart Home Task started");
+  while (true) {
+    handleSmartHome();
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
