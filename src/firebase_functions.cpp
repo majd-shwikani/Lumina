@@ -10,9 +10,7 @@ void setupFirebase() {
   config.signer.tokens.legacy_token = FIREBASE_SECRET;
   config.timeout.serverResponse = 15 * 1000; // Increase timeout to 15s
   
-  // Large Firebase buffers in PSRAM
-  fbdoStream.setResponseSize(16384); 
-  fbdoUpload.setResponseSize(8192);
+  fbdoStream.setResponseSize(2048);
   
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
@@ -29,10 +27,8 @@ void setupFirebase() {
   
   if (!Firebase.RTDB.beginStream(&fbdoStream, streamPath.c_str())) {
     Serial.printf("   ❌ Stream begin error: %s\n", fbdoStream.errorReason().c_str());
-    logToPSRAM("Firebase Stream Error: %s", fbdoStream.errorReason().c_str());
   } else {
     Serial.println("   ✅ Stream initialized");
-    logToPSRAM("Firebase Stream Started: %s", streamPath.c_str());
   }
   
   Firebase.RTDB.setStreamCallback(&fbdoStream, streamCallback, streamTimeoutCallback);
@@ -206,8 +202,6 @@ void readInitialFirebaseData() {
 
 void streamCallback(FirebaseStream data) {
   String dataPath = data.dataPath().c_str();
-  String payload = data.payload().substring(0, 128); // Log partial for efficiency
-  logToPSRAM("RTDB Change: %s = %s", dataPath.c_str(), payload.c_str());
   
   // 1. HANDLE LOCAL SETTINGS
   if (dataPath.startsWith("/local")) {

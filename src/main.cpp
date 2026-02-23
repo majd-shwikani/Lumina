@@ -25,17 +25,6 @@ void setup() {
   Serial.println("📁 Initializing SPIFFS...");
   initSPIFFS();
   checkBootCount();
-
-  Serial.println("🧠 Initializing PSRAM Circular Log (1MB)...");
-  circularLog = (char*)ps_malloc(CIRCULAR_LOG_SIZE);
-  if (circularLog) {
-    memset(circularLog, 0, CIRCULAR_LOG_SIZE);
-    logWriteIdx = 0;
-    logToPSRAM("--- Lumina Boot: %s ---", currentFirmwareVersion);
-    Serial.println("      ✅ PSRAM Log initialized");
-  } else {
-    Serial.println("      ❌ PSRAM Log allocation failed!");
-  }
   
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   Serial.println("🔘 Button configured on pin " + String(BUTTON_PIN));
@@ -66,18 +55,7 @@ void setup() {
   
   Serial.println("💡 Initializing LED strip...");
   i2sMutex = xSemaphoreCreateMutex();
-  
-  // Allocate Framebuffer in PSRAM
-  leds = (CRGB*)ps_malloc(ledCount * sizeof(CRGB));
-  if (leds) {
-    memset(leds, 0, ledCount * sizeof(CRGB));
-    Serial.printf("      ✅ %d LEDs allocated in PSRAM\n", ledCount);
-    logToPSRAM("LED Framebuffer initialized in PSRAM: %d LEDs", ledCount);
-  } else {
-    Serial.println("      ❌ PSRAM LED allocation failed! Falling back to SRAM...");
-    leds = new CRGB[ledCount];
-  }
-
+  leds = new CRGB[ledCount];
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, ledCount);
   FastLED.addLeds<WS2812B, ONBOARD_LED_PIN, GRB>(onboardLed, 1);
   FastLED.setBrightness(255);
