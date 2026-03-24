@@ -111,7 +111,6 @@ extern volatile uint8_t globalBrightness;
 extern volatile bool updateEffect;
 extern volatile bool firebaseConnected;
 extern volatile bool stripEnabled;
-extern volatile bool isListening;
 extern volatile bool autoDarknessControl;
 extern volatile bool turnedOffByDarkness;
 extern bool defaultDataCreated;

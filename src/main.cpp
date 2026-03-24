@@ -1,6 +1,5 @@
 #include "globals.h"
 #include "smart_home.h"
-#include "voice_recognition.h"
 
 // ============================================================================
 // SETUP FUNCTION
@@ -119,9 +118,8 @@ void setup() {
   pinMode(RADAR_OUTPUT, INPUT);
   Serial.println("      ✅ LD2410 radar presence detection on GPIO " + String(RADAR_OUTPUT));
   
-  Serial.println("🎤 [8.5/9] Setting up smart home and voice detection...");
+  Serial.println("🎤 [8.5/9] Setting up smart home...");
   setupSmartHome();
-  setupVoiceRecognition();
 
   Serial.println("⚙️  [9/9] Creating FreeRTOS tasks...");
   
@@ -133,9 +131,6 @@ void setup() {
 
   xTaskCreatePinnedToCore(smartHomeTask, "SmartHomeTask", 8192, NULL, 1, NULL, 0);
   Serial.println("      ✅ Smart Home task created (Core 0, 8KB stack)");
-
-  xTaskCreatePinnedToCore(voiceRecognitionTask, "VoiceTask", 10000, NULL, 1, NULL, 0);
-  Serial.println("      ✅ Voice Detection task created (Core 0, 10KB stack)");
 
   xTaskCreatePinnedToCore(sensorDataTask, "SensorDataTask", 12000, NULL, 1, &sensorTaskHandle, 0);
   Serial.println("      ✅ Sensor task created (Core 0, 12KB stack)");

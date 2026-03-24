@@ -30,17 +30,6 @@ void updateLEDs() {
     return;
   }
   
-  if (isListening) {
-    // Pulsing blue animation for listening
-    uint8_t pulse = beatsin8(30, 50, 255);
-    for(int i = 0; i < ledCount; i++) {
-      leds[i] = CRGB::Blue;
-      leds[i].nscale8(pulse);
-    }
-    FastLED.show();
-    return;
-  }
-  
   if (currentEnabled && !lastStripEnabled) {
     lastStripEnabled = true;
   }

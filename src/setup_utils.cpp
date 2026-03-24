@@ -39,8 +39,7 @@ volatile uint8_t globalBrightness = 255;
 volatile bool updateEffect = false;
 volatile bool firebaseConnected = false;
 volatile bool stripEnabled = true;
-volatile bool isListening = false;
-volatile bool autoDarknessControl = true;
+volatile bool autoDarknessControl = false;
 volatile bool turnedOffByDarkness = false;
 bool defaultDataCreated = false;
 volatile bool manuallyTurnedOff = false;
@@ -278,7 +277,6 @@ void printSystemStats() {
     { "Firebase  ", firebaseTaskHandle,   (12000 * 4) / 1024 },
     { "LED       ", ledTaskHandle,         (4000 * 4) / 1024 },
     { "SmartHome ", NULL,                  (8192 * 4) / 1024 },
-    { "Voice     ", NULL,                 (10000 * 4) / 1024 },
     { "Sensor    ", sensorTaskHandle,     (12000 * 4) / 1024 },
     { "Automation", automationTaskHandle,  (4000 * 4) / 1024 },
     { "Timer     ", timerTaskHandle,       (4000 * 4) / 1024 },
