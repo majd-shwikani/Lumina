@@ -457,6 +457,9 @@ void sensorDataTask(void *parameter) {
       // Add sensor data
       sensors.set("lux", currentLux);
       sensors.set("presence", present);
+      sensors.set("voltage", currentVoltage);
+      sensors.set("current", currentCurrent);
+      sensors.set("power", currentPower);
       
       // Add system stats
       stats.set("uptime", formatUptime(millis() - taskStartTime));

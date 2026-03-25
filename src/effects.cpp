@@ -867,203 +867,422 @@ void effectSolidColor() {
 // Effect 22: Frequency Spectrum
 void effectFrequencySpectrum() {
   updateFrequencyDetection();
-  
-  fadeToBlackBy(leds, ledCount, 60);
-  
-  // Visualize magnitudes
-  int center = ledCount / 2;
-  for(int i = 0; i < NUM_FREQ_BANDS; i++) {
-    int height = map(bandMagnitudes[i], 0, 255, 0, center);
-    CRGB color = CHSV(i * 32, 255, 255);
-    
-    // Symmetric
-    for(int j = 0; j < height; j++) {
-       int idx1 = center + (i * (center/NUM_FREQ_BANDS)) + j;
-       int idx2 = center - (i * (center/NUM_FREQ_BANDS)) - j;
-       if(idx1 < ledCount) leds[idx1] = color;
-       if(idx2 >= 0) leds[idx2] = color;
+
+  const int TOTAL_LEDS = ledCount;
+  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+
+  // Clear strip with dark background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    leds[i] = CRGB(2, 2, 5);
+  }
+
+  // Color palette for each frequency band
+  const CRGB bandColors[NUM_FREQ_BANDS] = {
+    CRGB(255, 0, 0),      // Red - Bass
+    CRGB(255, 80, 0),     // Orange
+    CRGB(255, 255, 0),    // Yellow
+    CRGB(100, 255, 0),    // Lime
+    CRGB(0, 255, 0),      // Green
+    CRGB(0, 255, 150),    // Cyan
+    CRGB(0, 100, 255),    // Blue
+    CRGB(200, 0, 255)     // Magenta - Treble
+  };
+
+  // Draw frequency bars with gradient effect
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    double magnitude = bandMagnitudes[band];
+    int startLed = band * LEDS_PER_BAND;
+
+    // Calculate bar height based on normalized magnitude
+    int barHeight = (int)(magnitude * LEDS_PER_BAND * 1.5);
+    if (barHeight > LEDS_PER_BAND) barHeight = LEDS_PER_BAND;
+
+    // Draw bar from bottom to top with gradient
+    for (int i = 0; i < barHeight; i++) {
+      int ledPos = startLed + (LEDS_PER_BAND - 1 - i);
+      if (ledPos < TOTAL_LEDS) {
+        // Gradient brightness (brighter at top)
+        float brightness = 0.3 + (0.7 * i / (float)barHeight);
+
+        CRGB color = bandColors[band];
+        leds[ledPos] = CRGB(color.r * brightness, color.g * brightness, color.b * brightness);
+      }
     }
-  }
-}
 
-// Effect 23: Reactive Waveform
-void effectReactiveWaveform() {
-  updateFrequencyDetection();
-  fadeToBlackBy(leds, ledCount, 20);
-  
-  int val = map(globalAudioLevel, 0, 255, 0, ledCount);
-  int center = ledCount / 2;
-  
-  // Draw an expanding bar from center based on volume
-  for(int i = 0; i < val/2; i++) {
-    if(center + i < ledCount) leds[center+i] = CHSV(millis()/10, 255, 255);
-    if(center - i >= 0)       leds[center-i] = CHSV(millis()/10, 255, 255);
-  }
-}
-
-// Effect 24: Beat Pulse
-void effectBeatPulse() {
-  updateFrequencyDetection();
-  fadeToBlackBy(leds, ledCount, 10);
-  
-  if(beatDetected) {
-     fill_solid(leds, ledCount, CHSV(random8(), 255, 255));
-  }
-}
-
-// Effect 25: Frequency Bloom
-void effectFrequencyBloom() {
-  updateFrequencyDetection();
-  // Bloom out from center based on bass
-  static uint8_t size = 0;
-  
-  fadeToBlackBy(leds, ledCount, 40);
-  
-  if(beatDetected) size = ledCount / 2;
-  
-  if(size > 0) {
-    int center = ledCount / 2;
-    leds[center + (ledCount/2 - size)] = CRGB::Red;
-    leds[center - (ledCount/2 - size)] = CRGB::Red;
-    size--;
-  }
-}
-
-// Effect 26: Audio Reactive Fire
-void effectAudioReactiveFire() {
-  updateFrequencyDetection();
-  // Like fire but heat generation is tied to audio level
-  static byte heat[500];
-  
-  for( int i = 0; i < ledCount; i++) {
-    heat[i] = qsub8( heat[i],  random8(0, ((50 * 10) / ledCount) + 2));
-  }
-  
-  for( int k= ledCount - 1; k >= 2; k--) {
-    heat[k] = (heat[k - 1] + heat[k - 2] + heat[k - 2] ) / 3;
-  }
-  
-  // Ignite based on bass level
-  if( bassLevel > 100 ) {
-    int y = random8(7);
-    if(y < ledCount) heat[y] = qadd8( heat[y], bassLevel );
-  }
-  
-  for( int j = 0; j < ledCount; j++) {
-    leds[j] = HeatColor( heat[j]);
-  }
-}
-
-// Effect 27: Musical Rainbow
-void effectMusicalRainbow() {
-  updateFrequencyDetection();
-  
-  // Speed of rainbow depends on volume
-  static uint8_t hue = 0;
-  hue += map(globalAudioLevel, 0, 255, 1, 10);
-  
-  fill_rainbow(leds, ledCount, hue, 5);
-  
-  // Brightness modulates with beat
-  if(beatDetected) {
-    FastLED.setBrightness(255);
-  } else {
-    FastLED.setBrightness(100);
-  }
-}
-
-// Effect 28: Reactive Strobe
-void effectReactiveStrobe() {
-  updateFrequencyDetection();
-  FastLED.clear();
-  
-  if(beatDetected) {
-    fill_solid(leds, ledCount, CRGB::White);
-  }
-}
-
-// Effect 29: Guitar Visualizer
-void effectGuitarVisualizer() {
-  updateFrequencyDetection();
-  fadeToBlackBy(leds, ledCount, 50);
-  
-  // Map 6 strings (approx) if we had frequency detection for notes
-  // For now, map bands to sections
-  int sectionSize = ledCount / NUM_FREQ_BANDS;
-  for(int i = 0; i < NUM_FREQ_BANDS; i++) {
-    if(bandMagnitudes[i] > 100) {
-      int pos = i * sectionSize + random8(sectionSize);
-      if(pos < ledCount) leds[pos] = CHSV(i * 32, 255, 255);
-    }
-  }
-}
-
-// Effect 30: Cascading Frequency
-void effectCascadingFrequency() {
-  updateFrequencyDetection();
-  
-  // Scroll down
-  for(int i = ledCount - 1; i > 0; i--) {
-    leds[i] = leds[i-1];
-  }
-  
-  // New pixel at top based on max freq magnitude
-  uint8_t maxBand = 0;
-  uint8_t maxVal = 0;
-  for(int i = 0; i < NUM_FREQ_BANDS; i++) {
-    if(bandMagnitudes[i] > maxVal) {
-      maxVal = bandMagnitudes[i];
-      maxBand = i;
-    }
-  }
-  
-  if(maxVal > 20) {
-    leds[0] = CHSV(maxBand * 32, 255, maxVal);
-  } else {
-    leds[0] = CRGB::Black;
-  }
-}
-
-// Effect 31: Energy Orbits
-void effectEnergyOrbits() {
-  updateFrequencyDetection();
-  fadeToBlackBy(leds, ledCount, 20);
-  
-  static uint16_t pos = 0;
-  pos += map(globalAudioLevel, 0, 255, 1, 10);
-  if(pos >= ledCount * 16) pos = 0;
-  
-  int actualPos = pos / 16;
-  if(actualPos < ledCount) leds[actualPos] = CHSV(millis()/10, 255, 255);
-}
-
-// Effect 32: Audio Ripples
-void effectAudioRipples() {
-  updateFrequencyDetection();
-  
-  // Fade old ripples
-  fadeToBlackBy(leds, ledCount, 30);
-  
-  static int ripplePos[5] = {-1, -1, -1, -1, -1};
-  static int rippleColor[5];
-  
-  if(beatDetected) {
-    // Start new ripple
-    for(int i = 0; i < 5; i++) {
-      if(ripplePos[i] == -1) {
-        ripplePos[i] = random16(ledCount);
-        rippleColor[i] = random8();
-        break;
+    // Draw peak indicator (brighter accent at top of bar)
+    if (barHeight > 0) {
+      int peakLed = startLed + (LEDS_PER_BAND - 1 - (barHeight - 1));
+      if (peakLed < TOTAL_LEDS) {
+        leds[peakLed] = CRGB::White;
       }
     }
   }
-  
+}
+
+// Effect 23: Reactive Waveform - Draws audio signal as waveform patterns
+void effectReactiveWaveform() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  static float waveOffset = 0;
+
+  // Clear with very dark background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    leds[i] = CRGB(1, 1, 3);
+  }
+
+  // Draw waveform based on band magnitudes
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    // Map LED position to frequency band
+    int band = (i * NUM_FREQ_BANDS) / TOTAL_LEDS;
+    if (band >= NUM_FREQ_BANDS) band = NUM_FREQ_BANDS - 1;
+
+    // Get magnitude for this band
+    double magnitude = bandMagnitudes[band];
+
+    // Create oscillating waveform
+    float wave = sin(waveOffset + (i * 0.1)) * magnitude;
+    wave = (wave + 1.0) / 2.0; // Normalize to 0-1
+
+    // Color based on frequency band
+    uint8_t hue = (band * 255) / NUM_FREQ_BANDS;
+    leds[i] = CHSV(hue, 255, (uint8_t)(255 * wave));
+  }
+
+  waveOffset += 0.3 * globalAudioLevel;
+}
+
+// Effect 24: Beat Pulse - Reacts to bass beats with expanding pulse
+void effectBeatPulse() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  static float pulseWidth = 0;
+  static unsigned long lastBeatTime = 0;
+
+  // Background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    leds[i] = CRGB(3, 1, 8);
+  }
+
+  // Start new pulse on beat
+  if (beatDetected) {
+    pulseWidth = 1;
+    lastBeatTime = millis();
+  }
+
+  // Expand pulse
+  if (millis() - lastBeatTime < 500) {
+    pulseWidth += 2.0 + (beatEnergy * 5.0);
+    int pulseCenter = TOTAL_LEDS / 2;
+
+    for (int i = 0; i < TOTAL_LEDS; i++) {
+      float distance = abs(i - pulseCenter);
+      if (distance < pulseWidth) {
+        // Color intensity decreases with distance from center
+        float intensity = 1.0 - (distance / pulseWidth);
+        intensity = intensity * intensity; // Quadratic falloff
+
+        // Color transitions based on beat energy
+        uint8_t r = (uint8_t)(200 * intensity * beatEnergy + 100 * intensity * (1 - beatEnergy));
+        uint8_t g = (uint8_t)(50 * intensity);
+        uint8_t b = (uint8_t)(150 * intensity);
+
+        leds[i] = CRGB(r, g, b);
+      }
+    }
+  }
+}
+
+// Effect 25: Frequency Bloom - Frequencies bloom outward from center
+void effectFrequencyBloom() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  const int CENTER = TOTAL_LEDS / 2;
+  static float bloomPhase[NUM_FREQ_BANDS] = {0};
+
+  // Dark background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    leds[i] = CRGB(2, 1, 4);
+  }
+
+  // Each band blooms outward from center
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    double magnitude = bandMagnitudes[band];
+    
+    if (magnitude > 0.1) {
+      bloomPhase[band] = (bloomPhase[band] + 0.2 * magnitude);
+
+      // Distance from center that this band reaches
+      int bloomDistance = (int)((magnitude + 0.2) * (TOTAL_LEDS / 2));
+
+      // Draw bloom points left and right of center
+      for (int offset = 0; offset < bloomDistance; offset++) {
+        int leftPos = CENTER - offset;
+        int rightPos = CENTER + offset;
+
+        float falloff = 1.0 - (offset / (float)bloomDistance);
+        falloff = falloff * falloff; // Smooth falloff
+        uint8_t hue = (band * 255) / NUM_FREQ_BANDS;
+        CRGB color = CHSV(hue, 255, (uint8_t)(255 * falloff));
+
+        if (leftPos >= 0) leds[leftPos] += color;
+        if (rightPos < TOTAL_LEDS) leds[rightPos] += color;
+      }
+    }
+  }
+}
+
+// Effect 26: Audio-Reactive Fire - Fire effect that reacts to music intensity
+void effectAudioReactiveFire() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  static uint8_t fireMap[500];
+  static unsigned long lastUpdate = 0;
+
+  if (millis() - lastUpdate < 30) return;
+  lastUpdate = millis();
+
+  // Add new fire at bottom based on audio
+  fireMap[0] = 100 + (uint8_t)(bassLevel * 155);
+
+  // Propagate fire upward (using existing array)
+  for (int i = TOTAL_LEDS - 1; i > 0; i--) {
+    fireMap[i] = fireMap[i - 1];
+  }
+
+  // Draw fire with color gradient
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    uint8_t heat = fireMap[i];
+    leds[i] = HeatColor(heat);
+  }
+}
+
+// Effect 27: Musical Rainbow - Colors shift with frequency content
+void effectMusicalRainbow() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  static float hueShift = 0;
+
+  // Base hue shifts with treble frequencies
+  hueShift += 2 + (trebleLevel * 5);
+
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    float pos = (float)i / TOTAL_LEDS;
+
+    // Map position to frequency band
+    int band = (int)(pos * NUM_FREQ_BANDS);
+    if (band >= NUM_FREQ_BANDS) band = NUM_FREQ_BANDS - 1;
+
+    // Base hue from position
+    uint8_t baseHue = (uint8_t)(pos * 255 + hueShift);
+    
+    // Brightness from audio magnitude
+    double brightness = bandMagnitudes[band] + 0.2;
+    if (brightness > 1.0) brightness = 1.0;
+
+    leds[i] = CHSV(baseHue, 255, (uint8_t)(255 * brightness));
+  }
+}
+
+// Effect 28: Reactive Strobe - Strobes based on beat intensity
+void effectReactiveStrobe() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  static unsigned long lastStrobeTime = 0;
+  static bool strobeOn = false;
+
+  // Strobe frequency based on beat energy
+  int strobePeriod = (int)(100 - (beatEnergy * 80));
+  if (strobePeriod < 20) strobePeriod = 20;
+
+  // Toggle strobe state
+  if (millis() - lastStrobeTime > strobePeriod) {
+    lastStrobeTime = millis();
+    strobeOn = !strobeOn;
+  }
+
+  // Strobe color based on audio frequency content
+  CRGB strobeColor;
+
+  if (bassLevel > midLevel && bassLevel > trebleLevel) {
+    strobeColor = CRGB::Red;
+  } else if (midLevel > bassLevel && midLevel > trebleLevel) {
+    strobeColor = CRGB::Green;
+  } else {
+    strobeColor = CRGB::Blue;
+  }
+
+  if (strobeOn) {
+    fill_solid(leds, TOTAL_LEDS, strobeColor);
+  } else {
+    fill_solid(leds, TOTAL_LEDS, CRGB(strobeColor.r/10, strobeColor.g/10, strobeColor.b/10));
+  }
+}
+
+// Effect 29: Guitar Visualization - Optimized for guitar frequency ranges
+void effectGuitarVisualizer() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  const int LEDS_PER_BAND = TOTAL_LEDS / NUM_FREQ_BANDS;
+
+  // Dark background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    leds[i] = CRGB(1, 2, 2);
+  }
+
+  // Guitar color palette (warm tones)
+  const CRGB guitarColors[NUM_FREQ_BANDS] = {
+    CRGB(139, 69, 19),     // Dark brown - low E
+    CRGB(184, 115, 51),    // Brown - A
+    CRGB(210, 140, 60),    // Light brown - D
+    CRGB(218, 165, 32),    // Goldenrod - G
+    CRGB(255, 165, 0),     // Orange - B
+    CRGB(255, 200, 100),   // Light orange - high E
+    CRGB(255, 220, 130),   // Light tan - harmonics 1
+    CRGB(255, 240, 160)    // Light cream - harmonics 2
+  };
+
+  // Draw reactive bars with smooth animation
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    double magnitude = bandMagnitudes[band];
+    int startLed = band * LEDS_PER_BAND;
+
+    // Calculate bar height with compression
+    int barHeight = (int)(magnitude * LEDS_PER_BAND * 1.3);
+    if (barHeight > LEDS_PER_BAND) barHeight = LEDS_PER_BAND;
+
+    // Draw bar with smooth gradient
+    for (int i = 0; i < barHeight; i++) {
+      int ledPos = startLed + (LEDS_PER_BAND - 1 - i);
+      if (ledPos < TOTAL_LEDS) {
+        float brightness = 0.2 + (0.8 * i / (float)(barHeight + 1));
+        CRGB color = guitarColors[band];
+        leds[ledPos] = CRGB(color.r * brightness, color.g * brightness, color.b * brightness);
+      }
+    }
+  }
+}
+
+// Effect 30: Cascading Frequency - Frequencies cascade down like a waterfall
+void effectCascadingFrequency() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  const int ROWS = 16;
+  const int COLS = TOTAL_LEDS / ROWS;
+
+  static uint8_t cascade[16][32];
+
+  // Shift cascade down
+  for (int row = ROWS - 1; row > 0; row--) {
+    for (int col = 0; col < COLS; col++) {
+      cascade[row][col] = cascade[row - 1][col];
+    }
+  }
+
+  // Add new data at top based on frequency bands
+  for (int col = 0; col < COLS && col < NUM_FREQ_BANDS; col++) {
+    cascade[0][col] = (uint8_t)(bandMagnitudes[col] * 255);
+  }
+
+  // Draw cascade
+  for (int row = 0; row < ROWS; row++) {
+    for (int col = 0; col < COLS; col++) {
+      int ledPos = col + (row * COLS);
+      if (ledPos < TOTAL_LEDS) {
+        uint8_t intensity = cascade[row][col];
+        uint8_t hue = (col * 255) / COLS;
+        leds[ledPos] = CHSV(hue, 255, intensity);
+      }
+    }
+  }
+}
+
+// Effect 31: Energy Orbits - Orbiting particles driven by audio energy
+void effectEnergyOrbits() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  const int NUM_ORBITS = 3;
+  static float orbitAngles[NUM_ORBITS] = {0, 120, 240};
+
+  // Clear background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    leds[i] = CRGB(2, 2, 8);
+  }
+
+  // Update orbit speeds based on frequency
+  float speedMultiplier = 1.0 + (globalAudioLevel * 3.0);
+  orbitAngles[0] = fmod(orbitAngles[0] + 3.0 * speedMultiplier, 360);
+  orbitAngles[1] = fmod(orbitAngles[1] + 2.5 * speedMultiplier, 360);
+  orbitAngles[2] = fmod(orbitAngles[2] + 2.0 * speedMultiplier, 360);
+
+  // Draw orbiting particles
+  for (int orbit = 0; orbit < NUM_ORBITS; orbit++) {
+    // Orbit radius depends on audio levels
+    float radius = 0.3 + (0.2 * (orbit / (float)NUM_ORBITS)) + (bassLevel * 0.15);
+
+    // Calculate particle position on circle
+    float angle = orbitAngles[orbit] * 3.14159 / 180.0;
+    float posX = 0.5 + radius * cos(angle);
+
+    // Project to LED position
+    int ledPos = posX * TOTAL_LEDS;
+    if (ledPos < 0) ledPos = 0;
+    if (ledPos >= TOTAL_LEDS) ledPos = TOTAL_LEDS - 1;
+
+    // Particle color and brightness
+    uint8_t hue = (orbit * 85);
+    float brightness = 0.5 + (0.5 * globalAudioLevel);
+    leds[ledPos] = CHSV(hue, 255, (uint8_t)(255 * brightness));
+  }
+}
+
+// Effect 32: Audio Ripples - Sound creates ripples that expand outward
+void effectAudioRipples() {
+  updateFrequencyDetection();
+
+  const int TOTAL_LEDS = ledCount;
+  const int CENTER = TOTAL_LEDS / 2;
+  static float ripples[5] = {0};
+  static float rippleSpeeds[5] = {2, 2.5, 3, 3.5, 4};
+
+  // Clear background
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    leds[i] = CRGB(1, 1, 3);
+  }
+
+  // Create new ripple on beat
+  if (beatDetected) {
+    for (int i = 4; i > 0; i--) {
+      ripples[i] = ripples[i - 1];
+    }
+    ripples[0] = 0;
+  }
+
   // Expand ripples
-  for(int i = 0; i < 5; i++) {
-    if(ripplePos[i] != -1) {
-      // Draw ripple (simple dot for now)
-      leds[ripplePos[i]] += CHSV(rippleColor[i], 255, 255);
-      if(random8() < 20) ripplePos[i] = -1; 
+  for (int r = 0; r < 5; r++) {
+    ripples[r] += rippleSpeeds[r];
+    if (ripples[r] > CENTER) ripples[r] = CENTER + 100;
+
+    if (ripples[r] < CENTER) {
+      // Draw ripple circle
+      int ripplePos = (int)ripples[r];
+
+      for (int i = 0; i < TOTAL_LEDS; i++) {
+        int distance = abs(i - CENTER);
+        if (distance > ripplePos - 3 && distance < ripplePos + 3) {
+          float intensity = 1.0 - (abs(distance - ripplePos) / 3.0);
+          uint8_t hue = (r * 51) + (uint8_t)(trebleLevel * 50);
+          leds[i] = CHSV(hue, 255, (uint8_t)(255 * intensity));
+        }
+      }
     }
   }
 }

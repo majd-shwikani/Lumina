@@ -89,12 +89,19 @@ void setup() {
   setupOTA();
   Serial.println("      ✅ OTA enabled");
   
-  Serial.println("☀️  [4/9] Setting up light sensor...");
+  Serial.println("☀️  [4/9] Setting up light and power sensors...");
   setupVEML7700();
   if (sensorAvailable) {
     Serial.println("      ✅ Light sensor initialized");
   } else {
     Serial.println("      ⚠️  Light sensor not found");
+  }
+
+  setupINA219();
+  if (ina219Available) {
+    Serial.println("      ✅ INA219 power monitor initialized");
+  } else {
+    Serial.println("      ⚠️  INA219 not found");
   }
   
   Serial.println("🔥 [5/9] Connecting to Firebase...");

@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_VEML7700.h>
+#include <Adafruit_INA219.h>
 #include <driver/i2s.h>
 #include <arduinoFFT.h>
 #include <FastLED.h>
@@ -16,6 +17,15 @@ extern Adafruit_VEML7700 veml;
 extern volatile float currentLux;
 extern volatile bool sensorAvailable;
 extern volatile float luxThreshold;
+
+// ============================================================================
+// POWER MONITORING CONFIGURATION (INA219)
+// ============================================================================
+extern Adafruit_INA219 ina219;
+extern volatile float currentVoltage;
+extern volatile float currentCurrent;
+extern volatile float currentPower;
+extern volatile bool ina219Available;
 
 // ============================================================================
 // AUDIO SENSOR CONFIGURATION
@@ -90,6 +100,7 @@ extern volatile bool stripEnabled;
 
 // Light Sensor Functions
 void setupVEML7700();
+void setupINA219();
 void updateSensorData();
 bool shouldTurnOffDueToDarkness();
 

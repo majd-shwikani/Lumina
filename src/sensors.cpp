@@ -1,5 +1,4 @@
 #include "sensors.h"
-#include "globals.h"
 #include <esp_task_wdt.h>
 #include "FS.h"
 #include "SPIFFS.h"
@@ -11,6 +10,15 @@ Adafruit_VEML7700 veml = Adafruit_VEML7700();
 volatile float currentLux = 0;
 volatile bool sensorAvailable = false;
 volatile float luxThreshold = 1.0;
+
+// ============================================================================
+// POWER MONITORING OBJECTS AND VARIABLES (INA219)
+// ============================================================================
+Adafruit_INA219 ina219;
+volatile float currentVoltage = 0;
+volatile float currentCurrent = 0;
+volatile float currentPower = 0;
+volatile bool ina219Available = false;
 
 // ============================================================================
 // AUDIO SENSOR OBJECTS AND VARIABLES
@@ -83,6 +91,20 @@ void setupVEML7700() {
   Serial.println("VEML7700 light sensor initialized successfully");
 }
 
+void setupINA219() {
+  if (!ina219.begin()) {
+    Serial.println("INA219 sensor not found, continuing without power monitor");
+    ina219Available = false;
+    return;
+  }
+  
+  ina219Available = true;
+  // By default the INA219 will be calibrated with a range of 32V, 2A.
+  // However, you can change this with a different calibration code.
+  // ina219.setCalibration_32V_1A();
+  Serial.println("INA219 power monitor initialized successfully");
+}
+
 // Update this section in sensors.cpp
 
 void updateSensorData() {
@@ -101,6 +123,12 @@ void updateSensorData() {
       // If the sensor goes "crazy", we ignore the reading and keep the last good value
       // Serial.printf("⚠️ Glitch detected (%.2f lux). Ignoring.\n", newLux);
     }
+  }
+
+  if (ina219Available) {
+    currentVoltage = ina219.getBusVoltage_V();
+    currentCurrent = ina219.getCurrent_mA();
+    currentPower = ina219.getPower_mW();
   }
 }
 
@@ -130,7 +158,7 @@ void setupI2SMicrophone() {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
     .sample_rate = SAMPLE_RATE,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-    .channel_format = I2S_CHANNEL_FMT_ALL_LEFT,
+    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
     .communication_format = I2S_COMM_FORMAT_STAND_I2S,
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
     .dma_buf_count = 4,
@@ -199,21 +227,11 @@ void setupFrequencyDetection() {
 
 void readI2SSamples() {
   size_t bytes_read = 0;
-  if (i2sMutex != NULL && xSemaphoreTake(i2sMutex, 0) == pdTRUE) {
-    // We read into raw_samples. Since it's configured as ONLY_LEFT,
-    // raw_samples should contain 16-bit mono data.
-    i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
-    xSemaphoreGive(i2sMutex);
-  }
+  i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
   
-  if (bytes_read > 0) {
-    int samples_count = bytes_read / sizeof(int16_t);
+  if (bytes_read == sizeof(raw_samples)) {
     for (int i = 0; i < N_SAMPLES; i++) {
-      if (i < samples_count) {
-        vReal[i] = (double)raw_samples[i];
-      } else {
-        vReal[i] = 0.0;
-      }
+      vReal[i] = (double)raw_samples[i];
       vImag[i] = 0.0;
     }
   }

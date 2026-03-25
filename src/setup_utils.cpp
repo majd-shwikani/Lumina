@@ -325,6 +325,11 @@ void printSystemStats() {
   }
 
   Serial.println("├──────────────┴────────┴────────┴────────┴──────────┤");
+  if (ina219Available) {
+    Serial.printf("│  Power: %-6.1fmW  Current: %-6.1fmA  Volt: %-5.2fV  │\n",
+                   currentPower, currentCurrent, currentVoltage);
+    Serial.println("├─────────────────────────────────────────────────────┤");
+  }
   Serial.printf( "│  Effect: %-2d  Speed: %-4lums  Strip: %-3s  CH: %-2d      │\n",
                  currentEffect, effectSpeed, stripEnabled ? "ON" : "OFF", WiFi.channel());
   Serial.println("└─────────────────────────────────────────────────────┘\n");

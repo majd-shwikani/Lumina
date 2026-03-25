@@ -525,21 +525,21 @@
             </div>
         </div>
 
-        <!-- 4. DEVICE MANAGEMENT -->
+        <!-- 5. FIRMWARE & MAINTENANCE -->
         <div class="card">
             <div class="card-header">
-                <i class="fas fa-shield-alt"></i>
-                <h2>Zone Management</h2>
+                <i class="fas fa-tools"></i>
+                <h2>Maintenance</h2>
             </div>
             
             <div class="form-group">
-                <p class="form-text">Perform a factory reset to restore default configurations. This will clear all automation settings.</p>
+                <p class="form-text">Update device firmware directly from your browser using USB.</p>
             </div>
             
             <div class="action-buttons">
-                <button class="btn btn-danger" id="resetDeviceBtn">
-                    <i class="fas fa-trash-alt"></i> Factory Reset
-                </button>
+                <a href="flasher.html" class="btn btn-secondary" style="text-decoration: none;">
+                    <i class="fas fa-bolt"></i> Firmware Flasher
+                </a>
             </div>
         </div>
 
@@ -692,7 +692,7 @@
         }
 
         // Update stats display
-        function updateStatsDisplay(statsData) {
+        function updateStatsDisplay(statsData, sensorsData) {
             if (!statsData) {
                 statsError.style.display = 'block';
                 statsErrorMessage.textContent = 'No stats data available';
@@ -744,7 +744,42 @@
                     value: statsData.uptime || '0s',
                     icon: 'fas fa-clock',
                     className: 'stat-item'
-                },
+                }
+            ];
+
+            // Add Power, Current, Voltage if available
+            if (sensorsData) {
+                if (sensorsData.power !== undefined) {
+                    statsItems.push({
+                        label: 'Power Draw',
+                        value: `${sensorsData.power.toFixed(0)} mW`,
+                        icon: 'fas fa-bolt',
+                        color: 'var(--accent)',
+                        className: 'stat-item'
+                    });
+                }
+                if (sensorsData.current !== undefined) {
+                    statsItems.push({
+                        label: 'Current',
+                        value: `${sensorsData.current.toFixed(0)} mA`,
+                        icon: 'fas fa-plug',
+                        color: 'var(--secondary)',
+                        className: 'stat-item'
+                    });
+                }
+                if (sensorsData.voltage !== undefined) {
+                    statsItems.push({
+                        label: 'Voltage',
+                        value: `${sensorsData.voltage.toFixed(2)} V`,
+                        icon: 'fas fa-car-battery',
+                        color: 'var(--primary)',
+                        className: 'stat-item'
+                    });
+                }
+            }
+
+            // Continue with other stats
+            statsItems.push(
                 {
                     label: 'RAM Usage',
                     value: `${ramUsagePercent.toFixed(1)}%`,
@@ -776,7 +811,7 @@
                     icon: 'fas fa-code',
                     className: 'stat-item'
                 }
-            ];
+            );
             
             // Add PSRAM stats if available
             if (statsData.psram_size_kb && statsData.psram_size_kb > 0) {
@@ -858,7 +893,8 @@
                     
                     // Extract and display stats data
                     const statsData = combinedData.stats || null;
-                    updateStatsDisplay(statsData);
+                    const sensorsData = combinedData.sensors || null;
+                    updateStatsDisplay(statsData, sensorsData);
                 } else {
                     statsLoading.style.display = 'none';
                     statsError.style.display = 'block';
