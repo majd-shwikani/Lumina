@@ -15,6 +15,7 @@
 // ============================================================================
 extern Adafruit_VEML7700 veml;
 extern volatile float currentLux;
+extern volatile float currentCpuTemp;
 extern volatile bool sensorAvailable;
 extern volatile float luxThreshold;
 

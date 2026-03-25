@@ -525,21 +525,21 @@
             </div>
         </div>
 
-        <!-- 5. FIRMWARE & MAINTENANCE -->
+        <!-- 4. DEVICE MANAGEMENT -->
         <div class="card">
             <div class="card-header">
-                <i class="fas fa-tools"></i>
-                <h2>Maintenance</h2>
+                <i class="fas fa-shield-alt"></i>
+                <h2>Zone Management</h2>
             </div>
             
             <div class="form-group">
-                <p class="form-text">Update device firmware directly from your browser using USB.</p>
+                <p class="form-text">Perform a factory reset to restore default configurations. This will clear all automation settings.</p>
             </div>
             
             <div class="action-buttons">
-                <a href="flasher.html" class="btn btn-secondary" style="text-decoration: none;">
-                    <i class="fas fa-bolt"></i> Firmware Flasher
-                </a>
+                <button class="btn btn-danger" id="resetDeviceBtn">
+                    <i class="fas fa-trash-alt"></i> Factory Reset
+                </button>
             </div>
         </div>
 
@@ -749,6 +749,15 @@
 
             // Add Power, Current, Voltage if available
             if (sensorsData) {
+                if (sensorsData.cpu_temp !== undefined) {
+                    statsItems.push({
+                        label: 'CPU Temp',
+                        value: `${sensorsData.cpu_temp.toFixed(1)} °C`,
+                        icon: 'fas fa-thermometer-half',
+                        color: sensorsData.cpu_temp > 70 ? 'var(--danger)' : 'var(--success)',
+                        className: 'stat-item'
+                    });
+                }
                 if (sensorsData.power !== undefined) {
                     statsItems.push({
                         label: 'Power Draw',

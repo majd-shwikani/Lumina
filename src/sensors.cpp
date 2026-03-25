@@ -8,6 +8,7 @@
 // ============================================================================
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
 volatile float currentLux = 0;
+volatile float currentCpuTemp = 0;
 volatile bool sensorAvailable = false;
 volatile float luxThreshold = 1.0;
 
@@ -130,6 +131,9 @@ void updateSensorData() {
     currentCurrent = ina219.getCurrent_mA();
     currentPower = ina219.getPower_mW();
   }
+
+  // Read internal CPU temperature
+  currentCpuTemp = temperatureRead();
 }
 
 // Improved logic to prevent "Optical Feedback" (LEDs turning themselves off)

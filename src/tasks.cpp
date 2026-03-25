@@ -460,6 +460,7 @@ void sensorDataTask(void *parameter) {
       sensors.set("voltage", currentVoltage);
       sensors.set("current", currentCurrent);
       sensors.set("power", currentPower);
+      sensors.set("cpu_temp", currentCpuTemp);
       
       // Add system stats
       stats.set("uptime", formatUptime(millis() - taskStartTime));
