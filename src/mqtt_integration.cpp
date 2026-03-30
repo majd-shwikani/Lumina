@@ -7,6 +7,7 @@
 #include <Firebase_ESP_Client.h>
 #include <FastLED.h>
 #include "mqtt_integration.h"
+#include "smart_home.h"
 #include "config.h"
 #include "globals.h"
 #include <SPIFFS.h>
@@ -829,16 +830,25 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 }
 
 // ============================================================================
-// MQTT TASK FOR FREERTOS
+// IO TASK FOR FREERTOS (Merges MQTT + SmartHome)
 // ============================================================================
 
-void mqttTask(void *parameter) {
+void ioTask(void *parameter) {
+  Serial.println("🌐 IO Task (MQTT+SmartHome) started on Core " + String(xPortGetCoreID()));
+  
   for (;;) {
-    if (firebaseConnected && WiFi.status() == WL_CONNECTED) {
-      mqttConnectAndSubscribe();
+    esp_task_wdt_reset();
+    
+    if (WiFi.status() == WL_CONNECTED && firebaseConnected) {
+      // 1. Handle MQTT
+      mqttConnectAndSubscribe(); // Includes mqttClient.loop()
       mqttPublishState();
       mqttPublishSensorData();
+
+      // 2. Handle Smart Home (SinricPro + Espalexa)
+      handleSmartHome();
     }
+    
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }

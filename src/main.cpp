@@ -61,9 +61,6 @@ void setup() {
   FastLED.show();
   Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
   
-  // Start Status LED Task early to indicate boot
-  xTaskCreatePinnedToCore(statusLedTask, "StatusLEDTask", 2048, NULL, 1, NULL, 0);
-  
   Serial.println("⏱️  Initializing watchdog timer (30s)...");
   esp_task_wdt_init(30, true);
   Serial.println("   ✅ Watchdog configured");
@@ -128,31 +125,23 @@ void setup() {
   Serial.println("🎤 [8.5/9] Setting up smart home...");
   setupSmartHome();
 
-  Serial.println("⚙️  [9/9] Creating FreeRTOS tasks...");
+  Serial.println("⚙️  [9/9] Creating Consolidated FreeRTOS tasks...");
   
-  xTaskCreatePinnedToCore(firebaseTask, "FirebaseTask", 12000, NULL, 1, &firebaseTaskHandle, 0);
-  Serial.println("      ✅ Firebase task created (Core 0, 12KB stack)");
+  // Cloud Sync Task: Firebase + Sensors (16KB stack)
+  xTaskCreatePinnedToCore(cloudTask, "CloudTask", 8000, NULL, 1, &cloudTaskHandle, 0);
+  Serial.println("      ✅ Cloud Task created (Core 0, 12KB stack)");
 
+  // LED Animation Task: Keep separate for smoothness (4KB stack)
   xTaskCreatePinnedToCore(ledTask, "LEDTask", 4000, NULL, 1, &ledTaskHandle, 1);
-  Serial.println("      ✅ LED task created (Core 1, 4KB stack)");
+  Serial.println("      ✅ LED Task created (Core 1, 4KB stack)");
 
-  xTaskCreatePinnedToCore(smartHomeTask, "SmartHomeTask", 8192, NULL, 1, NULL, 0);
-  Serial.println("      ✅ Smart Home task created (Core 0, 8KB stack)");
+  // IO Task: MQTT + SmartHome (Alexa/Sinric) (12KB stack)
+  xTaskCreatePinnedToCore(ioTask, "IOTask", 8000, NULL, 1, &ioTaskHandle, 0);
+  Serial.println("      ✅ IO Task created (Core 0, 12KB stack)");
+  // Start System Task early to provide visual feedback (Status LED) during boot
+  xTaskCreatePinnedToCore(systemTask, "SystemTask", 4000, NULL, 0, &systemTaskHandle, 0);
+  Serial.println("⚙️  System Task started early for boot monitoring");
 
-  xTaskCreatePinnedToCore(sensorDataTask, "SensorDataTask", 12000, NULL, 1, &sensorTaskHandle, 0);
-  Serial.println("      ✅ Sensor task created (Core 0, 12KB stack)");
-
-  xTaskCreatePinnedToCore(automationtask, "AutomationTask", 4000, NULL, 0, &automationTaskHandle, 0);
-  Serial.println("      ✅ Automation task created (Core 0, 4KB stack)");
-
-  xTaskCreatePinnedToCore(timerTask, "TimerTask", 4000, NULL, 1, &timerTaskHandle, 0);
-  Serial.println("      ✅ Timer task created (Core 0, 4KB stack)");
-
-  xTaskCreatePinnedToCore(mqttTask, "MQTTTask", 8000, NULL, 1, &mqttTaskHandle, 0);
-  Serial.println("      ✅ MQTT task created (Core 0, 4KB stack)");
-
-  xTaskCreatePinnedToCore(otaUpdateTask, "OTAUpdateTask", 7000, NULL, 0, &otaTaskHandle, 0);
-  Serial.println("      ✅ OTA Update task created (Core 0, 7KB stack)");
   
   systemInitialized = true;
   
@@ -189,26 +178,17 @@ void loop() {
   if (millis() - lastSystemStatsReport > SYSTEM_STATS_INTERVAL) {
     lastSystemStatsReport = millis();
     
-    if (firebaseTaskHandle != NULL) {
-      firebaseTaskStack = uxTaskGetStackHighWaterMark(firebaseTaskHandle);
+    if (cloudTaskHandle != NULL) {
+      cloudTaskStack = uxTaskGetStackHighWaterMark(cloudTaskHandle);
     }
     if (ledTaskHandle != NULL) {
       ledTaskStack = uxTaskGetStackHighWaterMark(ledTaskHandle);
     }
-    if (automationTaskHandle != NULL) {
-      automationTaskStack = uxTaskGetStackHighWaterMark(automationTaskHandle);
+    if (ioTaskHandle != NULL) {
+      ioTaskStack = uxTaskGetStackHighWaterMark(ioTaskHandle);
     }
-    if (sensorTaskHandle != NULL) {
-      sensorTaskStack = uxTaskGetStackHighWaterMark(sensorTaskHandle);
-    }
-    if (timerTaskHandle != NULL) {
-      timerTaskStack = uxTaskGetStackHighWaterMark(timerTaskHandle);
-    }
-    if (mqttTaskHandle != NULL) {
-      mqttTaskStack = uxTaskGetStackHighWaterMark(mqttTaskHandle);
-    }
-    if (otaTaskHandle != NULL) {
-      otaTaskStack = uxTaskGetStackHighWaterMark(otaTaskHandle);
+    if (systemTaskHandle != NULL) {
+      systemTaskStack = uxTaskGetStackHighWaterMark(systemTaskHandle);
     }
     
     printSystemStats();

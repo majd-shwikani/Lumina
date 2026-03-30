@@ -71,20 +71,19 @@ extern SemaphoreHandle_t i2sMutex;
 // ============================================================================
 extern unsigned long lastSystemStatsReport;
 extern const unsigned long SYSTEM_STATS_INTERVAL;
-extern UBaseType_t firebaseTaskStack;
+
+// Task Stacks (Now tracking high water marks for consolidated tasks)
+extern UBaseType_t cloudTaskStack;
 extern UBaseType_t ledTaskStack;
-extern UBaseType_t automationTaskStack;
-extern UBaseType_t sensorTaskStack;
-extern UBaseType_t timerTaskStack;
-extern UBaseType_t mqttTaskStack;
-extern UBaseType_t otaTaskStack;
-extern TaskHandle_t firebaseTaskHandle;
+extern UBaseType_t ioTaskStack;
+extern UBaseType_t systemTaskStack;
+
+// Task Handles
+extern TaskHandle_t cloudTaskHandle;
 extern TaskHandle_t ledTaskHandle;
-extern TaskHandle_t automationTaskHandle;
-extern TaskHandle_t sensorTaskHandle;
-extern TaskHandle_t timerTaskHandle;
-extern TaskHandle_t mqttTaskHandle;
-extern TaskHandle_t otaTaskHandle;
+extern TaskHandle_t ioTaskHandle;
+extern TaskHandle_t systemTaskHandle;
+
 extern unsigned long lastLoopTime;
 extern unsigned long loopCounter;
 extern bool systemHealthy;
@@ -191,13 +190,11 @@ void checkForGitHubUpdate();
 String fetchLatestVersion();
 bool startGitHubOTAUpdate(WiFiClient* client, int contentLength);
 void downloadAndApplyFirmware();
-void firebaseTask(void *parameter);
+void cloudTask(void *parameter);
 void ledTask(void *parameter);
-void automationtask(void *parameter);
-void sensorDataTask(void *parameter);
-void timerTask(void *parameter);
-void otaUpdateTask(void *parameter);
-void statusLedTask(void *parameter);
+void systemTask(void *parameter);
+void ioTask(void *parameter);
+void smartHomeTask(void *parameter); // Still needed if logic not fully inlined
 String formatUptime(unsigned long milliseconds);
 
 // ESP-NOW Gateway Functions

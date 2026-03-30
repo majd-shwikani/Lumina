@@ -7,20 +7,14 @@ portMUX_TYPE stripMux = portMUX_INITIALIZER_UNLOCKED;
 SemaphoreHandle_t i2sMutex = NULL;
 unsigned long lastSystemStatsReport = 0;
 const unsigned long SYSTEM_STATS_INTERVAL = 30000;
-UBaseType_t firebaseTaskStack = 0;
+UBaseType_t cloudTaskStack = 0;
 UBaseType_t ledTaskStack = 0;
-UBaseType_t automationTaskStack = 0;
-UBaseType_t sensorTaskStack = 0;
-UBaseType_t timerTaskStack = 0;
-UBaseType_t mqttTaskStack = 0;
-UBaseType_t otaTaskStack = 0;
-TaskHandle_t firebaseTaskHandle = NULL;
+UBaseType_t ioTaskStack = 0;
+UBaseType_t systemTaskStack = 0;
+TaskHandle_t cloudTaskHandle = NULL;
 TaskHandle_t ledTaskHandle = NULL;
-TaskHandle_t automationTaskHandle = NULL;
-TaskHandle_t sensorTaskHandle = NULL;
-TaskHandle_t timerTaskHandle = NULL;
-TaskHandle_t mqttTaskHandle = NULL;
-TaskHandle_t otaTaskHandle = NULL;
+TaskHandle_t ioTaskHandle = NULL;
+TaskHandle_t systemTaskHandle = NULL;
 unsigned long lastLoopTime = 0;
 unsigned long loopCounter = 0;
 bool systemHealthy = true;
@@ -266,74 +260,81 @@ void printSystemStats() {
   uint32_t totalPsram = ESP.getPsramSize();
   uint32_t usedPsram  = totalPsram - freePsram;
 
+  // Stack sizes match the byte values passed to xTaskCreatePinnedToCore.
+  // uxTaskGetStackHighWaterMark returns remaining words; multiply by
+  // sizeof(StackType_t) (4 on Xtensa/RISC-V) to get bytes, then /1024 for KB.
   struct TaskInfo {
     const char*  name;
     TaskHandle_t handle;
-    uint32_t     allocKB; // allocated stack in KB (words * 4 / 1024)
+    uint32_t     allocBytes; // byte value passed to xTaskCreatePinnedToCore
   };
 
-  // Stack sizes: words from xTaskCreatePinnedToCore * 4 bytes / 1024 = KB
   TaskInfo tasks[] = {
-    { "Firebase  ", firebaseTaskHandle,   (12000 * 4) / 1024 },
-    { "LED       ", ledTaskHandle,         (4000 * 4) / 1024 },
-    { "SmartHome ", NULL,                  (8192 * 4) / 1024 },
-    { "Sensor    ", sensorTaskHandle,     (12000 * 4) / 1024 },
-    { "Automation", automationTaskHandle,  (4000 * 4) / 1024 },
-    { "Timer     ", timerTaskHandle,       (4000 * 4) / 1024 },
-    { "MQTT      ", mqttTaskHandle,        (8000 * 4) / 1024 },
-    { "OTA       ", otaTaskHandle,         (7000 * 4) / 1024 },
-    { "StatusLED ", NULL,                  (2048 * 4) / 1024 },
+    { "CloudSync",  cloudTaskHandle,  12000 },
+    { "LEDAnim",    ledTaskHandle,     4000 },
+    { "IOTask",     ioTaskHandle,     12000 },
+    { "SystemTask", systemTaskHandle,  8000 },
   };
   const int taskCount = sizeof(tasks) / sizeof(tasks[0]);
 
-  Serial.println("\n┌─────────────────────────────────────────────────────┐");
-  Serial.println("│              SYSTEM HEALTH REPORT                   │");
-  Serial.println("├─────────────────────────────────────────────────────┤");
-  Serial.printf( "│  RAM    %4u / %4u KB  (%2u%%)  │  Uptime: %lus\n",
-                 usedHeap / 1024, totalHeap / 1024,
-                 (usedHeap * 100) / totalHeap,
-                 millis() / 1000);
-  if (totalPsram > 0) {
-    Serial.printf("│  PSRAM  %4u / %4u KB  (%2u%%)\n",
-                  usedPsram / 1024, totalPsram / 1024,
-                  (usedPsram * 100) / totalPsram);
-  }
-  Serial.println("├──────────────┬────────┬────────┬────────┬──────────┤");
-  Serial.println("│ Task         │ Total  │  Used  │  Free  │  Usage   │");
-  Serial.println("├──────────────┼────────┼────────┼────────┼──────────┤");
+  unsigned long uptimeSec = millis() / 1000;
+  unsigned int  days      = uptimeSec / 86400;
+  unsigned int  hrs       = (uptimeSec % 86400) / 3600;
+  unsigned int  mins      = (uptimeSec % 3600)  / 60;
+  unsigned int  secs      = uptimeSec % 60;
 
+  char uptimeBuf[20];
+  if (days > 0) snprintf(uptimeBuf, sizeof(uptimeBuf), "%ud %02u:%02u:%02u", days, hrs, mins, secs);
+  else          snprintf(uptimeBuf, sizeof(uptimeBuf), "%02u:%02u:%02u", hrs, mins, secs);
+
+  // Each content row: "  ║  " + 49 chars + "  ║"
+  // Total line width: 57 chars
+  #define P(fmt, ...) Serial.printf("  ║  " fmt "\n", ##__VA_ARGS__)
+  #define DIV          Serial.println("  ╠═══════════════════════════════════════════════════════╣")
+
+  Serial.println();
+  Serial.println(   "  ╔═══════════════════════════════════════════════════════╗");
+  Serial.println(   "  ║             LUMINA  —  SYSTEM STATUS                  ║");
+  DIV;
+  P("Uptime    %-16s   Firmware  v%s", uptimeBuf, currentFirmwareVersion);
+  P("WiFi      ch%-2d  %d dBm   IP  %s", WiFi.channel(), WiFi.RSSI(), WiFi.localIP().toString().c_str());
+  DIV;
+  P("RAM       %u / %u KB         CPU  %.1f C", usedHeap/1024, totalHeap/1024, currentCpuTemp);
+  if (totalPsram > 0)
+    P("PSRAM     %u / %u KB", usedPsram/1024, totalPsram/1024);
+  if (ina219Available)
+    P("Power     %.0f mW   %.0f mA   %.2f V", currentPower, currentCurrent, currentVoltage);
+  DIV;
+  P("Effect    %-4d   Speed  %-4lu ms   Strip  %-3s   Bright  %u",
+    currentEffect, effectSpeed, stripEnabled ? "ON" : "OFF", (unsigned)globalBrightness);
+  DIV;
+  P("%-12s   %6s   %6s   %6s   %s", "Task", "Alloc", "Used", "Free", "Use%");
+  DIV;
+
+  bool anyWarning = false;
   for (int i = 0; i < taskCount; i++) {
     TaskInfo& t = tasks[i];
-
     if (t.handle == NULL) {
-      Serial.printf("│ %-12s │ %4u KB │  n/a   │  n/a   │  no hdl  │\n",
-                    t.name, t.allocKB);
+      P("%-12s   %5uB   n/a      n/a       --", t.name, t.allocBytes);
       continue;
     }
-
-    UBaseType_t freeWords = uxTaskGetStackHighWaterMark(t.handle);
-    uint32_t freeKB  = ((uint32_t)freeWords * sizeof(StackType_t)) / 1024;
-    uint32_t usedKB  = t.allocKB - freeKB;
-    uint32_t usedPct = (usedKB * 100) / t.allocKB;
-
-    const char* flag = (usedPct >= 90) ? " !!CRIT" :
-                       (usedPct >= 75) ? " !HIGH " :
-                                         "       ";
-
-    Serial.printf("│ %-12s │ %4u KB │ %4u KB │ %4u KB │  %3u%%%s│\n",
-                  t.name, t.allocKB, usedKB, freeKB, usedPct, flag);
+    uint32_t freeBytes = (uint32_t)uxTaskGetStackHighWaterMark(t.handle) * sizeof(StackType_t);
+    uint32_t usedBytes = t.allocBytes - freeBytes;
+    uint32_t usedPct   = (usedBytes * 100) / t.allocBytes;
+    const char* flag   = "";
+    if      (usedPct >= 90) { flag = "  !! CRIT"; anyWarning = true; }
+    else if (usedPct >= 75) { flag = "  ! HIGH";  anyWarning = true; }
+    P("%-12s   %5uB   %5uB   %5uB   %2u%%%s", t.name, t.allocBytes, usedBytes, freeBytes, usedPct, flag);
   }
 
-  Serial.println("├──────────────┴────────┴────────┴────────┴──────────┤");
-  Serial.printf( "│  CPU Temp: %-4.1f °C                                │\n", currentCpuTemp);
-  if (ina219Available) {
-    Serial.println("├─────────────────────────────────────────────────────┤");
-    Serial.printf("│  Power: %-6.1fmW  Current: %-6.1fmA  Volt: %-5.2fV  │\n",
-                   currentPower, currentCurrent, currentVoltage);
-  }
-  Serial.printf( "│  Effect: %-2d  Speed: %-4lums  Strip: %-3s  CH: %-2d      │\n",
-                 currentEffect, effectSpeed, stripEnabled ? "ON" : "OFF", WiFi.channel());
-  Serial.println("└─────────────────────────────────────────────────────┘\n");
+  systemHealthy = !anyWarning;
+  DIV;
+  P("%s", systemHealthy ? "Health    ALL SYSTEMS NOMINAL" : "Health    WARNINGS PRESENT");
+  Serial.println("  ╚═══════════════════════════════════════════════════════╝");
+  Serial.println();
+
+  #undef P
+  #undef DIV
 }
 
 // ============================================================================
