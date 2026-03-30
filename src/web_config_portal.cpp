@@ -6,6 +6,8 @@
 #include <WebServer.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
+#include <FastLED.h>
+#include "globals.h"   // for onboardLed[]
 
 WebServer server(80);
 
@@ -448,23 +450,13 @@ void startConfigPortal() {
   server.begin();
   Serial.println("HTTP server started");
 
-  // Blink built-in LED to indicate config mode (GPIO2 for most ESP32 boards)
-  pinMode(2, OUTPUT);
+  // Drive the onboard LED solid blue to signal "waiting for config"
+  onboardLed[0] = CRGB::Blue;
+  FastLED.show();
 
   // Main loop for config portal
-  unsigned long lastBlink = 0;
-  bool ledState = false;
-
   while (true) {
     server.handleClient();
-    
-    // Blink LED every 500ms in config mode
-    if (millis() - lastBlink > 500) {
-      ledState = !ledState;
-      digitalWrite(2, ledState);
-      lastBlink = millis();
-    }
-    
     delay(10);
   }
 }

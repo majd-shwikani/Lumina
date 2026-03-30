@@ -60,7 +60,12 @@ void setup() {
   FastLED.setBrightness(255);
   FastLED.show();
   Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
-  
+
+  // Start SystemTask NOW so the rainbow boot animation runs
+  // while all the slow init below (WiFi, Firebase, MQTT…) is executing.
+  xTaskCreatePinnedToCore(systemTask, "SystemTask", 4000, NULL, 0, &systemTaskHandle, 0);
+  Serial.println("   ✅ System Task started early (rainbow boot LED active)");
+
   Serial.println("⏱️  Initializing watchdog timer (30s)...");
   esp_task_wdt_init(30, true);
   Serial.println("   ✅ Watchdog configured");
@@ -128,7 +133,7 @@ void setup() {
   Serial.println("⚙️  [9/9] Creating Consolidated FreeRTOS tasks...");
   
   // Cloud Sync Task: Firebase + Sensors (16KB stack)
-  xTaskCreatePinnedToCore(cloudTask, "CloudTask", 8000, NULL, 1, &cloudTaskHandle, 0);
+  xTaskCreatePinnedToCore(cloudTask, "CloudTask", 6000, NULL, 1, &cloudTaskHandle, 0);
   Serial.println("      ✅ Cloud Task created (Core 0, 12KB stack)");
 
   // LED Animation Task: Keep separate for smoothness (4KB stack)
@@ -136,11 +141,8 @@ void setup() {
   Serial.println("      ✅ LED Task created (Core 1, 4KB stack)");
 
   // IO Task: MQTT + SmartHome (Alexa/Sinric) (12KB stack)
-  xTaskCreatePinnedToCore(ioTask, "IOTask", 8000, NULL, 1, &ioTaskHandle, 0);
+  xTaskCreatePinnedToCore(ioTask, "IOTask", 6000, NULL, 1, &ioTaskHandle, 0);
   Serial.println("      ✅ IO Task created (Core 0, 12KB stack)");
-  // Start System Task early to provide visual feedback (Status LED) during boot
-  xTaskCreatePinnedToCore(systemTask, "SystemTask", 4000, NULL, 0, &systemTaskHandle, 0);
-  Serial.println("⚙️  System Task started early for boot monitoring");
 
   
   systemInitialized = true;

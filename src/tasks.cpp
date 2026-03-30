@@ -344,24 +344,43 @@ void systemTask(void *parameter) {
       }
     }
 
-    // 3. STATUS LED (Every 500ms)
-    if (now - lastStatusUpdate >= 500) {
-      lastStatusUpdate = now;
+    // 3. STATUS LED (Every 30ms for smooth rainbow, 500ms for other states)
+    {
+      static uint8_t rainbowHue = 0;
+      bool doUpdate = false;
+
       if (!configPortalActive) {
         bool wifiOk = (WiFi.status() == WL_CONNECTED);
-        if (!wifiOk || !firebaseConnected) onboardLed[0] = CRGB::Red;
-        else if (!systemInitialized) {
-          static bool toggle = false;
-          onboardLed[0] = toggle ? CRGB::Green : CRGB::Black;
-          toggle = !toggle;
+
+        if (!systemInitialized) {
+          // ── BOOTING: smooth fast rainbow — runs every 10ms task tick ─────
+          onboardLed[0] = CHSV(rainbowHue, 255, 200);
+          rainbowHue += 3;   // 3 per 10ms = ~1.2 full cycles/sec, buttery smooth
+          doUpdate = true;
+          lastStatusUpdate = now;
+        } else if (!wifiOk || !firebaseConnected) {
+          // ── NO WIFI / FIREBASE: solid red ─────────────────────────────────
+          if (now - lastStatusUpdate >= 500) {
+            lastStatusUpdate = now;
+            onboardLed[0] = CRGB::Red;
+            doUpdate = true;
+          }
         } else {
-          if (!readySignalDone) {
-            if (readyStartTime == 0) readyStartTime = now;
-            if (now - readyStartTime < 10000) onboardLed[0] = CRGB::Green;
-            else { onboardLed[0] = CRGB::Black; readySignalDone = true; }
-          } else onboardLed[0] = CRGB::Black;
+          // ── FULLY BOOTED: green for 10 s, then off ────────────────────────
+          if (now - lastStatusUpdate >= 500) {
+            lastStatusUpdate = now;
+            if (!readySignalDone) {
+              if (readyStartTime == 0) readyStartTime = now;
+              if (now - readyStartTime < 10000) onboardLed[0] = CRGB::Green;
+              else { onboardLed[0] = CRGB::Black; readySignalDone = true; }
+            } else {
+              onboardLed[0] = CRGB::Black;
+            }
+            doUpdate = true;
+          }
         }
-        FastLED.show();
+
+        if (doUpdate) FastLED.show();
       }
     }
 
@@ -374,7 +393,7 @@ void systemTask(void *parameter) {
       }
     }
 
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(10 / portTICK_PERIOD_MS);  // 10ms tick: enables smooth LED updates
   }
 }
 
