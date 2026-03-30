@@ -270,10 +270,10 @@ void printSystemStats() {
   };
 
   TaskInfo tasks[] = {
-    { "CloudSync",  cloudTaskHandle,  12000 },
+    { "CloudSync",  cloudTaskHandle,   6000 },
     { "LEDAnim",    ledTaskHandle,     4000 },
-    { "IOTask",     ioTaskHandle,     12000 },
-    { "SystemTask", systemTaskHandle,  8000 },
+    { "IOTask",     ioTaskHandle,      6000 },
+    { "SystemTask", systemTaskHandle,  4000 },
   };
   const int taskCount = sizeof(tasks) / sizeof(tasks[0]);
 
@@ -318,7 +318,7 @@ void printSystemStats() {
       P("%-12s   %5uB   n/a      n/a       --", t.name, t.allocBytes);
       continue;
     }
-    uint32_t freeBytes = (uint32_t)uxTaskGetStackHighWaterMark(t.handle) * sizeof(StackType_t);
+    uint32_t freeBytes = (uint32_t)uxTaskGetStackHighWaterMark(t.handle);
     uint32_t usedBytes = t.allocBytes - freeBytes;
     uint32_t usedPct   = (usedBytes * 100) / t.allocBytes;
     const char* flag   = "";

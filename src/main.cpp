@@ -143,7 +143,7 @@ memset(leds, 0, ledCount * sizeof(CRGB));
   Serial.println("⚙️  [9/9] Creating Consolidated FreeRTOS tasks...");
   
   // Cloud Sync Task: Firebase + Sensors (16KB stack)
-  xTaskCreatePinnedToCore(cloudTask, "CloudTask", 6000, NULL, 1, &cloudTaskHandle, 0);
+  xTaskCreatePinnedToCore(cloudTask, "CloudTask", 10000, NULL, 1, &cloudTaskHandle, 0);
   Serial.println("      ✅ Cloud Task created (Core 0, 12KB stack)");
 
   // LED Animation Task: Keep separate for smoothness (4KB stack)
