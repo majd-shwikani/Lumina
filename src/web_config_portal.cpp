@@ -214,7 +214,7 @@ const char* htmlContent = R"rawliteral(
             
             <div class="form-group">
                 <label for="num_leds" class="required">Number of LEDs</label>
-                <input type="number" id="num_leds" name="num_leds" required min="1" max="500" value="60" placeholder="Enter number of LEDs">
+                <input type="number" id="num_leds" name="num_leds" required min="1" value="60" placeholder="Enter number of LEDs">
             </div>
             
             <button type="submit" class="btn">💾 Save Configuration</button>
@@ -370,10 +370,10 @@ void handleSave() {
   }
 
   int num_leds = num_leds_str.toInt();
-  if (num_leds <= 0 || num_leds > 500) {
+  if (num_leds <= 0) {
     DynamicJsonDocument doc(256);
     doc["success"] = false;
-    doc["message"] = "LED count must be between 1 and 500";
+    doc["message"] = "LED count must be greater than 0";
     String response;
     serializeJson(doc, response);
     server.send(400, "application/json", response);

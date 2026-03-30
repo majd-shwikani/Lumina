@@ -28,6 +28,12 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   Serial.println("🔘 Button configured on pin " + String(BUTTON_PIN));
 
+  // Initialize onboard LED early for status indications
+  FastLED.addLeds<WS2812B, ONBOARD_LED_PIN, GRB>(onboardLed, 1);
+  FastLED.setBrightness(255);
+  onboardLed[0] = CRGB::Black;
+  FastLED.show();
+
   if (shouldStartConfigPortal()) {
     configPortalActive = true;
     Serial.println("⚙️  No configuration found. Starting config portal...");
@@ -61,7 +67,6 @@ if (!leds) {
 }
 memset(leds, 0, ledCount * sizeof(CRGB));
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, ledCount);
-  FastLED.addLeds<WS2812B, ONBOARD_LED_PIN, GRB>(onboardLed, 1);
   FastLED.setBrightness(255);
   FastLED.show();
   Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
