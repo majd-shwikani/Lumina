@@ -54,7 +54,12 @@ void setup() {
   
   Serial.println("💡 Initializing LED strip...");
   i2sMutex = xSemaphoreCreateMutex();
+leds = (CRGB*) ps_malloc(ledCount * sizeof(CRGB));
+if (!leds) {
+  Serial.println("❌ PSRAM allocation failed! Falling back to heap...");
   leds = new CRGB[ledCount];
+}
+memset(leds, 0, ledCount * sizeof(CRGB));
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, ledCount);
   FastLED.addLeds<WS2812B, ONBOARD_LED_PIN, GRB>(onboardLed, 1);
   FastLED.setBrightness(255);
