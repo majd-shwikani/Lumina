@@ -370,10 +370,10 @@ void handleSave() {
   }
 
   int num_leds = num_leds_str.toInt();
-  if (num_leds <= 0) {
+  if (num_leds <= 0 || num_leds > 600) {
     DynamicJsonDocument doc(256);
     doc["success"] = false;
-    doc["message"] = "LED count must be greater than 0";
+    doc["message"] = "LED count must be between 1 and 600";
     String response;
     serializeJson(doc, response);
     server.send(400, "application/json", response);
