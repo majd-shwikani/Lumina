@@ -4,8 +4,8 @@ import re
 import platform
 
 # --- CONFIGURATION ---
-# Updated to match your platformio.ini environment name
-ENV_NAME = "esp32-s3-devkitc-1" 
+# Change this to your actual build folder name (e.g., 'esp32dev', 'lolin32', etc.)
+ENV_NAME = "esp32dev" 
 # The path to your firmware.elf relative to the script
 ELF_PATH = f".pio/build/{ENV_NAME}/firmware.elf"
 # ---------------------
@@ -14,49 +14,43 @@ def get_tool_path():
     """Locates the xtensa-addr2line tool in the PlatformIO directory."""
     home = os.path.expanduser("~")
     
-    # S3 uses the xtensa-esp32s3 toolchain
-    tool_name = "xtensa-esp32s3-elf-addr2line"
     if platform.system() == "Windows":
-        tool_name += ".exe"
+        tool_relative = ".platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-addr2line.exe"
+    else:
+        tool_relative = ".platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-addr2line"
     
-    # Possible paths for ESP32-S3 toolchains in PlatformIO
-    possible_paths = [
-        os.path.join(home, ".platformio", "packages", "toolchain-xtensa-esp32s3", "bin", tool_name),
-        os.path.join(home, ".platformio", "packages", "toolchain-xtensa-esp-s3", "bin", tool_name), # Alternate naming
-    ]
+    full_path = os.path.join(home, tool_relative)
     
-    for full_path in possible_paths:
-        if os.path.exists(full_path):
-            return full_path
-            
-    return None
+    if not os.path.exists(full_path):
+        # Try alternate path for newer ESP-IDF versions
+        tool_relative = tool_relative.replace("xtensa-esp32", "xtensa-esp32s3")
+        full_path = os.path.join(home, tool_relative)
+        
+    return full_path
 
 def decode_backtrace(backtrace_str):
     tool = get_tool_path()
     
-    if not tool:
-        print("Error: xtensa-esp32s3-elf-addr2line tool not found.")
-        print("Ensure you have built the project in PlatformIO so the toolchain is downloaded.")
+    if not os.path.exists(tool):
+        print(f"Error: Tool not found at {tool}")
         return
 
     if not os.path.exists(ELF_PATH):
         print(f"Error: ELF file not found at {ELF_PATH}")
-        print(f"Check that ENV_NAME in this script matches the [env:...] in your platformio.ini.")
+        print("Make sure you run this script from your project root and have compiled the project.")
         return
 
-    # S3 addresses often use 0x42xxxxxx or 0x40xxxxxx depending on the memory region
-    addresses = re.findall(r'0x[0-9a-fA-F]+', backtrace_str)
+    # Extract all hex addresses (0x40xxxxxx)
+    addresses = re.findall(r'0x40[0-9a-fA-F]+', backtrace_str)
     
-    # Filter for likely code addresses (typically start with 0x4)
-    code_addresses = [addr for addr in addresses if addr.startswith("0x4")]
-    
-    if not code_addresses:
-        print("No valid code addresses (starting with 0x4) found in the input.")
+    if not addresses:
+        print("No valid addresses found in the input.")
         return
 
-    print(f"\n--- Decoding {len(code_addresses)} addresses for ESP32-S3 ---\n")
+    print(f"\n--- Decoding {len(addresses)} addresses ---\n")
     
-    cmd = [tool, "-pfiaC", "-e", ELF_PATH] + code_addresses
+    # Construct command: addr2line -pfiaC -e [ELF] [ADDR1] [ADDR2] ...
+    cmd = [tool, "-pfiaC", "-e", ELF_PATH] + addresses
     
     try:
         result = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
@@ -65,7 +59,7 @@ def decode_backtrace(backtrace_str):
         print(f"Error running decoder: {e.output.decode('utf-8')}")
 
 if __name__ == "__main__":
-    print(f"ESP32-S3 Exception Decoder ({ENV_NAME})")
-    print("Paste your Backtrace line and press Enter:")
+    print("ESP32 Exception Decoder (Python Wrapper)")
+    print("Paste your Backtrace line (e.g., 0x40084451:0x3ffbef5c ...) and press Enter:")
     user_input = input("> ")
     decode_backtrace(user_input)

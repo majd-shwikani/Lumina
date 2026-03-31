@@ -214,7 +214,7 @@ const char* htmlContent = R"rawliteral(
             
             <div class="form-group">
                 <label for="num_leds" class="required">Number of LEDs</label>
-                <input type="number" id="num_leds" name="num_leds" required min="1" value="60" placeholder="Enter number of LEDs">
+                <input type="number" id="num_leds" name="num_leds" required min="1" max="600" value="60" placeholder="Enter number of LEDs">
             </div>
             
             <button type="submit" class="btn">💾 Save Configuration</button>
