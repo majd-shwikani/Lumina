@@ -1,65 +1,55 @@
 import os
 import subprocess
 import re
-import platform
+import glob
 
-# --- CONFIGURATION ---
-# Change this to your actual build folder name (e.g., 'esp32dev', 'lolin32', etc.)
-ENV_NAME = "esp32dev" 
-# The path to your firmware.elf relative to the script
-ELF_PATH = f".pio/build/{ENV_NAME}/firmware.elf"
-# ---------------------
+def find_elf_file():
+    # Searches for any .elf file in the PlatformIO build directory
+    paths = glob.glob(".pio/build/*/firmware.elf")
+    if paths:
+        return paths[0]
+    return None
 
-def get_tool_path():
-    """Locates the xtensa-addr2line tool in the PlatformIO directory."""
-    home = os.path.expanduser("~")
-    
-    if platform.system() == "Windows":
-        tool_relative = ".platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-addr2line.exe"
+def get_addr2line_path(elf_path):
+    # Determine toolchain based on the chip target in the path name
+    if "c3" in elf_path.lower() or "c6" in elf_path.lower():
+        return "riscv32-esp-elf-addr2line"
+    elif "s3" in elf_path.lower():
+        return "xtensa-esp32s3-elf-addr2line"
     else:
-        tool_relative = ".platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-addr2line"
-    
-    full_path = os.path.join(home, tool_relative)
-    
-    if not os.path.exists(full_path):
-        # Try alternate path for newer ESP-IDF versions
-        tool_relative = tool_relative.replace("xtensa-esp32", "xtensa-esp32s3")
-        full_path = os.path.join(home, tool_relative)
-        
-    return full_path
+        return "xtensa-esp32-elf-addr2line"
 
 def decode_backtrace(backtrace_str):
-    tool = get_tool_path()
-    
-    if not os.path.exists(tool):
-        print(f"Error: Tool not found at {tool}")
+    elf_path = find_elf_file()
+    if not elf_path:
+        print("Error: Could not find firmware.elf. Ensure you are in the project root and have built the project.")
         return
 
-    if not os.path.exists(ELF_PATH):
-        print(f"Error: ELF file not found at {ELF_PATH}")
-        print("Make sure you run this script from your project root and have compiled the project.")
-        return
-
-    # Extract all hex addresses (0x40xxxxxx)
-    addresses = re.findall(r'0x40[0-9a-fA-F]+', backtrace_str)
+    addr2line = get_addr2line_path(elf_path)
     
-    if not addresses:
-        print("No valid addresses found in the input.")
-        return
-
-    print(f"\n--- Decoding {len(addresses)} addresses ---\n")
+    # Extract addresses (0x40...) from the input string
+    addresses = re.findall(r"0x[0-9a-fA-F]+", backtrace_str)
     
-    # Construct command: addr2line -pfiaC -e [ELF] [ADDR1] [ADDR2] ...
-    cmd = [tool, "-pfiaC", "-e", ELF_PATH] + addresses
+    # Filter: Backtrace usually pairs PC:SP. We only want the PC (even-indexed or first of pair)
+    # Most decoders just try to resolve every hex address found.
+    print(f"\nDecoding for: {elf_path}\n" + "-"*50)
     
-    try:
-        result = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
-        print(result)
-    except subprocess.CalledProcessError as e:
-        print(f"Error running decoder: {e.output.decode('utf-8')}")
+    for addr in addresses:
+        try:
+            # Run addr2line command
+            result = subprocess.check_output(
+                [addr2line, "-pfiaC", "-e", elf_path, addr],
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            print(f"{addr}: {result.strip()}")
+        except FileNotFoundError:
+            print(f"Error: {addr2line} not found in PATH. Ensure ESP-IDF/PlatformIO tools are installed.")
+            break
+        except Exception as e:
+            print(f"Failed to decode {addr}: {e}")
 
 if __name__ == "__main__":
-    print("ESP32 Exception Decoder (Python Wrapper)")
-    print("Paste your Backtrace line (e.g., 0x40084451:0x3ffbef5c ...) and press Enter:")
-    user_input = input("> ")
+    print("ESP32 Universal Exception Decoder")
+    user_input = input("Paste Backtrace line: ")
     decode_backtrace(user_input)
