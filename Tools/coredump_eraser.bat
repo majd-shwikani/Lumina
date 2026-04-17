@@ -1,21 +1,16 @@
 @echo off
-set PORT=COM6
-set ADDRESS=0xFF0000
-set SIZE=0x10000
-
-echo --- ESP32 Coredump Eraser ---
-echo Port: %PORT%
-echo Address: %ADDRESS%
+echo --- Universal ESP32 Coredump Eraser ---
+echo Identifying project and clearing partition...
 echo.
 
-python -m esptool --port %PORT% erase_region %ADDRESS% %SIZE%
+python "%~dp0analyze_coredump.py" --clear-only
 
 if %ERRORLEVEL% EQU 0 (
     echo.
-    echo [SUCCESS] Coredump partition has been cleared!
+    echo [SUCCESS] Flash cleared!
 ) else (
     echo.
-    echo [ERROR] Failed to clear partition. Make sure Serial Monitor is closed.
+    echo [ERROR] Failed to clear flash. Check connection and close Serial Monitor.
 )
 
 pause
