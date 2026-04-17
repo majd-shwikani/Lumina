@@ -101,53 +101,50 @@ void saveMQTTConfig() {
 void updateMQTTConfigFromFirebase() {
   String mqttBasePath = basePath + "/local/mqtt";
 
-  if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-    String brokerPath = mqttBasePath + "/broker_address";
-    if (Firebase.RTDB.getString(&fbdoIO, brokerPath.c_str())) {
-      String brokerStr = fbdoIO.stringData();
-      strlcpy(mqttConfig.broker_address, brokerStr.c_str(), sizeof(mqttConfig.broker_address));
-      Serial.printf("MQTT broker: %s\n", mqttConfig.broker_address);
-    }
+  String brokerPath = mqttBasePath + "/broker_address";
+  if (Firebase.RTDB.getString(&fbdoUpload, brokerPath.c_str())) {
+    String brokerStr = fbdoUpload.stringData();
+    strlcpy(mqttConfig.broker_address, brokerStr.c_str(), sizeof(mqttConfig.broker_address));
+    Serial.printf("MQTT broker: %s\n", mqttConfig.broker_address);
+  }
 
-    String portPath = mqttBasePath + "/broker_port";
-    if (Firebase.RTDB.getInt(&fbdoIO, portPath.c_str())) {
-      mqttConfig.broker_port = fbdoIO.intData();
-      Serial.printf("MQTT port: %d\n", mqttConfig.broker_port);
-    } else {
-      mqttConfig.broker_port = 1883;
-    }
+  String portPath = mqttBasePath + "/broker_port";
+  if (Firebase.RTDB.getInt(&fbdoUpload, portPath.c_str())) {
+    mqttConfig.broker_port = fbdoUpload.intData();
+    Serial.printf("MQTT port: %d\n", mqttConfig.broker_port);
+  } else {
+    mqttConfig.broker_port = 1883;
+  }
 
-    String usernamePath = mqttBasePath + "/username";
-    if (Firebase.RTDB.getString(&fbdoIO, usernamePath.c_str())) {
-      String usernameStr = fbdoIO.stringData();
-      strlcpy(mqttConfig.username, usernameStr.c_str(), sizeof(mqttConfig.username));
-      Serial.println("MQTT username loaded");
-    }
+  String usernamePath = mqttBasePath + "/username";
+  if (Firebase.RTDB.getString(&fbdoUpload, usernamePath.c_str())) {
+    String usernameStr = fbdoUpload.stringData();
+    strlcpy(mqttConfig.username, usernameStr.c_str(), sizeof(mqttConfig.username));
+    Serial.println("MQTT username loaded");
+  }
 
-    String passwordPath = mqttBasePath + "/password";
-    if (Firebase.RTDB.getString(&fbdoIO, passwordPath.c_str())) {
-      String passwordStr = fbdoIO.stringData();
-      strlcpy(mqttConfig.password, passwordStr.c_str(), sizeof(mqttConfig.password));
-      Serial.println("MQTT password loaded");
-    }
+  String passwordPath = mqttBasePath + "/password";
+  if (Firebase.RTDB.getString(&fbdoUpload, passwordPath.c_str())) {
+    String passwordStr = fbdoUpload.stringData();
+    strlcpy(mqttConfig.password, passwordStr.c_str(), sizeof(mqttConfig.password));
+    Serial.println("MQTT password loaded");
+  }
 
-    String enabledPath = mqttBasePath + "/enabled";
-    if (Firebase.RTDB.getBool(&fbdoIO, enabledPath.c_str())) {
-      mqttConfig.enabled = fbdoIO.boolData();
-      Serial.printf("MQTT enabled: %s\n", mqttConfig.enabled ? "true" : "false");
-    } else {
-      mqttConfig.enabled = false;
-    }
+  String enabledPath = mqttBasePath + "/enabled";
+  if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
+    mqttConfig.enabled = fbdoUpload.boolData();
+    Serial.printf("MQTT enabled: %s\n", mqttConfig.enabled ? "true" : "false");
+  } else {
+    mqttConfig.enabled = false;
+  }
 
-    String deviceNamePath = mqttBasePath + "/device_name";
-    if (Firebase.RTDB.getString(&fbdoIO, deviceNamePath.c_str())) {
-      String deviceNameStr = fbdoIO.stringData();
-      strlcpy(mqttConfig.device_name, deviceNameStr.c_str(), sizeof(mqttConfig.device_name));
-      Serial.printf("MQTT device name: %s\n", mqttConfig.device_name);
-    } else {
-      strlcpy(mqttConfig.device_name, "Lumina", sizeof(mqttConfig.device_name));
-    }
-    xSemaphoreGive(firebaseMutex);
+  String deviceNamePath = mqttBasePath + "/device_name";
+  if (Firebase.RTDB.getString(&fbdoUpload, deviceNamePath.c_str())) {
+    String deviceNameStr = fbdoUpload.stringData();
+    strlcpy(mqttConfig.device_name, deviceNameStr.c_str(), sizeof(mqttConfig.device_name));
+    Serial.printf("MQTT device name: %s\n", mqttConfig.device_name);
+  } else {
+    strlcpy(mqttConfig.device_name, "Lumina", sizeof(mqttConfig.device_name));
   }
 
   saveMQTTConfig();
@@ -679,17 +676,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   // Light control
   if (topicStr.endsWith("/light/cmd")) {
-    if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-      if (strcmp(message, "ON") == 0) {
-        stripEnabled = true;
-        Firebase.RTDB.setBool(&fbdoIO, (basePath + "/local/enabled").c_str(), true);
-      } else if (strcmp(message, "OFF") == 0) {
-        stripEnabled = false;
-        Firebase.RTDB.setBool(&fbdoIO, (basePath + "/local/enabled").c_str(), false);
-        FastLED.clear();
-        FastLED.show();
-      }
-      xSemaphoreGive(firebaseMutex);
+    if (strcmp(message, "ON") == 0) {
+      stripEnabled = true;
+      Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/local/enabled").c_str(), true);
+    } else if (strcmp(message, "OFF") == 0) {
+      stripEnabled = false;
+      Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/local/enabled").c_str(), false);
+      FastLED.clear();
+      FastLED.show();
     }
     lastMQTTStatePublish = 0;
     mqttPublishState();
@@ -699,10 +693,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     int brightness = atoi(message);
     brightness = constrain(brightness, 0, 255);
     FastLED.setBrightness(brightness);
-    if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-      Firebase.RTDB.setInt(&fbdoIO, (basePath + "/local/brightness").c_str(), brightness);
-      xSemaphoreGive(firebaseMutex);
-    }
+    Firebase.RTDB.setInt(&fbdoUpload, (basePath + "/local/brightness").c_str(), brightness);
     lastMQTTStatePublish = 0;
     mqttPublishState();
   }
@@ -743,10 +734,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       
       char colorStr[7];
       sprintf(colorStr, "%02X%02X%02X", r, g, b);
-      if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-        Firebase.RTDB.setString(&fbdoIO, (basePath + "/local/color").c_str(), colorStr);
-        xSemaphoreGive(firebaseMutex);
-      }
+      Firebase.RTDB.setString(&fbdoUpload, (basePath + "/local/color").c_str(), colorStr);
       
       Serial.printf("Color updated: #%s\n", colorStr);
       lastMQTTStatePublish = 0;
@@ -778,10 +766,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     
     if (newEffect >= 0 && newEffect < NUM_EFFECTS) {
       currentEffect = newEffect;
-      if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-        Firebase.RTDB.setInt(&fbdoIO, (basePath + "/local/effect").c_str(), currentEffect);
-        xSemaphoreGive(firebaseMutex);
-      }
+      Firebase.RTDB.setInt(&fbdoUpload, (basePath + "/local/effect").c_str(), currentEffect);
       lastMQTTStatePublish = 0;
       mqttPublishState();
     }
@@ -791,18 +776,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     int speed = atoi(message);
     speed = constrain(speed, 10, 200);
     effectSpeed = speed;
-    if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-      Firebase.RTDB.setInt(&fbdoIO, (basePath + "/local/speed").c_str(), speed);
-      xSemaphoreGive(firebaseMutex);
-    }
+    Firebase.RTDB.setInt(&fbdoUpload, (basePath + "/local/speed").c_str(), speed);
   }
   // Timer enabled
   else if (topicStr.endsWith("/timer/cmd")) {
     timerEnabled = strcmp(message, "ON") == 0;
-    if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-      Firebase.RTDB.setBool(&fbdoIO, (basePath + "/local/timer_enabled").c_str(), timerEnabled);
-      xSemaphoreGive(firebaseMutex);
-    }
+    Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/local/timer_enabled").c_str(), timerEnabled);
     lastMQTTStatePublish = 0;
     mqttPublishState();
   }
@@ -810,10 +789,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   else if (topicStr.endsWith("/timer_on/cmd")) {
     if (strlen(message) == 5) {
       strncpy(timerOnTime, message, sizeof(timerOnTime));
-      if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-        Firebase.RTDB.setString(&fbdoIO, (basePath + "/local/timer_on").c_str(), timerOnTime);
-        xSemaphoreGive(firebaseMutex);
-      }
+      Firebase.RTDB.setString(&fbdoUpload, (basePath + "/local/timer_on").c_str(), timerOnTime);
       lastMQTTStatePublish = 0;
       mqttPublishState();
     }
@@ -822,10 +798,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   else if (topicStr.endsWith("/timer_off/cmd")) {
     if (strlen(message) == 5) {
       strncpy(timerOffTime, message, sizeof(timerOffTime));
-      if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-        Firebase.RTDB.setString(&fbdoIO, (basePath + "/local/timer_off").c_str(), timerOffTime);
-        xSemaphoreGive(firebaseMutex);
-      }
+      Firebase.RTDB.setString(&fbdoUpload, (basePath + "/local/timer_off").c_str(), timerOffTime);
       lastMQTTStatePublish = 0;
       mqttPublishState();
     }
@@ -833,10 +806,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // Auto Darkness Control
   else if (topicStr.endsWith("/auto_darkness/cmd")) {
     autoDarknessControl = strcmp(message, "ON") == 0;
-    if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-      Firebase.RTDB.setBool(&fbdoIO, (basePath + "/local/auto_darkness_control").c_str(), autoDarknessControl);
-      xSemaphoreGive(firebaseMutex);
-    }
+    Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/local/auto_darkness_control").c_str(), autoDarknessControl);
     lastMQTTStatePublish = 0;
     mqttPublishState();
   }
@@ -845,20 +815,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     float threshold = atof(message);
     threshold = constrain(threshold, 0.5, 100.0);
     luxThreshold = threshold;
-    if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-      Firebase.RTDB.setFloat(&fbdoIO, (basePath + "/local/lux_threshold").c_str(), threshold);
-      xSemaphoreGive(firebaseMutex);
-    }
+    Firebase.RTDB.setFloat(&fbdoUpload, (basePath + "/local/lux_threshold").c_str(), threshold);
     lastMQTTStatePublish = 0;
     mqttPublishState();
   }
   // Microphone Calibration
   else if (topicStr.endsWith("/calibrate_mic/cmd")) {
     Serial.println("Microphone calibration triggered via MQTT");
-    if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-      Firebase.RTDB.setBool(&fbdoIO, (basePath + "/local/mic_calibration").c_str(), true);
-      xSemaphoreGive(firebaseMutex);
-    }
+    Firebase.RTDB.setBool(&fbdoUpload, (basePath + "/local/mic_calibration").c_str(), true);
     triggerMicCalibration = true;
   }
 
