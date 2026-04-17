@@ -23,7 +23,9 @@ volatile bool configPortalActive = false;
 CRGB *leds = nullptr;
 CRGB onboardLed[1];
 FirebaseData fbdoStream;
-FirebaseData fbdoUpload;
+FirebaseData fbdoCloud;
+FirebaseData fbdoMQTT;
+FirebaseData fbdoSystem;
 FirebaseAuth auth;
 FirebaseConfig config;
 volatile int currentEffect = 0;
@@ -206,8 +208,8 @@ void updateActiveNodesInFirebase() {
   }
   
   String path = basePath + "/active_nodes";
-  if (!Firebase.RTDB.setJSON(&fbdoUpload, path.c_str(), &json)) {
-    Serial.printf("❌ [Gateway] Failed to update active_nodes: %s\n", fbdoUpload.errorReason().c_str());
+  if (!Firebase.RTDB.setJSON(&fbdoCloud, path.c_str(), &json)) {
+    Serial.printf("❌ [Gateway] Failed to update active_nodes: %s\n", fbdoCloud.errorReason().c_str());
   }
 }
 
@@ -270,9 +272,9 @@ void printSystemStats() {
   };
 
   TaskInfo tasks[] = {
-    { "CloudSync",  cloudTaskHandle,   6000 },
+    { "CloudSync",  cloudTaskHandle,   12288 },
     { "LEDAnim",    ledTaskHandle,     4000 },
-    { "IOTask",     ioTaskHandle,      6000 },
+    { "IOTask",     ioTaskHandle,      12288 },
     { "SystemTask", systemTaskHandle,  4000 },
   };
   const int taskCount = sizeof(tasks) / sizeof(tasks[0]);

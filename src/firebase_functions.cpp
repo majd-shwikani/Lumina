@@ -40,51 +40,51 @@ void readInitialFirebaseData() {
   String localPath = basePath + "/local";
   
   String effectPath = localPath + "/effect";
-  if (Firebase.RTDB.getInt(&fbdoUpload, effectPath.c_str())) {
-    currentEffect = fbdoUpload.intData();
+  if (Firebase.RTDB.getInt(&fbdoCloud, effectPath.c_str())) {
+    currentEffect = fbdoCloud.intData();
     Serial.printf("      Effect: %d\n", currentEffect);
   } else {
-    Serial.printf("      ⚠️  Failed to read effect: %s\n", fbdoUpload.errorReason().c_str());
+    Serial.printf("      ⚠️  Failed to read effect: %s\n", fbdoCloud.errorReason().c_str());
     currentEffect = 0;
-    Firebase.RTDB.setInt(&fbdoUpload, effectPath.c_str(), currentEffect);
+    Firebase.RTDB.setInt(&fbdoCloud, effectPath.c_str(), currentEffect);
   }
   
   String speedPath = localPath + "/speed";
-  if (Firebase.RTDB.getInt(&fbdoUpload, speedPath.c_str())) {
-    effectSpeed = fbdoUpload.intData();
+  if (Firebase.RTDB.getInt(&fbdoCloud, speedPath.c_str())) {
+    effectSpeed = fbdoCloud.intData();
     Serial.printf("      Speed: %d\n", effectSpeed);
   } else {
-    Serial.printf("      ⚠️  Failed to read speed: %s\n", fbdoUpload.errorReason().c_str());
+    Serial.printf("      ⚠️  Failed to read speed: %s\n", fbdoCloud.errorReason().c_str());
     effectSpeed = 50;
-    Firebase.RTDB.setInt(&fbdoUpload, speedPath.c_str(), effectSpeed);
+    Firebase.RTDB.setInt(&fbdoCloud, speedPath.c_str(), effectSpeed);
   }
   
   String brightnessPath = localPath + "/brightness";
-  if (Firebase.RTDB.getInt(&fbdoUpload, brightnessPath.c_str())) {
-    globalBrightness = fbdoUpload.intData();
+  if (Firebase.RTDB.getInt(&fbdoCloud, brightnessPath.c_str())) {
+    globalBrightness = fbdoCloud.intData();
     FastLED.setBrightness(globalBrightness);
     Serial.printf("      Brightness: %d\n", globalBrightness);
   } else {
     globalBrightness = 255;
-    Firebase.RTDB.setInt(&fbdoUpload, brightnessPath.c_str(), globalBrightness);
+    Firebase.RTDB.setInt(&fbdoCloud, brightnessPath.c_str(), globalBrightness);
   }
   
   String colorPath = localPath + "/color";
-  if (Firebase.RTDB.getString(&fbdoUpload, colorPath.c_str())) {
-    String colorStr = fbdoUpload.stringData();
+  if (Firebase.RTDB.getString(&fbdoCloud, colorPath.c_str())) {
+    String colorStr = fbdoCloud.stringData();
     if (colorStr.length() == 6) {
       effectColor = strtoul(colorStr.c_str(), NULL, 16);
       Serial.printf("      Color: %s\n", colorStr.c_str());
     }
   } else {
-    Serial.printf("      ⚠️  Failed to read color: %s\n", fbdoUpload.errorReason().c_str());
+    Serial.printf("      ⚠️  Failed to read color: %s\n", fbdoCloud.errorReason().c_str());
     effectColor = 0xFF0000;
-    Firebase.RTDB.setString(&fbdoUpload, colorPath.c_str(), "FF0000");
+    Firebase.RTDB.setString(&fbdoCloud, colorPath.c_str(), "FF0000");
   }
   
   String enabledPath = localPath + "/enabled";
-  if (Firebase.RTDB.getBool(&fbdoUpload, enabledPath.c_str())) {
-    stripEnabled = fbdoUpload.boolData();
+  if (Firebase.RTDB.getBool(&fbdoCloud, enabledPath.c_str())) {
+    stripEnabled = fbdoCloud.boolData();
     Serial.printf("      Enabled: %s\n", stripEnabled ? "true" : "false");
     
     if (!stripEnabled) {
@@ -96,103 +96,103 @@ void readInitialFirebaseData() {
       manuallyTurnedOff = false;
     }
   } else {
-    Serial.printf("      ⚠️  Failed to read enabled state: %s\n", fbdoUpload.errorReason().c_str());
+    Serial.printf("      ⚠️  Failed to read enabled state: %s\n", fbdoCloud.errorReason().c_str());
     stripEnabled = true;
     manuallyTurnedOff = false;
-    Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), stripEnabled);
+    Firebase.RTDB.setBool(&fbdoCloud, enabledPath.c_str(), stripEnabled);
   }
   
   String autoDarknessPath = localPath + "/auto_darkness_control";
-  if (Firebase.RTDB.getBool(&fbdoUpload, autoDarknessPath.c_str())) {
-    autoDarknessControl = fbdoUpload.boolData();
+  if (Firebase.RTDB.getBool(&fbdoCloud, autoDarknessPath.c_str())) {
+    autoDarknessControl = fbdoCloud.boolData();
     Serial.printf("      Auto Darkness: %s\n", autoDarknessControl ? "true" : "false");
   } else {
     autoDarknessControl = true;
-    Firebase.RTDB.setBool(&fbdoUpload, autoDarknessPath.c_str(), autoDarknessControl);
+    Firebase.RTDB.setBool(&fbdoCloud, autoDarknessPath.c_str(), autoDarknessControl);
   }
   
   String presenceEnabledPath = localPath + "/presence_detection_enabled";
-  if (Firebase.RTDB.getBool(&fbdoUpload, presenceEnabledPath.c_str())) {
-    presenceDetectionEnabled = fbdoUpload.boolData();
+  if (Firebase.RTDB.getBool(&fbdoCloud, presenceEnabledPath.c_str())) {
+    presenceDetectionEnabled = fbdoCloud.boolData();
     Serial.printf("      Presence Detection: %s\n", presenceDetectionEnabled ? "true" : "false");
   } else {
     presenceDetectionEnabled = true;
-    Firebase.RTDB.setBool(&fbdoUpload, presenceEnabledPath.c_str(), presenceDetectionEnabled);
+    Firebase.RTDB.setBool(&fbdoCloud, presenceEnabledPath.c_str(), presenceDetectionEnabled);
   }
   
   String luxThresholdPath = localPath + "/lux_threshold";
-  if (Firebase.RTDB.getFloat(&fbdoUpload, luxThresholdPath.c_str())) {
-    luxThreshold = fbdoUpload.floatData();
+  if (Firebase.RTDB.getFloat(&fbdoCloud, luxThresholdPath.c_str())) {
+    luxThreshold = fbdoCloud.floatData();
     Serial.printf("      Lux Threshold: %.2f\n", luxThreshold);
   } else {
     luxThreshold = 1.0;
-    Firebase.RTDB.setFloat(&fbdoUpload, luxThresholdPath.c_str(), luxThreshold);
+    Firebase.RTDB.setFloat(&fbdoCloud, luxThresholdPath.c_str(), luxThreshold);
   }
   
   String timerOnPath = localPath + "/timer_on";
-  if (Firebase.RTDB.getString(&fbdoUpload, timerOnPath.c_str())) {
-    String timeStr = fbdoUpload.stringData();
+  if (Firebase.RTDB.getString(&fbdoCloud, timerOnPath.c_str())) {
+    String timeStr = fbdoCloud.stringData();
     if (timeStr.length() == 5) {
       strncpy(timerOnTime, timeStr.c_str(), sizeof(timerOnTime));
       Serial.printf("      Timer ON: %s\n", timerOnTime);
     }
   } else {
     strcpy(timerOnTime, "09:00");
-    Firebase.RTDB.setString(&fbdoUpload, timerOnPath.c_str(), timerOnTime);
+    Firebase.RTDB.setString(&fbdoCloud, timerOnPath.c_str(), timerOnTime);
   }
   
   String timerOffPath = localPath + "/timer_off";
-  if (Firebase.RTDB.getString(&fbdoUpload, timerOffPath.c_str())) {
-    String timeStr = fbdoUpload.stringData();
+  if (Firebase.RTDB.getString(&fbdoCloud, timerOffPath.c_str())) {
+    String timeStr = fbdoCloud.stringData();
     if (timeStr.length() == 5) {
       strncpy(timerOffTime, timeStr.c_str(), sizeof(timerOffTime));
       Serial.printf("      Timer OFF: %s\n", timerOffTime);
     }
   } else {
     strcpy(timerOffTime, "17:00");
-    Firebase.RTDB.setString(&fbdoUpload, timerOffPath.c_str(), timerOffTime);
+    Firebase.RTDB.setString(&fbdoCloud, timerOffPath.c_str(), timerOffTime);
   }
   
   String timerEnabledPath = localPath + "/timer_enabled";
-  if (Firebase.RTDB.getBool(&fbdoUpload, timerEnabledPath.c_str())) {
-    timerEnabled = fbdoUpload.boolData();
+  if (Firebase.RTDB.getBool(&fbdoCloud, timerEnabledPath.c_str())) {
+    timerEnabled = fbdoCloud.boolData();
     Serial.printf("      Timer Enabled: %s\n", timerEnabled ? "true" : "false");
   } else {
     timerEnabled = true;
-    Firebase.RTDB.setBool(&fbdoUpload, timerEnabledPath.c_str(), timerEnabled);
+    Firebase.RTDB.setBool(&fbdoCloud, timerEnabledPath.c_str(), timerEnabled);
   }
   
   String resetPath = localPath + "/reset";
-  Firebase.RTDB.setBool(&fbdoUpload, resetPath.c_str(), false);
+  Firebase.RTDB.setBool(&fbdoCloud, resetPath.c_str(), false);
   
   String micCalibPath = localPath + "/mic_calibration";
-  Firebase.RTDB.setBool(&fbdoUpload, micCalibPath.c_str(), false);
+  Firebase.RTDB.setBool(&fbdoCloud, micCalibPath.c_str(), false);
   
   String mqttEnabledPath = localPath + "/mqtt/enabled";
-  if (!Firebase.RTDB.getBool(&fbdoUpload, mqttEnabledPath.c_str())) {
+  if (!Firebase.RTDB.getBool(&fbdoCloud, mqttEnabledPath.c_str())) {
     Serial.println("      Creating default MQTT configuration...");
     
     String mqttBasePath = localPath + "/mqtt";
     delay(500);
     
-    Firebase.RTDB.setString(&fbdoUpload, (mqttBasePath + "/broker_address").c_str(), "192.168.1.100");
+    Firebase.RTDB.setString(&fbdoCloud, (mqttBasePath + "/broker_address").c_str(), "192.168.1.100");
     delay(200);
-    Firebase.RTDB.setInt(&fbdoUpload, (mqttBasePath + "/broker_port").c_str(), 1883);
+    Firebase.RTDB.setInt(&fbdoCloud, (mqttBasePath + "/broker_port").c_str(), 1883);
     delay(200);
-    Firebase.RTDB.setString(&fbdoUpload, (mqttBasePath + "/username").c_str(), "mqtt_user");
+    Firebase.RTDB.setString(&fbdoCloud, (mqttBasePath + "/username").c_str(), "mqtt_user");
     delay(200);
-    Firebase.RTDB.setString(&fbdoUpload, (mqttBasePath + "/password").c_str(), "mqtt_password");
+    Firebase.RTDB.setString(&fbdoCloud, (mqttBasePath + "/password").c_str(), "mqtt_password");
     delay(200);
-    Firebase.RTDB.setBool(&fbdoUpload, (mqttBasePath + "/enabled").c_str(), false);
+    Firebase.RTDB.setBool(&fbdoCloud, (mqttBasePath + "/enabled").c_str(), false);
     delay(200);
-    Firebase.RTDB.setString(&fbdoUpload, (mqttBasePath + "/device_name").c_str(), "Lumina");
+    Firebase.RTDB.setString(&fbdoCloud, (mqttBasePath + "/device_name").c_str(), "Lumina");
     
     Serial.println("      ✅ MQTT config created");
   }
   updateMQTTConfigFromFirebase();
   
   String versionPath = localPath + "/version";
-  if (Firebase.RTDB.setString(&fbdoUpload, versionPath.c_str(), currentFirmwareVersion)) {
+  if (Firebase.RTDB.setString(&fbdoCloud, versionPath.c_str(), currentFirmwareVersion)) {
     Serial.printf("      ✅ Version published: %s\n", currentFirmwareVersion);
   }
   
@@ -324,7 +324,7 @@ void createDefaultFirebaseData() {
   String localPath = basePath + "/local";
   String testPath = localPath + "/effect";
   
-  if (Firebase.RTDB.getInt(&fbdoUpload, testPath.c_str())) {
+  if (Firebase.RTDB.getInt(&fbdoCloud, testPath.c_str())) {
     Serial.println("Firebase data already exists, skipping default data creation");
     defaultDataCreated = true;
     return;
@@ -334,79 +334,79 @@ void createDefaultFirebaseData() {
   
   bool allSuccess = true;
   
-  if (Firebase.RTDB.setInt(&fbdoUpload, (localPath + "/effect").c_str(), 0)) {
+  if (Firebase.RTDB.setInt(&fbdoCloud, (localPath + "/effect").c_str(), 0)) {
     Serial.println("Effect set to default: 0");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setInt(&fbdoUpload, (localPath + "/speed").c_str(), 50)) {
+  if (Firebase.RTDB.setInt(&fbdoCloud, (localPath + "/speed").c_str(), 50)) {
     Serial.println("Speed set to default: 50");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setInt(&fbdoUpload, (localPath + "/brightness").c_str(), 255)) {
+  if (Firebase.RTDB.setInt(&fbdoCloud, (localPath + "/brightness").c_str(), 255)) {
     Serial.println("Brightness set to default: 255");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setString(&fbdoUpload, (localPath + "/color").c_str(), "FF0000")) {
+  if (Firebase.RTDB.setString(&fbdoCloud, (localPath + "/color").c_str(), "FF0000")) {
     Serial.println("Color set to default: FF0000");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setBool(&fbdoUpload, (localPath + "/enabled").c_str(), true)) {
+  if (Firebase.RTDB.setBool(&fbdoCloud, (localPath + "/enabled").c_str(), true)) {
     Serial.println("Enabled set to default: true");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setBool(&fbdoUpload, (localPath + "/auto_darkness_control").c_str(), true)) {
+  if (Firebase.RTDB.setBool(&fbdoCloud, (localPath + "/auto_darkness_control").c_str(), true)) {
     Serial.println("Auto darkness control set to default: true");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setBool(&fbdoUpload, (localPath + "/presence_detection_enabled").c_str(), true)) {
+  if (Firebase.RTDB.setBool(&fbdoCloud, (localPath + "/presence_detection_enabled").c_str(), true)) {
     Serial.println("Presence detection enabled set to default: true");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setFloat(&fbdoUpload, (localPath + "/lux_threshold").c_str(), 1.0)) {
+  if (Firebase.RTDB.setFloat(&fbdoCloud, (localPath + "/lux_threshold").c_str(), 1.0)) {
     Serial.println("Lux threshold set to default: 1.0");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setString(&fbdoUpload, (localPath + "/timer_on").c_str(), "09:00")) {
+  if (Firebase.RTDB.setString(&fbdoCloud, (localPath + "/timer_on").c_str(), "09:00")) {
     Serial.println("Timer ON set to default: 09:00");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setString(&fbdoUpload, (localPath + "/timer_off").c_str(), "17:00")) {
+  if (Firebase.RTDB.setString(&fbdoCloud, (localPath + "/timer_off").c_str(), "17:00")) {
     Serial.println("Timer OFF set to default: 17:00");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setBool(&fbdoUpload, (localPath + "/timer_enabled").c_str(), true)) {
+  if (Firebase.RTDB.setBool(&fbdoCloud, (localPath + "/timer_enabled").c_str(), true)) {
     Serial.println("Timer enabled set to default: true");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setBool(&fbdoUpload, (localPath + "/reset").c_str(), false)) {
+  if (Firebase.RTDB.setBool(&fbdoCloud, (localPath + "/reset").c_str(), false)) {
     Serial.println("Reset flag set to default: false");
   } else {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setBool(&fbdoUpload, (localPath + "/mic_calibration").c_str(), false)) {
+  if (Firebase.RTDB.setBool(&fbdoCloud, (localPath + "/mic_calibration").c_str(), false)) {
     Serial.println("Mic calibration flag set to default: false");
   } else {
     allSuccess = false;

@@ -133,7 +133,7 @@ void updateTimerState(bool state) {
   esp_task_wdt_reset();
   
   String enabledPath = basePath + "/local/enabled";
-  if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), state)) {
+  if (Firebase.RTDB.setBool(&fbdoSystem, enabledPath.c_str(), state)) {
     portENTER_CRITICAL(&stripMux);
     stripEnabled = state;
     portEXIT_CRITICAL(&stripMux);
@@ -148,7 +148,7 @@ void updateTimerState(bool state) {
     Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
     syncAllMirrors();
   } else {
-    Serial.printf("Failed to update enabled state: %s\n", fbdoUpload.errorReason().c_str());
+    Serial.printf("Failed to update enabled state: %s\n", fbdoSystem.errorReason().c_str());
   }
   esp_task_wdt_reset();
 }
@@ -209,7 +209,7 @@ void cloudTask(void *parameter) {
             rJson.set("color", "FF0000");
             rJson.set("enabled", receivers[i].enabled);
             
-            if (Firebase.RTDB.setJSON(&fbdoUpload, rPath.c_str(), &rJson)) {
+            if (Firebase.RTDB.setJSON(&fbdoCloud, rPath.c_str(), &rJson)) {
               receivers[i].needsFirebaseSync = false;
             } else {
               allSynced = false;
@@ -265,7 +265,7 @@ void cloudTask(void *parameter) {
 
         json.set("sensors", sensors);
         json.set("stats", stats);
-        Firebase.RTDB.setJSON(&fbdoUpload, (basePath + "/local/sensor_stats").c_str(), &json);
+        Firebase.RTDB.setJSON(&fbdoCloud, (basePath + "/local/sensor_stats").c_str(), &json);
       }
     } else {
       firebaseConnected = false;

@@ -96,7 +96,9 @@ extern volatile bool configPortalActive;
 extern CRGB *leds;
 extern CRGB onboardLed[1];
 extern FirebaseData fbdoStream;
-extern FirebaseData fbdoUpload;
+extern FirebaseData fbdoCloud;
+extern FirebaseData fbdoMQTT;
+extern FirebaseData fbdoSystem;
 extern FirebaseAuth auth;
 extern FirebaseConfig config;
 
