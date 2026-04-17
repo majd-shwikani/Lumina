@@ -297,41 +297,43 @@ void systemTask(void *parameter) {
     esp_task_wdt_reset();
     uint32_t now = millis();
 
-    // 1. AUTOMATION LOGIC (Every 100ms)
-    if (sensorAvailable) updateSensorData();
-    bool presenceDetected = (digitalRead(RADAR_OUTPUT) == HIGH);
-    lastPresence = presenceDetected;
+    // 1. AUTOMATION LOGIC (Only runs after full system init)
+    if (systemInitialized) {
+      if (sensorAvailable) updateSensorData();
+      bool presenceDetected = (digitalRead(RADAR_OUTPUT) == HIGH);
+      lastPresence = presenceDetected;
 
-    bool currentEnabled;
-    portENTER_CRITICAL(&stripMux);
-    currentEnabled = stripEnabled;
-    portEXIT_CRITICAL(&stripMux);
+      bool currentEnabled;
+      portENTER_CRITICAL(&stripMux);
+      currentEnabled = stripEnabled;
+      portEXIT_CRITICAL(&stripMux);
 
-    if (manuallyTurnedOff) {
-      if (currentEnabled) {
-        portENTER_CRITICAL(&stripMux);
-        stripEnabled = false;
-        portEXIT_CRITICAL(&stripMux);
-        syncAllMirrors();
-      }
-    } else {
-      bool targetState = true;
-      if (presenceDetectionEnabled && autoDarknessControl) targetState = (presenceDetected && (currentLux < luxThreshold));
-      else if (presenceDetectionEnabled) targetState = presenceDetected;
-      else if (autoDarknessControl) targetState = (currentLux < luxThreshold);
+      if (manuallyTurnedOff) {
+        if (currentEnabled) {
+          portENTER_CRITICAL(&stripMux);
+          stripEnabled = false;
+          portEXIT_CRITICAL(&stripMux);
+          syncAllMirrors();
+        }
+      } else {
+        bool targetState = true;
+        if (presenceDetectionEnabled && autoDarknessControl) targetState = (presenceDetected && (currentLux < luxThreshold));
+        else if (presenceDetectionEnabled) targetState = presenceDetected;
+        else if (autoDarknessControl) targetState = (currentLux < luxThreshold);
 
-      if (targetState != currentEnabled && (now - lastStateChangeTime > 3000)) {
-        portENTER_CRITICAL(&stripMux);
-        stripEnabled = targetState;
-        portEXIT_CRITICAL(&stripMux);
-        lastStateChangeTime = now;
-        syncAllMirrors();
-        Serial.printf("💡 [Automation] Target: %d, Lux: %.2f\n", targetState, currentLux);
+        if (targetState != currentEnabled && (now - lastStateChangeTime > 3000)) {
+          portENTER_CRITICAL(&stripMux);
+          stripEnabled = targetState;
+          portEXIT_CRITICAL(&stripMux);
+          lastStateChangeTime = now;
+          syncAllMirrors();
+          Serial.printf("💡 [Automation] Target: %d, Lux: %.2f\n", targetState, currentLux);
+        }
       }
     }
 
-    // 2. TIMER LOGIC (Every 1s)
-    if (now - lastTimerCheck >= 1000) {
+    // 2. TIMER LOGIC (Only runs after full system init)
+    if (systemInitialized && (now - lastTimerCheck >= 1000)) {
       lastTimerCheck = now;
       if (firebaseConnected && timerEnabled) {
         if (checkTimeMatch(timerOnTime)) {
@@ -344,7 +346,7 @@ void systemTask(void *parameter) {
       }
     }
 
-    // 3. STATUS LED (Every 30ms for smooth rainbow, 500ms for other states)
+    // 3. STATUS LED (Runs ALWAYS - provides the boot animation)
     {
       static uint8_t rainbowHue = 0;
       bool doUpdate = false;
@@ -384,8 +386,8 @@ void systemTask(void *parameter) {
       }
     }
 
-    // 4. OTA CHECK (Every UPDATE_CHECK_INTERVAL)
-    if (now - lastOtaCheck >= UPDATE_CHECK_INTERVAL || lastOtaCheck == 0) {
+    // 4. OTA CHECK (Only runs after full system init)
+    if (systemInitialized && (now - lastOtaCheck >= UPDATE_CHECK_INTERVAL || lastOtaCheck == 0)) {
       if (lastOtaCheck == 0) lastOtaCheck = now; // Delay first check
       else {
         lastOtaCheck = now;
