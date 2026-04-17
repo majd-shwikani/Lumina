@@ -24,8 +24,10 @@ CRGB *leds = nullptr;
 CRGB onboardLed[1];
 FirebaseData fbdoStream;
 FirebaseData fbdoUpload;
+FirebaseData fbdoIO;
 FirebaseAuth auth;
 FirebaseConfig config;
+SemaphoreHandle_t firebaseMutex = NULL;
 volatile int currentEffect = 0;
 volatile uint32_t effectSpeed = 50;
 volatile uint32_t effectColor = 0xFF0000;
@@ -347,6 +349,10 @@ void initSPIFFS() {
     return;
   }
   Serial.println("✅ SPIFFS mounted successfully");
+  
+  if (firebaseMutex == NULL) {
+    firebaseMutex = xSemaphoreCreateMutex();
+  }
 }
 
 void checkBootCount() {

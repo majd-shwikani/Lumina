@@ -147,7 +147,7 @@ memset(leds, 0, ledCount * sizeof(CRGB));
   Serial.println("      ✅ LED Task created (Core 1, 4KB stack)");
 
   // IO Task: MQTT + SmartHome (Alexa/Sinric) (12KB stack)
-  xTaskCreatePinnedToCore(ioTask, "IOTask", 6000, NULL, 1, &ioTaskHandle, 0);
+  xTaskCreatePinnedToCore(ioTask, "IOTask", 12000, NULL, 1, &ioTaskHandle, 0);
   Serial.println("      ✅ IO Task created (Core 0, 12KB stack)");
 
   systemInitialized = true;

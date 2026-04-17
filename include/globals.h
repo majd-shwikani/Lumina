@@ -97,8 +97,12 @@ extern CRGB *leds;
 extern CRGB onboardLed[1];
 extern FirebaseData fbdoStream;
 extern FirebaseData fbdoUpload;
+extern FirebaseData fbdoIO;
 extern FirebaseAuth auth;
 extern FirebaseConfig config;
+
+// Mutex for sharing fbdoIO between IOTask and SystemTask
+extern SemaphoreHandle_t firebaseMutex;
 
 // ============================================================================
 // LED ANIMATION CONTROL VARIABLES

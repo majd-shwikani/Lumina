@@ -133,22 +133,25 @@ void updateTimerState(bool state) {
   esp_task_wdt_reset();
   
   String enabledPath = basePath + "/local/enabled";
-  if (Firebase.RTDB.setBool(&fbdoUpload, enabledPath.c_str(), state)) {
-    portENTER_CRITICAL(&stripMux);
-    stripEnabled = state;
-    portEXIT_CRITICAL(&stripMux);
-    
-    if (state) {
+  if (xSemaphoreTake(firebaseMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
+    if (Firebase.RTDB.setBool(&fbdoIO, enabledPath.c_str(), state)) {
       portENTER_CRITICAL(&stripMux);
-      manuallyTurnedOff = false;
+      stripEnabled = state;
       portEXIT_CRITICAL(&stripMux);
-      Serial.println("Timer turned ON LEDs - manual lock cleared");
+      
+      if (state) {
+        portENTER_CRITICAL(&stripMux);
+        manuallyTurnedOff = false;
+        portEXIT_CRITICAL(&stripMux);
+        Serial.println("Timer turned ON LEDs - manual lock cleared");
+      }
+      
+      Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
+      syncAllMirrors();
+    } else {
+      Serial.printf("Failed to update enabled state: %s\n", fbdoIO.errorReason().c_str());
     }
-    
-    Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
-    syncAllMirrors();
-  } else {
-    Serial.printf("Failed to update enabled state: %s\n", fbdoUpload.errorReason().c_str());
+    xSemaphoreGive(firebaseMutex);
   }
   esp_task_wdt_reset();
 }
