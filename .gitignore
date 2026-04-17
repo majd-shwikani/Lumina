@@ -21,5 +21,4 @@ Voice Reco Example/platformio.ini
 Voice Reco Example/src/main.cpp
 Voice Reco Example/test/README
 coredump.bin
-coredump.txt
 analyze_coredump.py
