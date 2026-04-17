@@ -1,0 +1,46 @@
+LUMINA SYSTEM CRASH ANALYSIS REPORT
+====================================
+Date: 2026-04-17
+Status: Analyzed
+Primary Cause: Stack Overflow in 'loopTask' (Core 1)
+
+1. CRASH SUMMARY
+----------------
+The device crashed during the initialization of Firebase in the `setup()` function. The specific failure occurred within the BearSSL library during an RSA Signature Verification (part of the TLS handshake).
+
+- Crashed Task: 'loopTask' (Main Arduino thread)
+- Exception: DebugException / Stack Overflow
+- Location: lib/Firebase-ESP-Client-main/src/client/SSLClient/bssl/i31_modpow2.c:69
+- Stack Pointer (a1): 0x3fcea100 (Stack Limit: 0x3fcea040)
+- Remaining Stack: ~192 bytes (Insufficient for BearSSL RSA operations)
+
+2. TECHNICAL ROOT CAUSE
+-----------------------
+The BearSSL library, used by the Firebase-ESP-Client for secure communication, is extremely stack-intensive during the mathematical computations required for RSA encryption/decryption. 
+
+At the moment of the crash, the `loopTask` (which has a default stack size of 8KB in the Arduino-ESP32 framework) had exhausted nearly all its allocated memory. When BearSSL attempted to call `br_i31_modpow_opt`, it exceeded the stack boundary, leading to memory corruption or a hardware-triggered exception.
+
+3. CONTRIBUTING FACTORS
+-----------------------
+- Early Task Activation: The `SystemTask` (handling the rainbow boot animation) was started before `setupFirebase()`. While running on a different core or with lower priority, the overhead of context switching and interrupt handling reduces the "safety margin" of the heap/stack.
+- Memory Pressure: The use of multiple large libraries (FastLED, PubSubClient, Firebase, SinricPro, Espalexa, and TensorFlowLite) significantly increases global memory usage.
+- PSRAM Access: The coredump showed inaccessible memory at addresses like `0x3fcb2bfc`, suggesting that heap corruption might have occurred after the stack overflow, or that PSRAM timing issues are present.
+
+4. RECOMMENDED FIXES
+--------------------
+A. Increase Loop Stack Size (Immediate Fix):
+   Add the following build flag to your `platformio.ini` to increase the default Arduino stack size from 8KB to 16KB:
+   `build_flags = ... -DARDUINO_LOOP_STACK_SIZE=16384`
+
+B. Defer System Tasks:
+   Move the `xTaskCreatePinnedToCore` for `systemTask` to the very end of `setup()`, or at least after `setupFirebase()` is complete. This ensures the full resources of the chip are available for the TLS handshake.
+
+C. Review PSRAM Configuration:
+   Verify if your ESP32-S3 module uses OPI or QSPI PSRAM. Your current config uses `board_build.arduino.memory_type = qio_opi`. If your hardware is actually QSPI, this will cause intermittent crashes during heavy memory access.
+
+D. Optimize Firebase Memory:
+   Since you are using PSRAM, ensure `FIREBASE_USE_PSRAM` is correctly utilized by the library to move buffers out of the limited Internal RAM (DRAM).
+
+5. CONCLUSION
+-------------
+The system is "starving" for stack space during the cryptographic phase of the Firebase connection. Increasing the stack size and reducing concurrency during boot will stabilize the device.

@@ -66,11 +66,6 @@ memset(leds, 0, ledCount * sizeof(CRGB));
   FastLED.show();
   Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
 
-  // Start SystemTask NOW so the rainbow boot animation runs
-  // while all the slow init below (WiFi, Firebase, MQTT…) is executing.
-  xTaskCreatePinnedToCore(systemTask, "SystemTask", 4000, NULL, 0, &systemTaskHandle, 0);
-  Serial.println("   ✅ System Task started early (rainbow boot LED active)");
-
   Serial.println("⏱️  Initializing watchdog timer (30s)...");
   esp_task_wdt_init(30, true);
   Serial.println("   ✅ Watchdog configured");
@@ -149,7 +144,10 @@ memset(leds, 0, ledCount * sizeof(CRGB));
   xTaskCreatePinnedToCore(ioTask, "IOTask", 6000, NULL, 1, &ioTaskHandle, 0);
   Serial.println("      ✅ IO Task created (Core 0, 12KB stack)");
 
-  
+  // Start SystemTask LAST to avoid resource contention during slow init (WiFi, Firebase, etc.)
+  xTaskCreatePinnedToCore(systemTask, "SystemTask", 4000, NULL, 0, &systemTaskHandle, 0);
+  Serial.println("      ✅ System Task created (Core 0, 4KB stack)");
+
   systemInitialized = true;
   
   Serial.println("\n╔═══════════════════════════════════════════════════════════════╗");
