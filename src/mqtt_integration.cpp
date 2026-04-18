@@ -27,16 +27,26 @@ const unsigned long MQTT_SENSOR_PUBLISH_INTERVAL = 2000;
 
 // Centralized Effect List
 const char* EFFECT_NAMES[] = {
-    "Rainbow", "Meteor Shower", "Digital Rain", "Pulsing Spheres", "Binary Clock",
+    // Standard (0-21)
+    "Rainbow Cycle", "Meteor Shower", "Digital Rain", "Pulsing Spheres", "Binary Clock",
     "Vortex", "DNA Helix", "Audio Visualizer", "Lava Lamp", "Radar Sweep",
     "Quantum Particles", "Neural Network", "Galaxy Spin", "Crystal Growth",
     "Lightning Storm", "Ocean Depth", "Northern Lights", "Time Tunnel",
     "Cyber City", "Solar Flare", "Fire Simulation", "Solid Color",
+    // Sound Reactive (22-32)
     "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom",
     "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer",
     "Cascading Frequency", "Energy Orbits", "Audio Ripples",
+    // Revolutionary (33-42)
     "Plasma Waves", "Confetti Palettes", "Sinelon Dual", "BPM", "Juggle",
-    "Glitter Rainbow", "Pacific", "Twinkle Fox", "Color Waves", "Perlin Move"
+    "Glitter Rainbow", "Pacific", "Twinkle Fox", "Color Waves", "Perlin Move",
+    // Organic Lamps (43-52)
+    "Plasma Lamp", "Bioluminescence", "Deep Sea Volcano", "Magical Aurora",
+    "Solar Winds", "Ethereal Mist", "Bio-Pulse", "Radioactive Glow",
+    "Supernova", "Enchanted Stream",
+    // Fire Simulations (53-62)
+    "Blue Gas Flame", "Wildfire", "Candle Flame", "Campfire", "Plasma Fire",
+    "Inferno", "Smoldering Embers", "Lava Flow", "Ember Storm", "Hearth Fire"
 };
 const int NUM_EFFECTS = sizeof(EFFECT_NAMES) / sizeof(EFFECT_NAMES[0]);
 
@@ -272,7 +282,7 @@ void publishHomeAssistantDiscovery() {
   device["model"] = "LED Controller";
   device["sw_version"] = currentFirmwareVersion;
 
-  // LIGHT ENTITY
+  // LIGHT ENTITY (Now only for Color/Brightness/Power)
   {
     String configTopic = discoveryPrefix + "/light/" + deviceId + "/config";
     DynamicJsonDocument doc(4096);
@@ -288,18 +298,84 @@ void publishHomeAssistantDiscovery() {
     doc["rgb_command_topic"] = deviceTopic + "/color/cmd";
     doc["rgb_state_topic"] = deviceTopic + "/state";
     doc["rgb_value_template"] = "{{ value_json.color.r }},{{ value_json.color.g }},{{ value_json.color.b }}";
-    doc["effect_command_topic"] = deviceTopic + "/effect/cmd";
-    doc["effect_state_topic"] = deviceTopic + "/state";
-    doc["effect_value_template"] = "{{ value_json.effect }}";
     
-    JsonArray effectList = doc.createNestedArray("effect_list");
-    for (int i = 0; i < NUM_EFFECTS; i++) {
-      effectList.add(EFFECT_NAMES[i]);
-    }
-
+    // NO EFFECTS HERE - Moved to separate entity
+    
     JsonArray colorModes = doc.createNestedArray("supported_color_modes");
     colorModes.add("rgb");
 
+    doc["device"] = device;
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
+  }
+
+  // POWER SWITCH (Separate button for power)
+  {
+    String configTopic = discoveryPrefix + "/switch/" + deviceId + "_power/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " Power";
+    doc["unique_id"] = deviceId + "_power";
+    doc["command_topic"] = deviceTopic + "/light/cmd";
+    doc["state_topic"] = deviceTopic + "/state";
+    doc["value_template"] = "{{ value_json.state }}";
+    doc["payload_on"] = "ON";
+    doc["payload_off"] = "OFF";
+    doc["icon"] = "mdi:power";
+    doc["device"] = device;
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
+  }
+
+  // EFFECT SELECT (Separate selector for effects)
+  {
+    String configTopic = discoveryPrefix + "/select/" + deviceId + "_effect/config";
+    DynamicJsonDocument doc(4096);
+
+    doc["name"] = String(mqttConfig.device_name) + " Effect";
+    doc["unique_id"] = deviceId + "_effect";
+    doc["command_topic"] = deviceTopic + "/effect/cmd";
+    doc["state_topic"] = deviceTopic + "/state";
+    doc["value_template"] = "{{ value_json.effect }}";
+    
+    JsonArray options = doc.createNestedArray("options");
+    for (int i = 0; i < NUM_EFFECTS; i++) {
+      options.add(EFFECT_NAMES[i]);
+    }
+    
+    doc["icon"] = "mdi:palette-outline";
+    doc["device"] = device;
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
+  }
+
+  // BRIGHTNESS NUMBER (Separate slider for brightness)
+  {
+    String configTopic = discoveryPrefix + "/number/" + deviceId + "_brightness/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " Brightness";
+    doc["unique_id"] = deviceId + "_brightness";
+    doc["command_topic"] = deviceTopic + "/brightness/cmd";
+    doc["state_topic"] = deviceTopic + "/state";
+    doc["value_template"] = "{{ value_json.brightness }}";
+    doc["min"] = 0;
+    doc["max"] = 255;
+    doc["step"] = 1;
+    doc["icon"] = "mdi:brightness-6";
+    doc["mode"] = "slider";
     doc["device"] = device;
     doc["availability_topic"] = deviceTopic + "/status";
 
