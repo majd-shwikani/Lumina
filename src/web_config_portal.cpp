@@ -396,7 +396,7 @@ void handleSave() {
     server.send(200, "application/json", response);
 
     // Give time for response to be sent
-    delay(1000);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     digitalWrite(2, LOW);
     Serial.println("Configuration saved. Restarting...");
     ESP.restart();
@@ -450,13 +450,25 @@ void startConfigPortal() {
   server.begin();
   Serial.println("HTTP server started");
 
-  // Drive the onboard LED solid blue to signal "waiting for config"
-  onboardLed[0] = CRGB::Blue;
-  FastLED.show();
+  unsigned long lastFlash = 0;
+  bool ledOn = false;
 
   // Main loop for config portal
   while (true) {
     server.handleClient();
-    delay(10);
+    
+    // Flash blue LED every 500ms
+    if (millis() - lastFlash > 500) {
+      lastFlash = millis();
+      ledOn = !ledOn;
+      if (ledOn) {
+        onboardLed[0] = CRGB::Blue;
+      } else {
+        onboardLed[0] = CRGB::Black;
+      }
+      FastLED.show();
+    }
+    
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
