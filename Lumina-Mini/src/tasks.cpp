@@ -34,6 +34,13 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
         esp_now_add_peer(&peerInfo);
       }
       
+      // Cache the successful channel
+      File f = SPIFFS.open("/last_ch", "w");
+      if (f) {
+        f.print(currentWifiChannel);
+        f.close();
+      }
+      
       Serial.printf("✨ Gateway Offer Received! Locked to channel %d from %02X:%02X:%02X:%02X:%02X:%02X\n",
                     currentWifiChannel, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     }
@@ -54,9 +61,17 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
           Serial.println("   🔓 Auto-locking to command source...");
           gatewayFound = true;
           memcpy(gatewayMAC, mac, 6);
+          
+          // Also cache the channel if we auto-lock
+          File f = SPIFFS.open("/last_ch", "w");
+          if (f) {
+            f.print(currentWifiChannel);
+            f.close();
+          }
         }
         
         lastGatewayContact = millis();
+        // ... (rest of command handling)
         
         // Update mode based on message type
         if (isBroadcast) {
@@ -100,9 +115,25 @@ void discoveryTask(void *parameter) {
   
   LuminaMessage discoveryMsg;
   strcpy(discoveryMsg.msgType, "LUMINA_DISCOVERY");
-  esp_read_mac(discoveryMsg.targetMac, ESP_MAC_WIFI_STA); // Use targetMac field to carry our own MAC for discovery
+  esp_read_mac(discoveryMsg.targetMac, ESP_MAC_WIFI_STA); 
   
   uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+  // Try cached channel first if available
+  if (SPIFFS.exists("/last_ch")) {
+    File f = SPIFFS.open("/last_ch", "r");
+    if (f) {
+      int cachedCh = f.readString().toInt();
+      f.close();
+      if (cachedCh >= 1 && cachedCh <= 13) {
+        Serial.printf("📡 [Receiver] Trying cached channel %d first...\n", cachedCh);
+        currentWifiChannel = cachedCh;
+        esp_wifi_set_channel(cachedCh, WIFI_SECOND_CHAN_NONE);
+        esp_now_send(broadcastAddress, (uint8_t *)&discoveryMsg, sizeof(discoveryMsg));
+        vTaskDelay(200 / portTICK_PERIOD_MS); // Give it a bit more time for the first hit
+      }
+    }
+  }
 
   for(;;) {
     esp_task_wdt_reset();
@@ -116,10 +147,10 @@ void discoveryTask(void *parameter) {
         Serial.printf("📡 [Receiver] Sending Discovery on Channel %d...\n", ch);
         esp_now_send(broadcastAddress, (uint8_t *)&discoveryMsg, sizeof(discoveryMsg));
         
-        vTaskDelay(250 / portTICK_PERIOD_MS); // Slightly longer dwell time for reliability
+        vTaskDelay(80 / portTICK_PERIOD_MS); // Aggressive scan
       }
     } else {
-      // Self-Healing: Check if we lost the Gateway
+      // Self-Healing
       if (millis() - lastGatewayContact > GATEWAY_TIMEOUT) {
         Serial.printf("💔 Lost contact with Gateway (MAC: %02X:%02X...) - Restarting Hunt\n", gatewayMAC[0], gatewayMAC[1]);
         gatewayFound = false;
