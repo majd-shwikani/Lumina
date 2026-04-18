@@ -152,7 +152,8 @@ void connectToWiFi() {
 // ============================================================================
 
 void setupEspNow() {
-  WiFi.mode(WIFI_AP_STA); // Use both for potential discovery while keeping AP if needed
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA); 
   WiFi.disconnect();
   
   Serial.print("   Local MAC Address: ");

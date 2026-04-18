@@ -9,7 +9,7 @@
 
 WebServer server(80);
 
-const char* ap_ssid = "Lumina";
+const char* ap_ssid = "Lumina-mini";
 const char* ap_password = ""; // No password
 
 // HTML content for configuration page
