@@ -183,7 +183,7 @@ bool connectToMQTT() {
 }
 
 void setupMQTT() {
-  delay(1000);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
   
   loadMQTTConfig();
   mqttClient.setBufferSize(2048);
@@ -279,7 +279,7 @@ void publishHomeAssistantDiscovery() {
   }
 
   Serial.println("\n=== Publishing Home Assistant Discovery ===");
-  delay(1000);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   String deviceId = deviceID;
   String discoveryPrefix = "homeassistant";

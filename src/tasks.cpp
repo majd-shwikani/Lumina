@@ -226,7 +226,7 @@ void cloudTask(void *parameter) {
       if (millis() - lastStatsUpload >= 2000) {
         lastStatsUpload = millis();
         
-        if (sensorAvailable) updateSensorData();
+        // Removed redundant updateSensorData() - systemTask handles sensor polling
         bool present = (digitalRead(RADAR_OUTPUT) == HIGH);
         lastPresence = present;
 
