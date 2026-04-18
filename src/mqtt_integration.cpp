@@ -222,12 +222,6 @@ void mqttConnectAndSubscribe() {
         mqttClient.subscribe((deviceTopic + "/color/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/timer/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/timer_on/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/timer_off/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/auto_darkness/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/lux_threshold/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/calibrate_mic/cmd").c_str());
 
         publishHomeAssistantDiscovery();
         mqttPublishState();
@@ -245,12 +239,6 @@ void mqttConnectAndSubscribe() {
       mqttClient.subscribe((deviceTopic + "/color/cmd").c_str());
       mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
       mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/timer/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/timer_on/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/timer_off/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/auto_darkness/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/lux_threshold/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/calibrate_mic/cmd").c_str());
       
       publishHomeAssistantDiscovery();
       mqttPublishState();
@@ -274,6 +262,15 @@ void publishHomeAssistantDiscovery() {
 
   String deviceId = deviceID;
   String discoveryPrefix = "homeassistant";
+
+  // COMMON DEVICE OBJECT
+  DynamicJsonDocument device(256);
+  JsonArray identifiers = device.createNestedArray("identifiers");
+  identifiers.add(deviceId);
+  device["name"] = mqttConfig.device_name;
+  device["manufacturer"] = "Lumina";
+  device["model"] = "LED Controller";
+  device["sw_version"] = currentFirmwareVersion;
 
   // LIGHT ENTITY
   {
@@ -303,24 +300,13 @@ void publishHomeAssistantDiscovery() {
     JsonArray colorModes = doc.createNestedArray("supported_color_modes");
     colorModes.add("rgb");
 
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
-    device["name"] = mqttConfig.device_name;
-    device["manufacturer"] = "Lumina";
-    device["model"] = "LED Controller";
-    
+    doc["device"] = device;
     doc["availability_topic"] = deviceTopic + "/status";
-    doc["payload_available"] = "online";
-    doc["payload_not_available"] = "offline";
 
     String payload;
     serializeJson(doc, payload);
-    
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Light entity published");
-    }
-    delay(200);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
   }
 
   // SPEED NUMBER
@@ -339,247 +325,178 @@ void publishHomeAssistantDiscovery() {
     doc["unit_of_measurement"] = "ms";
     doc["icon"] = "mdi:speedometer";
     doc["mode"] = "slider";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
+    doc["device"] = device;
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Speed entity published");
-    }
-    delay(200);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
   }
 
-  // TIMER ON TIME
+  // PRESENCE BINARY SENSOR
   {
-    String configTopic = discoveryPrefix + "/text/" + deviceId + "_timer_on/config";
+    String configTopic = discoveryPrefix + "/binary_sensor/" + deviceId + "_presence/config";
     DynamicJsonDocument doc(1024);
 
-    doc["name"] = String(mqttConfig.device_name) + " Timer ON";
-    doc["unique_id"] = deviceId + "_timer_on";
-    doc["command_topic"] = deviceTopic + "/timer_on/cmd";
-    doc["state_topic"] = deviceTopic + "/state";
-    doc["value_template"] = "{{ value_json.timer_on }}";
-    doc["icon"] = "mdi:clock-start";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
-    doc["availability_topic"] = deviceTopic + "/status";
-
-    String payload;
-    serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Timer ON entity published");
-    }
-    delay(200);
-  }
-
-  // TIMER OFF TIME
-  {
-    String configTopic = discoveryPrefix + "/text/" + deviceId + "_timer_off/config";
-    DynamicJsonDocument doc(1024);
-
-    doc["name"] = String(mqttConfig.device_name) + " Timer OFF";
-    doc["unique_id"] = deviceId + "_timer_off";
-    doc["command_topic"] = deviceTopic + "/timer_off/cmd";
-    doc["state_topic"] = deviceTopic + "/state";
-    doc["value_template"] = "{{ value_json.timer_off }}";
-    doc["icon"] = "mdi:clock-end";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
-    doc["availability_topic"] = deviceTopic + "/status";
-
-    String payload;
-    serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Timer OFF entity published");
-    }
-    delay(200);
-  }
-
-  // TIMER ENABLED SWITCH
-  {
-    String configTopic = discoveryPrefix + "/switch/" + deviceId + "_timer/config";
-    DynamicJsonDocument doc(1024);
-
-    doc["name"] = String(mqttConfig.device_name) + " Timer";
-    doc["unique_id"] = deviceId + "_timer";
-    doc["command_topic"] = deviceTopic + "/timer/cmd";
-    doc["state_topic"] = deviceTopic + "/state";
-    doc["value_template"] = "{{ value_json.timer }}";
+    doc["name"] = String(mqttConfig.device_name) + " Presence";
+    doc["unique_id"] = deviceId + "_presence";
+    doc["state_topic"] = deviceTopic + "/sensors/presence";
+    doc["device_class"] = "presence";
     doc["payload_on"] = "ON";
     doc["payload_off"] = "OFF";
-    doc["icon"] = "mdi:clock";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
+    doc["device"] = device;
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Timer switch entity published");
-    }
-    delay(200);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
   }
 
-  // AUTO DARKNESS CONTROL SWITCH
+  // VOLTAGE SENSOR
   {
-    String configTopic = discoveryPrefix + "/switch/" + deviceId + "_auto_darkness/config";
+    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_voltage/config";
     DynamicJsonDocument doc(1024);
 
-    doc["name"] = String(mqttConfig.device_name) + " Auto Darkness";
-    doc["unique_id"] = deviceId + "_auto_darkness";
-    doc["command_topic"] = deviceTopic + "/auto_darkness/cmd";
-    doc["state_topic"] = deviceTopic + "/state";
-    doc["value_template"] = "{{ value_json.auto_darkness }}";
-    doc["payload_on"] = "ON";
-    doc["payload_off"] = "OFF";
-    doc["icon"] = "mdi:brightness-auto";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
+    doc["name"] = String(mqttConfig.device_name) + " Voltage";
+    doc["unique_id"] = deviceId + "_voltage";
+    doc["state_topic"] = deviceTopic + "/sensors/power";
+    doc["value_template"] = "{{ value_json.voltage }}";
+    doc["unit_of_measurement"] = "V";
+    doc["device_class"] = "voltage";
+    doc["state_class"] = "measurement";
+    doc["device"] = device;
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Auto Darkness entity published");
-    }
-    delay(200);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
   }
 
-  // LUX THRESHOLD NUMBER
+  // CURRENT SENSOR
   {
-    String configTopic = discoveryPrefix + "/number/" + deviceId + "_lux_threshold/config";
+    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_current/config";
     DynamicJsonDocument doc(1024);
 
-    doc["name"] = String(mqttConfig.device_name) + " Lux Threshold";
-    doc["unique_id"] = deviceId + "_lux_threshold";
-    doc["command_topic"] = deviceTopic + "/lux_threshold/cmd";
-    doc["state_topic"] = deviceTopic + "/state";
-    doc["value_template"] = "{{ value_json.lux_threshold }}";
-    doc["min"] = 0.5;
-    doc["max"] = 100;
-    doc["step"] = 0.1;
-    doc["unit_of_measurement"] = "lux";
-    doc["icon"] = "mdi:lightbulb";
-    doc["mode"] = "box";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
+    doc["name"] = String(mqttConfig.device_name) + " Current";
+    doc["unique_id"] = deviceId + "_current";
+    doc["state_topic"] = deviceTopic + "/sensors/power";
+    doc["value_template"] = "{{ value_json.current }}";
+    doc["unit_of_measurement"] = "mA";
+    doc["device_class"] = "current";
+    doc["state_class"] = "measurement";
+    doc["device"] = device;
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Lux Threshold entity published");
-    }
-    delay(200);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
   }
 
-  // MICROPHONE CALIBRATION BUTTON
+  // POWER SENSOR
   {
-    String configTopic = discoveryPrefix + "/button/" + deviceId + "_calibrate_mic/config";
+    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_power/config";
     DynamicJsonDocument doc(1024);
 
-    doc["name"] = String(mqttConfig.device_name) + " Calibrate Mic";
-    doc["unique_id"] = deviceId + "_calibrate_mic";
-    doc["command_topic"] = deviceTopic + "/calibrate_mic/cmd";
-    doc["payload_press"] = "PRESS";
-    doc["icon"] = "mdi:microphone";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
+    doc["name"] = String(mqttConfig.device_name) + " Power";
+    doc["unique_id"] = deviceId + "_power";
+    doc["state_topic"] = deviceTopic + "/sensors/power";
+    doc["value_template"] = "{{ value_json.power }}";
+    doc["unit_of_measurement"] = "mW";
+    doc["device_class"] = "power";
+    doc["state_class"] = "measurement";
+    doc["device"] = device;
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Calibrate Mic button published");
-    }
-    delay(200);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
   }
 
-  // LUX SENSOR
+  // UPTIME SENSOR
   {
-    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_lux/config";
+    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_uptime/config";
     DynamicJsonDocument doc(1024);
 
-    doc["name"] = String(mqttConfig.device_name) + " Lux";
-    doc["unique_id"] = deviceId + "_lux";
-    doc["state_topic"] = deviceTopic + "/sensors/lux";
-    doc["unit_of_measurement"] = "lux";
-    doc["icon"] = "mdi:lightbulb";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
+    doc["name"] = String(mqttConfig.device_name) + " Uptime";
+    doc["unique_id"] = deviceId + "_uptime";
+    doc["state_topic"] = deviceTopic + "/sensors/system";
+    doc["value_template"] = "{{ value_json.uptime }}";
+    doc["icon"] = "mdi:timer-outline";
+    doc["device"] = device;
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Lux sensor published");
-    }
-    delay(200);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
   }
 
-  // AUDIO LEVEL SENSOR
+  // WIFI STRENGTH SENSOR
   {
-    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_audio/config";
+    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_wifi/config";
     DynamicJsonDocument doc(1024);
 
-    doc["name"] = String(mqttConfig.device_name) + " Audio Level";
-    doc["unique_id"] = deviceId + "_audio";
-    doc["state_topic"] = deviceTopic + "/sensors/audio_level";
+    doc["name"] = String(mqttConfig.device_name) + " WiFi Signal";
+    doc["unique_id"] = deviceId + "_wifi";
+    doc["state_topic"] = deviceTopic + "/sensors/system";
+    doc["value_template"] = "{{ value_json.wifi_rssi }}";
+    doc["unit_of_measurement"] = "dBm";
+    doc["device_class"] = "signal_strength";
+    doc["state_class"] = "measurement";
+    doc["device"] = device;
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
+  }
+
+  // CPU TEMP SENSOR
+  {
+    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_cpu_temp/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " CPU Temp";
+    doc["unique_id"] = deviceId + "_cpu_temp";
+    doc["state_topic"] = deviceTopic + "/sensors/system";
+    doc["value_template"] = "{{ value_json.cpu_temp }}";
+    doc["unit_of_measurement"] = "°C";
+    doc["device_class"] = "temperature";
+    doc["state_class"] = "measurement";
+    doc["device"] = device;
+    doc["availability_topic"] = deviceTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
+  }
+
+  // RAM USAGE SENSOR
+  {
+    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_ram/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = String(mqttConfig.device_name) + " RAM Usage";
+    doc["unique_id"] = deviceId + "_ram";
+    doc["state_topic"] = deviceTopic + "/sensors/system";
+    doc["value_template"] = "{{ value_json.ram_usage }}";
     doc["unit_of_measurement"] = "%";
-    doc["icon"] = "mdi:volume-high";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
+    doc["icon"] = "mdi:memory";
+    doc["state_class"] = "measurement";
+    doc["device"] = device;
     doc["availability_topic"] = deviceTopic + "/status";
 
     String payload;
     serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Audio Level sensor published");
-    }
-    delay(200);
-  }
-
-  // FIRMWARE VERSION SENSOR
-  {
-    String configTopic = discoveryPrefix + "/sensor/" + deviceId + "_firmware/config";
-    DynamicJsonDocument doc(1024);
-
-    doc["name"] = String(mqttConfig.device_name) + " Firmware";
-    doc["unique_id"] = deviceId + "_firmware";
-    doc["state_topic"] = deviceTopic + "/sensors/firmware";
-    doc["icon"] = "mdi:information";
-    
-    JsonObject device = doc.createNestedObject("device");
-    JsonArray identifiers = device.createNestedArray("identifiers");
-    identifiers.add(deviceId);
-    doc["availability_topic"] = deviceTopic + "/status";
-
-    String payload;
-    serializeJson(doc, payload);
-    if (mqttClient.publish(configTopic.c_str(), payload.c_str(), true)) {
-      Serial.println("✓ Firmware version sensor published");
-    }
-    delay(200);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    delay(100);
   }
 
   Serial.println("=== Discovery Complete ===\n");
@@ -615,11 +532,6 @@ void mqttPublishState() {
   stateDoc["color"]["b"] = effectColor & 0xFF;
   
   stateDoc["speed"] = effectSpeed;
-  stateDoc["timer"] = timerEnabled ? "ON" : "OFF";
-  stateDoc["timer_on"] = timerOnTime;
-  stateDoc["timer_off"] = timerOffTime;
-  stateDoc["auto_darkness"] = autoDarknessControl ? "ON" : "OFF";
-  stateDoc["lux_threshold"] = luxThreshold;
 
   String statePayload;
   serializeJson(stateDoc, statePayload);
@@ -637,16 +549,32 @@ void mqttPublishSensorData() {
   }
   lastMQTTSensorPublish = now;
 
-  if (sensorAvailable) {
-    String luxPayload = String(currentLux, 2);
-    mqttClient.publish((deviceTopic + "/sensors/lux").c_str(), luxPayload.c_str());
-  }
+  // 1. Presence Sensor
+  bool present = (digitalRead(RADAR_OUTPUT) == HIGH);
+  mqttClient.publish((deviceTopic + "/sensors/presence").c_str(), present ? "ON" : "OFF");
 
-  String audioPayload = String((int)(globalAudioLevel * 100));
-  mqttClient.publish((deviceTopic + "/sensors/audio_level").c_str(), audioPayload.c_str());
+  // 2. Power Data
+  DynamicJsonDocument powerDoc(256);
+  powerDoc["voltage"] = String(currentVoltage, 2);
+  powerDoc["current"] = String(currentCurrent, 1);
+  powerDoc["power"] = String(currentPower, 0);
+  
+  String powerPayload;
+  serializeJson(powerDoc, powerPayload);
+  mqttClient.publish((deviceTopic + "/sensors/power").c_str(), powerPayload.c_str());
 
-  extern const char* currentFirmwareVersion;
-  mqttClient.publish((deviceTopic + "/sensors/firmware").c_str(), currentFirmwareVersion);
+  // 3. System Data
+  DynamicJsonDocument sysDoc(512);
+  sysDoc["uptime"] = formatUptime(millis());
+  sysDoc["wifi_rssi"] = WiFi.RSSI();
+  sysDoc["cpu_temp"] = String(currentCpuTemp, 1);
+  
+  float ramUsage = (1.0 - (float)ESP.getFreeHeap() / (float)ESP.getHeapSize()) * 100.0;
+  sysDoc["ram_usage"] = String(ramUsage, 1);
+  
+  String sysPayload;
+  serializeJson(sysDoc, sysPayload);
+  mqttClient.publish((deviceTopic + "/sensors/system").c_str(), sysPayload.c_str());
 }
 
 // ============================================================================
@@ -663,9 +591,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 
   String topicStr(topic);
-  // Extract just the command type from the topic for a clean log
-  String cmdType = topicStr.substring(topicStr.lastIndexOf('/') - 3);
-  Serial.printf("📡 [MQTT] %-18s → %s\n", topicStr.substring(topicStr.lastIndexOf('/', topicStr.lastIndexOf('/')-1)+1).c_str(), message);
+  Serial.printf("📡 [MQTT] %s → %s\n", topicStr.c_str(), message);
 
   // Light control
   if (topicStr.endsWith("/light/cmd")) {
@@ -697,12 +623,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     lastMQTTStatePublish = 0;
     mqttPublishState();
   }
-  // Color control - Handle both JSON and comma-separated formats
+  // Color control
   else if (topicStr.endsWith("/color/cmd")) {
     uint8_t r = 0, g = 0, b = 0;
     bool parsed = false;
     
-    // Try parsing as JSON first
     DynamicJsonDocument doc(256);
     if (deserializeJson(doc, message) == DeserializationError::Ok) {
       if (doc.containsKey("r") && doc.containsKey("g") && doc.containsKey("b")) {
@@ -713,12 +638,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       }
     }
     
-    // If JSON parsing failed, try comma-separated format (Home Assistant default)
     if (!parsed) {
       String msgStr(message);
       int commaPos1 = msgStr.indexOf(',');
       int commaPos2 = msgStr.lastIndexOf(',');
-      
       if (commaPos1 > 0 && commaPos2 > commaPos1) {
         r = atoi(msgStr.substring(0, commaPos1).c_str());
         g = atoi(msgStr.substring(commaPos1 + 1, commaPos2).c_str());
@@ -729,38 +652,27 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     
     if (parsed) {
       effectColor = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
-      
       char colorStr[7];
       sprintf(colorStr, "%02X%02X%02X", r, g, b);
       Firebase.RTDB.setString(&fbdoMQTT, (basePath + "/local/color").c_str(), colorStr);
-      
       lastMQTTStatePublish = 0;
       mqttPublishState();
-    } else {
-      Serial.println("   ⚠️  Failed to parse color command");
     }
   }
   // Effect selection
   else if (topicStr.endsWith("/effect/cmd")) {
     String payloadStr = String(message);
     int newEffect = -1;
-
     for (int i = 0; i < NUM_EFFECTS; i++) {
       if (payloadStr.equalsIgnoreCase(EFFECT_NAMES[i])) {
         newEffect = i;
         break;
       }
     }
-
     if (newEffect == -1) {
-      if (payloadStr == "0") {
-        newEffect = 0;
-      } else {
-        int val = payloadStr.toInt();
-        if (val > 0) newEffect = val;
-      }
+      int val = payloadStr.toInt();
+      if (val >= 0 && val < NUM_EFFECTS) newEffect = val;
     }
-    
     if (newEffect >= 0 && newEffect < NUM_EFFECTS) {
       currentEffect = newEffect;
       Firebase.RTDB.setInt(&fbdoMQTT, (basePath + "/local/effect").c_str(), currentEffect);
@@ -775,55 +687,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     effectSpeed = speed;
     Firebase.RTDB.setInt(&fbdoMQTT, (basePath + "/local/speed").c_str(), speed);
   }
-  // Timer enabled
-  else if (topicStr.endsWith("/timer/cmd")) {
-    timerEnabled = strcmp(message, "ON") == 0;
-    Firebase.RTDB.setBool(&fbdoMQTT, (basePath + "/local/timer_enabled").c_str(), timerEnabled);
-    lastMQTTStatePublish = 0;
-    mqttPublishState();
-  }
-  // Timer ON time
-  else if (topicStr.endsWith("/timer_on/cmd")) {
-    if (strlen(message) == 5) {
-      strncpy(timerOnTime, message, sizeof(timerOnTime));
-      Firebase.RTDB.setString(&fbdoMQTT, (basePath + "/local/timer_on").c_str(), timerOnTime);
-      lastMQTTStatePublish = 0;
-      mqttPublishState();
-    }
-  }
-  // Timer OFF time
-  else if (topicStr.endsWith("/timer_off/cmd")) {
-    if (strlen(message) == 5) {
-      strncpy(timerOffTime, message, sizeof(timerOffTime));
-      Firebase.RTDB.setString(&fbdoMQTT, (basePath + "/local/timer_off").c_str(), timerOffTime);
-      lastMQTTStatePublish = 0;
-      mqttPublishState();
-    }
-  }
-  // Auto Darkness Control
-  else if (topicStr.endsWith("/auto_darkness/cmd")) {
-    autoDarknessControl = strcmp(message, "ON") == 0;
-    Firebase.RTDB.setBool(&fbdoMQTT, (basePath + "/local/auto_darkness_control").c_str(), autoDarknessControl);
-    lastMQTTStatePublish = 0;
-    mqttPublishState();
-  }
-  // Lux Threshold
-  else if (topicStr.endsWith("/lux_threshold/cmd")) {
-    float threshold = atof(message);
-    threshold = constrain(threshold, 0.5, 100.0);
-    luxThreshold = threshold;
-    Firebase.RTDB.setFloat(&fbdoMQTT, (basePath + "/local/lux_threshold").c_str(), threshold);
-    lastMQTTStatePublish = 0;
-    mqttPublishState();
-  }
-  // Microphone Calibration
-  else if (topicStr.endsWith("/calibrate_mic/cmd")) {
-    Serial.println("📡 [MQTT] Mic calibration triggered");
-    Firebase.RTDB.setBool(&fbdoMQTT, (basePath + "/local/mic_calibration").c_str(), true);
-    triggerMicCalibration = true;
-  }
 
-  // Mirror changes to ESP-NOW receivers
   broadcastGatewayState();
 }
 
