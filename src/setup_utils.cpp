@@ -97,6 +97,7 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
       receivers[receiverCount].effect = 0;
       receivers[receiverCount].speed = 50;
       receivers[receiverCount].color = 0xFF0000;
+      receivers[receiverCount].brightness = 255;
       receivers[receiverCount].enabled = true;
       receivers[receiverCount].needsFirebaseSync = true; // Mark for task sync
       receiverCount++;
@@ -229,6 +230,7 @@ void broadcastGatewayState() {
       msg.effect = receivers[i].effect;
       msg.speed = receivers[i].speed;
       msg.color = receivers[i].color;
+      msg.brightness = receivers[i].brightness;
       msg.enabled = receivers[i].enabled;
 
       esp_now_send(receivers[i].mac, (uint8_t *)&msg, sizeof(msg));
