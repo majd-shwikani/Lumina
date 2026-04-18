@@ -70,7 +70,7 @@ bool loadMQTTConfig() {
   mqttConfig.enabled = doc["enabled"] | false;
   strlcpy(mqttConfig.device_name, doc["device_name"] | "Lumina", sizeof(mqttConfig.device_name));
 
-  Serial.println("MQTT config loaded from SPIFFS");
+  Serial.printf("   ✅ MQTT config loaded from SPIFFS (broker: %s)\n", mqttConfig.broker_address);
   return true;
 }
 
@@ -91,7 +91,7 @@ void saveMQTTConfig() {
 
   serializeJson(doc, configFile);
   configFile.close();
-  Serial.println("MQTT config saved to SPIFFS");
+  Serial.println("   ✅ MQTT config saved to SPIFFS");
 }
 
 // ============================================================================
@@ -105,50 +105,43 @@ void updateMQTTConfigFromFirebase() {
   if (Firebase.RTDB.getString(&fbdoMQTT, brokerPath.c_str())) {
     String brokerStr = fbdoMQTT.stringData();
     strlcpy(mqttConfig.broker_address, brokerStr.c_str(), sizeof(mqttConfig.broker_address));
-    Serial.printf("MQTT broker: %s\n", mqttConfig.broker_address);
   }
 
   String portPath = mqttBasePath + "/broker_port";
   if (Firebase.RTDB.getInt(&fbdoMQTT, portPath.c_str())) {
     mqttConfig.broker_port = fbdoMQTT.intData();
-    Serial.printf("MQTT port: %d\n", mqttConfig.broker_port);
   } else {
     mqttConfig.broker_port = 1883;
   }
 
   String usernamePath = mqttBasePath + "/username";
   if (Firebase.RTDB.getString(&fbdoMQTT, usernamePath.c_str())) {
-    String usernameStr = fbdoMQTT.stringData();
-    strlcpy(mqttConfig.username, usernameStr.c_str(), sizeof(mqttConfig.username));
-    Serial.println("MQTT username loaded");
+    strlcpy(mqttConfig.username, fbdoMQTT.stringData().c_str(), sizeof(mqttConfig.username));
   }
 
   String passwordPath = mqttBasePath + "/password";
   if (Firebase.RTDB.getString(&fbdoMQTT, passwordPath.c_str())) {
-    String passwordStr = fbdoMQTT.stringData();
-    strlcpy(mqttConfig.password, passwordStr.c_str(), sizeof(mqttConfig.password));
-    Serial.println("MQTT password loaded");
+    strlcpy(mqttConfig.password, fbdoMQTT.stringData().c_str(), sizeof(mqttConfig.password));
   }
 
   String enabledPath = mqttBasePath + "/enabled";
   if (Firebase.RTDB.getBool(&fbdoMQTT, enabledPath.c_str())) {
     mqttConfig.enabled = fbdoMQTT.boolData();
-    Serial.printf("MQTT enabled: %s\n", mqttConfig.enabled ? "true" : "false");
   } else {
     mqttConfig.enabled = false;
   }
 
   String deviceNamePath = mqttBasePath + "/device_name";
   if (Firebase.RTDB.getString(&fbdoMQTT, deviceNamePath.c_str())) {
-    String deviceNameStr = fbdoMQTT.stringData();
-    strlcpy(mqttConfig.device_name, deviceNameStr.c_str(), sizeof(mqttConfig.device_name));
-    Serial.printf("MQTT device name: %s\n", mqttConfig.device_name);
+    strlcpy(mqttConfig.device_name, fbdoMQTT.stringData().c_str(), sizeof(mqttConfig.device_name));
   } else {
     strlcpy(mqttConfig.device_name, "Lumina", sizeof(mqttConfig.device_name));
   }
 
   saveMQTTConfig();
-  Serial.println("MQTT configuration synchronized with Firebase");
+  Serial.printf("   ✅ MQTT config synced (broker: %s:%d, enabled: %s)\n",
+                mqttConfig.broker_address, mqttConfig.broker_port,
+                mqttConfig.enabled ? "yes" : "no");
 }
 
 // ============================================================================
@@ -157,28 +150,28 @@ void updateMQTTConfigFromFirebase() {
 
 bool connectToMQTT() {
   if (!mqttConfig.enabled || strlen(mqttConfig.broker_address) == 0) {
-    Serial.println("MQTT not enabled or broker address not set");
+    Serial.println("   ⚠️  MQTT not enabled or broker address not set");
     return false;
   }
 
-  Serial.printf("Connecting to MQTT broker: %s:%d\n", mqttConfig.broker_address, mqttConfig.broker_port);
+  Serial.printf("   Connecting to MQTT broker: %s:%d...\n", mqttConfig.broker_address, mqttConfig.broker_port);
 
   mqttClient.setServer(mqttConfig.broker_address, mqttConfig.broker_port);
   mqttClient.setCallback(mqttCallback);
 
   if (strlen(mqttConfig.username) > 0) {
     if (mqttClient.connect(deviceID.c_str(), mqttConfig.username, mqttConfig.password)) {
-      Serial.println("Connected to MQTT broker");
+      Serial.println("   ✅ MQTT connected (authenticated)");
       return true;
     }
   } else {
     if (mqttClient.connect(deviceID.c_str())) {
-      Serial.println("Connected to MQTT broker (no auth)");
+      Serial.println("   ✅ MQTT connected (no auth)");
       return true;
     }
   }
 
-  Serial.printf("MQTT connection failed, rc=%d\n", mqttClient.state());
+  Serial.printf("   ❌ MQTT connection failed, state=%d\n", mqttClient.state());
   return false;
 }
 
@@ -222,7 +215,7 @@ void mqttConnectAndSubscribe() {
       lastAttempt = now;
       if (connectToMQTT()) {
         mqttConnected = true;
-        Serial.println("MQTT reconnected");
+        Serial.println("📡 [MQTT] Reconnected → subscribing to topics");
         
         mqttClient.subscribe((deviceTopic + "/light/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/brightness/cmd").c_str());
@@ -235,8 +228,6 @@ void mqttConnectAndSubscribe() {
         mqttClient.subscribe((deviceTopic + "/auto_darkness/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/lux_threshold/cmd").c_str());
         mqttClient.subscribe((deviceTopic + "/calibrate_mic/cmd").c_str());
-        
-        Serial.println("Subscribed to all command topics");
 
         publishHomeAssistantDiscovery();
         mqttPublishState();
@@ -247,7 +238,7 @@ void mqttConnectAndSubscribe() {
   } else {
     if (!mqttConnected) {
       mqttConnected = true;
-      Serial.println("MQTT connection established");
+      Serial.println("📡 [MQTT] Connection established → subscribing to topics");
       
       mqttClient.subscribe((deviceTopic + "/light/cmd").c_str());
       mqttClient.subscribe((deviceTopic + "/brightness/cmd").c_str());
@@ -672,7 +663,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 
   String topicStr(topic);
-  Serial.printf("MQTT Message - Topic: %s, Payload: %s\n", topic, message);
+  // Extract just the command type from the topic for a clean log
+  String cmdType = topicStr.substring(topicStr.lastIndexOf('/') - 3);
+  Serial.printf("📡 [MQTT] %-18s → %s\n", topicStr.substring(topicStr.lastIndexOf('/', topicStr.lastIndexOf('/')-1)+1).c_str(), message);
 
   // Light control
   if (topicStr.endsWith("/light/cmd")) {
@@ -710,7 +703,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         g = doc["g"] | 0;
         b = doc["b"] | 0;
         parsed = true;
-        Serial.println("Color parsed as JSON");
       }
     }
     
@@ -725,7 +717,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         g = atoi(msgStr.substring(commaPos1 + 1, commaPos2).c_str());
         b = atoi(msgStr.substring(commaPos2 + 1).c_str());
         parsed = true;
-        Serial.printf("Color parsed as CSV: R=%d, G=%d, B=%d\n", r, g, b);
       }
     }
     
@@ -736,11 +727,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       sprintf(colorStr, "%02X%02X%02X", r, g, b);
       Firebase.RTDB.setString(&fbdoMQTT, (basePath + "/local/color").c_str(), colorStr);
       
-      Serial.printf("Color updated: #%s\n", colorStr);
       lastMQTTStatePublish = 0;
       mqttPublishState();
     } else {
-      Serial.println("Failed to parse color command");
+      Serial.println("   ⚠️  Failed to parse color command");
     }
   }
   // Effect selection
@@ -821,7 +811,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
   // Microphone Calibration
   else if (topicStr.endsWith("/calibrate_mic/cmd")) {
-    Serial.println("Microphone calibration triggered via MQTT");
+    Serial.println("📡 [MQTT] Mic calibration triggered");
     Firebase.RTDB.setBool(&fbdoMQTT, (basePath + "/local/mic_calibration").c_str(), true);
     triggerMicCalibration = true;
   }

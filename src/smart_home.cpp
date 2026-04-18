@@ -12,7 +12,7 @@
 SinricProLight &lumina = SinricPro[LIGHT_ID];
 
 bool onPowerState(const String &deviceId, bool &state) {
-  Serial.printf("Smart Home: Device %s turned %s\n", deviceId.c_str(), state ? "on" : "off");
+  Serial.printf("🏠 [SinricPro] Power → %s\n", state ? "ON" : "OFF");
   portENTER_CRITICAL(&stripMux);
   stripEnabled = state;
   manuallyTurnedOff = !state;
@@ -22,15 +22,15 @@ bool onPowerState(const String &deviceId, bool &state) {
 }
 
 bool onBrightness(const String &deviceId, int &brightness) {
-  Serial.printf("Smart Home: Device %s brightness changed to %d\n", deviceId.c_str(), brightness);
   uint8_t br = (brightness * 255) / 100;
+  Serial.printf("🏠 [SinricPro] Brightness → %d%% (raw: %d)\n", brightness, br);
   FastLED.setBrightness(br);
   syncAllMirrors();
   return true;
 }
 
 bool onColor(const String &deviceId, byte r, byte g, byte b) {
-  Serial.printf("Smart Home: Device %s color changed to R:%d G:%d B:%d\n", deviceId.c_str(), r, g, b);
+  Serial.printf("🏠 [SinricPro] Color → #%02X%02X%02X (R:%d G:%d B:%d)\n", r, g, b, r, g, b);
   portENTER_CRITICAL(&stripMux);
   effectColor = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
   portEXIT_CRITICAL(&stripMux);

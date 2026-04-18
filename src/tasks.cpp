@@ -142,13 +142,12 @@ void updateTimerState(bool state) {
       portENTER_CRITICAL(&stripMux);
       manuallyTurnedOff = false;
       portEXIT_CRITICAL(&stripMux);
-      Serial.println("Timer turned ON LEDs - manual lock cleared");
     }
     
-    Serial.printf("Timer updated enabled state to: %s\n", state ? "true" : "false");
+    Serial.printf("⏱️  [Timer] LEDs → %s\n", state ? "ON" : "OFF");
     syncAllMirrors();
   } else {
-    Serial.printf("Failed to update enabled state: %s\n", fbdoSystem.errorReason().c_str());
+    Serial.printf("   ❌ [Timer] Failed to update state: %s\n", fbdoSystem.errorReason().c_str());
   }
   esp_task_wdt_reset();
 }
@@ -327,7 +326,10 @@ void systemTask(void *parameter) {
           portEXIT_CRITICAL(&stripMux);
           lastStateChangeTime = now;
           syncAllMirrors();
-          Serial.printf("💡 [Automation] Target: %d, Lux: %.2f\n", targetState, currentLux);
+          Serial.printf("⚙️  [Automation] LEDs → %s (presence=%s, lux=%.2f)\n",
+                        targetState ? "ON" : "OFF",
+                        presenceDetected ? "yes" : "no",
+                        currentLux);
         }
       }
     }

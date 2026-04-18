@@ -58,7 +58,7 @@ int ledCount;
 String basePath;
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmwareS3.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/versionS3.txt";
-const char* currentFirmwareVersion = "2.0.0";
+const char* currentFirmwareVersion = "2.0.1";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
 unsigned long lastUpdateCheck = 0;
 unsigned long buttonPressStart = 0;
@@ -122,8 +122,8 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
   }
   // 2. Log if we see commands from others
   else if (strcmp(incoming->msgType, "LUMINA_CMD") == 0) {
-    Serial.printf("ℹ️ [Gateway] Observed CMD packet from %02X:%02X... (Effect=%d)\n", 
-                  mac[0], mac[1], incoming->effect);
+    Serial.printf("📶 [ESP-NOW] CMD observed from %02X:%02X (Effect=%d, En=%s)\n",
+                  mac[0], mac[1], incoming->effect, incoming->enabled ? "Y" : "N");
   }
 }
 

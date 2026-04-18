@@ -209,25 +209,25 @@ void streamCallback(FirebaseStream data) {
     
     if (subPath == "/effect") {
       currentEffect = data.intData();
-      Serial.printf("   [Local] Effect: %d\n", currentEffect);
+      Serial.printf("🔥 [Firebase] Effect → %d\n", currentEffect);
       syncAllMirrors();
     }
     else if (subPath == "/speed") {
       effectSpeed = data.intData();
-      Serial.printf("   [Local] Speed: %d\n", effectSpeed);
+      Serial.printf("🔥 [Firebase] Speed → %d ms\n", effectSpeed);
       syncAllMirrors();
     }
     else if (subPath == "/brightness") {
       globalBrightness = data.intData();
       FastLED.setBrightness(globalBrightness);
-      Serial.printf("   [Local] Brightness: %d\n", globalBrightness);
+      Serial.printf("🔥 [Firebase] Brightness → %d\n", globalBrightness);
       syncAllMirrors();
     }
     else if (subPath == "/color") {
       String colorStr = data.stringData();
       if (colorStr.length() == 6) {
         effectColor = strtoul(colorStr.c_str(), NULL, 16);
-        Serial.printf("   [Local] Color: %s\n", colorStr.c_str());
+        Serial.printf("🔥 [Firebase] Color → #%s\n", colorStr.c_str());
         syncAllMirrors();
       }
     }
@@ -237,34 +237,44 @@ void streamCallback(FirebaseStream data) {
       stripEnabled = newState;
       portEXIT_CRITICAL(&stripMux);
       manuallyTurnedOff = !newState;
+      Serial.printf("🔥 [Firebase] Power → %s\n", newState ? "ON" : "OFF");
       syncAllMirrors();
     }
     else if (subPath == "/lux_threshold") {
       luxThreshold = data.floatData();
+      Serial.printf("🔥 [Firebase] Lux Threshold → %.2f\n", luxThreshold);
     }
     else if (subPath == "/auto_darkness_control") {
       autoDarknessControl = data.boolData();
+      Serial.printf("🔥 [Firebase] Auto Darkness → %s\n", autoDarknessControl ? "ON" : "OFF");
     }
     else if (subPath == "/presence_detection_enabled") {
       presenceDetectionEnabled = data.boolData();
+      Serial.printf("🔥 [Firebase] Presence Detection → %s\n", presenceDetectionEnabled ? "ON" : "OFF");
     }
     else if (subPath == "/timer_enabled") {
       timerEnabled = data.boolData();
+      Serial.printf("🔥 [Firebase] Timer → %s\n", timerEnabled ? "ON" : "OFF");
     }
     else if (subPath == "/timer_on") {
       strncpy(timerOnTime, data.stringData().c_str(), sizeof(timerOnTime));
+      Serial.printf("🔥 [Firebase] Timer ON → %s\n", timerOnTime);
     }
     else if (subPath == "/timer_off") {
       strncpy(timerOffTime, data.stringData().c_str(), sizeof(timerOffTime));
+      Serial.printf("🔥 [Firebase] Timer OFF → %s\n", timerOffTime);
     }
     else if (subPath.startsWith("/mqtt")) {
+      Serial.println("🔥 [Firebase] MQTT config changed → reloading...");
       updateMQTTConfigFromFirebase();
     }
     else if (subPath == "/reset" && data.boolData() == true) {
+      Serial.println("🔥 [Firebase] RESET command received → restarting...");
       if (SPIFFS.exists("/config.json")) SPIFFS.remove("/config.json");
       ESP.restart();
     }
     else if (subPath == "/mic_calibration" && data.boolData() == true) {
+      Serial.println("🔥 [Firebase] Mic calibration triggered");
       triggerMicCalibration = true;
     }
   }
@@ -299,6 +309,7 @@ void streamCallback(FirebaseStream data) {
         else if (property == "/enabled") receivers[idx].enabled = data.boolData();
         else if (property == "/isMirror") receivers[idx].isMirror = data.boolData();
         
+        Serial.printf("🔥 [Firebase] Receiver %s → %s\n", macStr.c_str(), property.c_str() + 1);
         // Route command if not mirroring (mirroring handled by local changes)
         if (!receivers[idx].isMirror) {
           routeCommandToReceiver(idx);
