@@ -669,15 +669,22 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   // Light control
   if (topicStr.endsWith("/light/cmd")) {
-    if (strcmp(message, "ON") == 0) {
-      stripEnabled = true;
-      Firebase.RTDB.setBool(&fbdoMQTT, (basePath + "/local/enabled").c_str(), true);
-    } else if (strcmp(message, "OFF") == 0) {
-      stripEnabled = false;
-      Firebase.RTDB.setBool(&fbdoMQTT, (basePath + "/local/enabled").c_str(), false);
+    bool newState = (strcmp(message, "ON") == 0);
+    
+    portENTER_CRITICAL(&stripMux);
+    stripEnabled = newState;
+    portEXIT_CRITICAL(&stripMux);
+    
+    manuallyTurnedOff = !newState;
+    
+    if (!newState) {
       FastLED.clear();
       FastLED.show();
     }
+    
+    Firebase.RTDB.setBool(&fbdoMQTT, (basePath + "/local/enabled").c_str(), newState);
+    syncAllMirrors();
+    
     lastMQTTStatePublish = 0;
     mqttPublishState();
   }
