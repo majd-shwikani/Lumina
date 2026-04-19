@@ -1,10 +1,6 @@
-src/config.h
-src/config.h
-serial_reader.py
-log.txt
-serial_reader.py
-coredump.bin
-Tools/coredump_temp.bin
-/Lumina-Mini/.vscode
+.pio/
+.vscode/
+*.db
+ipch/
+obj/
 /Lumina S3/.vscode
-/Lumina S3/.pio
