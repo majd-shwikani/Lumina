@@ -1,0 +1,39 @@
+# Crash Analysis Report - coredump5.txt
+
+## 1. Summary of Crash
+- **Crashed Task:** `SystemTask` (TCB: 0x3fcf73e4)
+- **Exception Type:** `0x41 (DebugException)` - On ESP32-S3, this typically indicates a **Hardware Stack Overflow Protection** trigger.
+- **Crash Location:** `br_sha2small_round` (BearSSL library)
+- **Primary Trigger:** A call to `updateTimerState(true)` which initiated a Firebase RTDB `setBool` operation.
+
+## 2. Root Cause Analysis
+The crash is a definitive **Stack Overflow**.
+
+### Technical Details:
+1. **Stack Allocation:** The `SystemTask` was created with a stack size of **4,000 bytes** (hardcoded in `main.cpp`).
+2. **Call Depth:** The stack trace reveals an extremely deep call hierarchy (27+ levels). It starts at `systemTask`, goes through `updateTimerState`, into the Firebase library, and finally deep into the BearSSL (BSSL) cryptographic functions.
+3. **Memory Pressure:** SSL/TLS handshakes are resource-intensive. BearSSL's SHA calculation and handshake management easily exceed 4KB of stack.
+4. **Stack Margin:** At the time of the crash, the stack pointer (`a1 = 0x3fcf63a0`) was only **192 bytes** away from the start of the allocated stack block (`0x3fcf62e0`). The next function call or local variable allocation triggered the ESP32-S3 hardware stack guard.
+
+## 3. Sequence of Events
+1. The `systemTask` reached the timer logic section.
+2. `checkTimeMatch` returned true for `timerOnTime`.
+3. `updateTimerState(true)` was called.
+4. The function attempted to update Firebase: `Firebase.RTDB.setBool(&fbdoSystem, ...)`.
+5. Since Firebase requires a secure connection, it initiated a TLS handshake using BearSSL.
+6. The cryptographic operations (SHA256) pushed the stack usage past the 4000-byte limit.
+7. The CPU triggered a `DebugException` to prevent memory corruption.
+
+## 4. Recommendations
+
+### A. Increase SystemTask Stack Size (Immediate Fix)
+Update the task creation in `src/main.cpp` to provide at least 8KB (8192) or 16KB (16384) of stack, as TLS operations are heavy:
+```cpp
+xTaskCreatePinnedToCore(systemTask, "SystemTask", 16384, NULL, 1, &systemTaskHandle, 1);
+```
+
+### B. Move Heavy Logic to CloudTask or loopTask
+`loopTask` is already configured with 16KB of stack in `platformio.ini`. Consider moving Firebase/Network updates to a dedicated task with sufficient resources rather than performing them inside the `SystemTask`, which was originally intended to be "lightweight" for animations.
+
+### C. Use Async Firebase Operations
+If possible, use non-blocking or queued Firebase requests to avoid deep blocking call stacks in the middle of time-sensitive tasks.

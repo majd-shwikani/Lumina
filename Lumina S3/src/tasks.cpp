@@ -130,26 +130,10 @@ bool checkTimeMatch(const char* scheduledTime) {
 }
 
 void updateTimerState(bool state) {
-  esp_task_wdt_reset();
-  
-  String enabledPath = basePath + "/local/enabled";
-  if (Firebase.RTDB.setBool(&fbdoSystem, enabledPath.c_str(), state)) {
-    portENTER_CRITICAL(&stripMux);
-    stripEnabled = state;
-    portEXIT_CRITICAL(&stripMux);
-    
-    if (state) {
-      portENTER_CRITICAL(&stripMux);
-      manuallyTurnedOff = false;
-      portEXIT_CRITICAL(&stripMux);
-    }
-    
-    Serial.printf("⏱️  [Timer] LEDs → %s\n", state ? "ON" : "OFF");
-    syncAllMirrors();
-  } else {
-    Serial.printf("   ❌ [Timer] Failed to update state: %s\n", fbdoSystem.errorReason().c_str());
-  }
-  esp_task_wdt_reset();
+  // Now only sets a flag for cloudTask to handle
+  pendingTimerUpdate = true;
+  targetTimerState = state;
+  Serial.printf("⏱️  [Timer] Signaling LEDs → %s\n", state ? "ON" : "OFF");
 }
 
 // ============================================================================
@@ -208,7 +192,7 @@ void cloudTask(void *parameter) {
             rJson.set("color", "FF0000");
             rJson.set("enabled", receivers[i].enabled);
             
-            if (Firebase.RTDB.setJSON(&fbdoCloud, rPath.c_str(), &rJson)) {
+            if (Firebase.RTDB.setJSON(&fbdoSender, rPath.c_str(), &rJson)) {
               receivers[i].needsFirebaseSync = false;
             } else {
               allSynced = false;
@@ -221,11 +205,61 @@ void cloudTask(void *parameter) {
         }
       }
 
-      // 2. Collect and Upload Sensor/Stats (Every 2 seconds)
+      // 2. Process Firebase Request Queue
+      FirebaseRequest req;
+      while (firebaseQueue != NULL && xQueueReceive(firebaseQueue, &req, 0) == pdPASS) {
+        bool success = false;
+        switch (req.method) {
+          case FB_SET_BOOL:
+            success = Firebase.RTDB.setBool(&fbdoSender, req.path, strcmp(req.payload, "true") == 0);
+            break;
+          case FB_SET_INT:
+            success = Firebase.RTDB.setInt(&fbdoSender, req.path, atoi(req.payload));
+            break;
+          case FB_SET_FLOAT:
+            success = Firebase.RTDB.setFloat(&fbdoSender, req.path, atof(req.payload));
+            break;
+          case FB_SET_STRING:
+            success = Firebase.RTDB.setString(&fbdoSender, req.path, req.payload);
+            break;
+          case FB_SET_JSON:
+            FirebaseJson json;
+            json.setJsonData(req.payload);
+            success = Firebase.RTDB.setJSON(&fbdoSender, req.path, &json);
+            break;
+        }
+        if (!success) {
+          Serial.printf("❌ [CloudTask] Queue update failed for %s: %s\n", req.path, fbdoSender.errorReason().c_str());
+        }
+      }
+
+      // 3. Process Pending Flag-based Updates
+      if (pendingTimerUpdate) {
+        String enabledPath = basePath + "/local/enabled";
+        if (Firebase.RTDB.setBool(&fbdoSender, enabledPath.c_str(), targetTimerState)) {
+          portENTER_CRITICAL(&stripMux);
+          stripEnabled = targetTimerState;
+          portEXIT_CRITICAL(&stripMux);
+          if (targetTimerState) {
+            portENTER_CRITICAL(&stripMux);
+            manuallyTurnedOff = false;
+            portEXIT_CRITICAL(&stripMux);
+          }
+          Serial.printf("⏱️  [CloudTask] Timer state pushed to Firebase: %s\n", targetTimerState ? "ON" : "OFF");
+          syncAllMirrors();
+          pendingTimerUpdate = false;
+        }
+      }
+
+      if (pendingMQTTConfigUpdate) {
+        updateMQTTConfigFromFirebase();
+        pendingMQTTConfigUpdate = false;
+      }
+
+      // 4. Collect and Upload Sensor/Stats (Every 2 seconds)
       if (millis() - lastStatsUpload >= 2000) {
         lastStatsUpload = millis();
         
-        // Removed redundant updateSensorData() - systemTask handles sensor polling
         bool present = (digitalRead(RADAR_OUTPUT) == HIGH);
         lastPresence = present;
 
@@ -264,7 +298,7 @@ void cloudTask(void *parameter) {
 
         json.set("sensors", sensors);
         json.set("stats", stats);
-        Firebase.RTDB.setJSON(&fbdoCloud, (basePath + "/local/sensor_stats").c_str(), &json);
+        Firebase.RTDB.setJSON(&fbdoSender, (basePath + "/local/sensor_stats").c_str(), &json);
       }
     } else {
       firebaseConnected = false;

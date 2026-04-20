@@ -32,7 +32,14 @@ def get_coredump_info():
     return "0xFF0000", "0x10000" # Default fallback
 
 def find_firmware_elf():
-    """Searches for the compiled firmware.elf file in the .pio directory."""
+    """Searches for the compiled firmware.elf file in the script directory or .pio directory."""
+    # Check script directory for any .elf file first
+    if os.path.exists(SCRIPT_DIR):
+        for f in os.listdir(SCRIPT_DIR):
+            if f.endswith(".elf"):
+                return os.path.join(SCRIPT_DIR, f)
+
+    # Fallback to searching the .pio directory
     pio_dir = os.path.join(PROJECT_ROOT, ".pio", "build")
     if os.path.exists(pio_dir):
         for root, dirs, files in os.walk(pio_dir):

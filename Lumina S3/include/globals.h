@@ -28,6 +28,31 @@
 #include "mqtt_integration.h"
 
 // ============================================================================
+// FIREBASE MESSAGING STRUCTURES
+// ============================================================================
+enum FirebaseMethod {
+    FB_SET_BOOL,
+    FB_SET_INT,
+    FB_SET_FLOAT,
+    FB_SET_STRING,
+    FB_SET_JSON
+};
+
+struct FirebaseRequest {
+    FirebaseMethod method;
+    char path[128];
+    char payload[128]; // Increased size for JSON payloads if needed
+};
+
+extern QueueHandle_t firebaseQueue;
+bool enqueueFirebaseRequest(FirebaseMethod method, const String& path, const String& payload);
+
+// Flags for centralized processing in cloudTask
+extern volatile bool pendingMQTTConfigUpdate;
+extern volatile bool pendingTimerUpdate;
+extern volatile bool targetTimerState;
+
+// ============================================================================
 // ESP-NOW STRUCTURES (Must match Receiver exactly)
 // ============================================================================
 typedef struct {
@@ -96,9 +121,7 @@ extern volatile bool configPortalActive;
 extern CRGB *leds;
 extern CRGB onboardLed[1];
 extern FirebaseData fbdoStream;
-extern FirebaseData fbdoCloud;
-extern FirebaseData fbdoMQTT;
-extern FirebaseData fbdoSystem;
+extern FirebaseData fbdoSender;
 extern FirebaseAuth auth;
 extern FirebaseConfig config;
 

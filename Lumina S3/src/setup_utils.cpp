@@ -23,9 +23,7 @@ volatile bool configPortalActive = false;
 CRGB *leds = nullptr;
 CRGB onboardLed[1];
 FirebaseData fbdoStream;
-FirebaseData fbdoCloud;
-FirebaseData fbdoMQTT;
-FirebaseData fbdoSystem;
+FirebaseData fbdoSender;
 FirebaseAuth auth;
 FirebaseConfig config;
 volatile int currentEffect = 0;
@@ -58,11 +56,39 @@ int ledCount;
 String basePath;
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmwareS3.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/versionS3.txt";
-const char* currentFirmwareVersion = "2.1.0";
+const char* currentFirmwareVersion = "2.1.1";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
 unsigned long lastUpdateCheck = 0;
 unsigned long buttonPressStart = 0;
 bool buttonActive = false;
+
+// Firebase Messaging Queue
+QueueHandle_t firebaseQueue = NULL;
+volatile bool pendingMQTTConfigUpdate = false;
+volatile bool pendingTimerUpdate = false;
+volatile bool targetTimerState = false;
+
+// ============================================================================
+// FIREBASE MESSAGING HELPERS
+// ============================================================================
+
+bool enqueueFirebaseRequest(FirebaseMethod method, const String& path, const String& payload) {
+  if (firebaseQueue == NULL) {
+    firebaseQueue = xQueueCreate(20, sizeof(FirebaseRequest));
+    if (firebaseQueue == NULL) return false;
+  }
+  
+  FirebaseRequest req;
+  req.method = method;
+  strlcpy(req.path, path.c_str(), sizeof(req.path));
+  strlcpy(req.payload, payload.c_str(), sizeof(req.payload));
+  
+  if (xQueueSend(firebaseQueue, &req, 0) != pdPASS) {
+    Serial.println("⚠️  [Firebase] Queue full, request dropped");
+    return false;
+  }
+  return true;
+}
 
 // ============================================================================
 // ESP-NOW GATEWAY LOGIC
@@ -209,8 +235,8 @@ void updateActiveNodesInFirebase() {
   }
   
   String path = basePath + "/active_nodes";
-  if (!Firebase.RTDB.setJSON(&fbdoCloud, path.c_str(), &json)) {
-    Serial.printf("❌ [Gateway] Failed to update active_nodes: %s\n", fbdoCloud.errorReason().c_str());
+  if (!Firebase.RTDB.setJSON(&fbdoSender, path.c_str(), &json)) {
+    Serial.printf("❌ [Gateway] Failed to update active_nodes: %s\n", fbdoSender.errorReason().c_str());
   }
 }
 
