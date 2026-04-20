@@ -5,6 +5,5 @@
 
 void setupSmartHome();
 void handleSmartHome();
-void smartHomeTask(void *pvParameters);
 
 #endif

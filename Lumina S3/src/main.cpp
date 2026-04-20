@@ -66,11 +66,9 @@ if (!leds) {
   leds = new CRGB[ledCount];
 }
 memset(leds, 0, ledCount * sizeof(CRGB));
-  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, ledCount);
-  // FastLED.addLeds<WS2812B, ONBOARD_LED_PIN, GRB>(onboardLed, 1); // Already initialized above
-  FastLED.show();
-  Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
-
+FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, ledCount);
+FastLED.show();
+Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
   // Start SystemTask NOW so the rainbow boot animation runs
   // while all the slow init below (WiFi, Firebase, MQTT…) is executing.
   // NOTE: systemTask is now lightweight during boot (skips heavy sensor/automation logic).

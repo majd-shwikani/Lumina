@@ -220,7 +220,6 @@ void cloudTask(void *parameter);
 void ledTask(void *parameter);
 void systemTask(void *parameter);
 void ioTask(void *parameter);
-void smartHomeTask(void *parameter); // Still needed if logic not fully inlined
 String formatUptime(unsigned long milliseconds);
 
 // ESP-NOW Gateway Functions
