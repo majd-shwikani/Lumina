@@ -74,7 +74,7 @@ memset(leds, 0, ledCount * sizeof(CRGB));
   // Start SystemTask NOW so the rainbow boot animation runs
   // while all the slow init below (WiFi, Firebase, MQTT…) is executing.
   // NOTE: systemTask is now lightweight during boot (skips heavy sensor/automation logic).
-  xTaskCreatePinnedToCore(systemTask, "SystemTask", 4000, NULL, 1, &systemTaskHandle, 1);
+  xTaskCreatePinnedToCore(systemTask, "SystemTask", 6000, NULL, 1, &systemTaskHandle, 1);
   Serial.println("   ✅ System Task started early (rainbow boot LED active)");
 
   Serial.println("⏱️  Initializing watchdog timer (30s)...");
@@ -152,7 +152,7 @@ memset(leds, 0, ledCount * sizeof(CRGB));
   Serial.println("      ✅ LED Task created (Core 1, 4KB stack)");
 
   // IO Task: MQTT + SmartHome (Alexa/Sinric) (12KB stack)
-  xTaskCreatePinnedToCore(ioTask, "IOTask", 12288, NULL, 1, &ioTaskHandle, 1);
+  xTaskCreatePinnedToCore(ioTask, "IOTask", 6000, NULL, 1, &ioTaskHandle, 1);
   Serial.println("      ✅ IO Task created (Core 1, 12KB stack)");
 
   systemInitialized = true;

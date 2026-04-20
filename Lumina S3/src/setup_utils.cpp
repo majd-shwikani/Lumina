@@ -56,7 +56,7 @@ int ledCount;
 String basePath;
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmwareS3.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/versionS3.txt";
-const char* currentFirmwareVersion = "2.1.1";
+const char* currentFirmwareVersion = "2.1.2";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
 unsigned long lastUpdateCheck = 0;
 unsigned long buttonPressStart = 0;
@@ -302,8 +302,8 @@ void printSystemStats() {
   TaskInfo tasks[] = {
     { "CloudSync",  cloudTaskHandle,   12288 },
     { "LEDAnim",    ledTaskHandle,     4000 },
-    { "IOTask",     ioTaskHandle,      12288 },
-    { "SystemTask", systemTaskHandle,  4000 },
+    { "IOTask",     ioTaskHandle,      6000 },
+    { "SystemTask", systemTaskHandle,  6000 },
   };
   const int taskCount = sizeof(tasks) / sizeof(tasks[0]);
 
