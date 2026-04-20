@@ -56,7 +56,7 @@ int ledCount;
 String basePath;
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmwareS3.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/versionS3.txt";
-const char* currentFirmwareVersion = "2.1.2";
+const char* currentFirmwareVersion = "2.1.3";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
 unsigned long lastUpdateCheck = 0;
 unsigned long buttonPressStart = 0;
@@ -126,6 +126,7 @@ void onDataRecvGateway(const uint8_t *mac, const uint8_t *data, int len) {
       receivers[receiverCount].brightness = 255;
       receivers[receiverCount].enabled = true;
       receivers[receiverCount].needsFirebaseSync = true; // Mark for task sync
+      receivers[receiverCount].mqttDiscoveryPublished = false; // Mark for MQTT discovery
       receiverCount++;
       registryChanged = true; // Signal the firebase task
       Serial.printf("🆕 [Gateway] Discovered new receiver: %s\n", macStr);

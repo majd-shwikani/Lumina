@@ -76,6 +76,7 @@ typedef struct {
     bool isMirror;
     bool registered;
     bool needsFirebaseSync; // Flag to signal cloud update
+    bool mqttDiscoveryPublished; // Flag to signal MQTT discovery publish
 } Receiver;
 
 extern Receiver receivers[10];
