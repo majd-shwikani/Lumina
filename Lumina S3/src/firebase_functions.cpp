@@ -169,31 +169,6 @@ void readInitialFirebaseData() {
   String micCalibPath = localPath + "/mic_calibration";
   Firebase.RTDB.setBool(&fbdoSender, micCalibPath.c_str(), false);
   
-  String mqttEnabledPath = localPath + "/mqtt/enabled";
-  if (!Firebase.RTDB.getBool(&fbdoSender, mqttEnabledPath.c_str())) {
-    Serial.println("      Creating default MQTT configuration...");
-    
-    String mqttBasePath = localPath + "/mqtt";
-    delay(500);
-    
-    Firebase.RTDB.setString(&fbdoSender, (mqttBasePath + "/broker_address").c_str(), "192.168.1.100");
-    delay(200);
-    Firebase.RTDB.setInt(&fbdoSender, (mqttBasePath + "/broker_port").c_str(), 1883);
-    delay(200);
-    Firebase.RTDB.setString(&fbdoSender, (mqttBasePath + "/username").c_str(), "mqtt_user");
-    delay(200);
-    Firebase.RTDB.setString(&fbdoSender, (mqttBasePath + "/password").c_str(), "mqtt_password");
-    delay(200);
-    Firebase.RTDB.setBool(&fbdoSender, (mqttBasePath + "/enabled").c_str(), false);
-    delay(200);
-    Firebase.RTDB.setString(&fbdoSender, (mqttBasePath + "/device_name").c_str(), "Lumina");
-    
-    Serial.println("      ✅ MQTT config created");
-  }
-  // Instead of direct update, set flag for cloudTask to handle if desired, 
-  // but during setup we can call it directly since other tasks haven't started or we're in setup context.
-  updateMQTTConfigFromFirebase();
-  
   String versionPath = localPath + "/version";
   if (Firebase.RTDB.setString(&fbdoSender, versionPath.c_str(), currentFirmwareVersion)) {
     Serial.printf("      ✅ Version published: %s\n", currentFirmwareVersion);

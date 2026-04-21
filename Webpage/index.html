@@ -8,6 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
     <style>
         :root {
             --bg-body: #050505;
@@ -95,6 +96,19 @@
         
         .brand {
             display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+            filter: drop-shadow(0 0 10px var(--primary-glow));
+        }
+
+        .brand-text {
+            display: flex;
             flex-direction: column;
         }
 
@@ -112,6 +126,21 @@
             color: var(--text-secondary);
             font-size: 1rem;
             font-weight: 400;
+        }
+
+        .designer-credit {
+            font-size: 0.7rem;
+            font-weight: 500;
+            margin-top: 8px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            opacity: 0.5;
+            transition: var(--transition);
+        }
+
+        .designer-credit:hover {
+            opacity: 1;
+            color: var(--primary);
         }
 
         .settings-btn {
@@ -438,8 +467,11 @@
     <div class="container">
         <header>
             <div class="brand">
-                <h1>Lumina Control</h1>
-                <span class="subtitle">Advanced Multi-Device Command Center</span>
+                <img src="image.png" alt="Lumina Logo" class="logo">
+                <div class="brand-text">
+                    <h1>Lumina Control</h1>
+                    <span class="subtitle">Advanced Multi-Device Command Center</span>
+                </div>
             </div>
             <a href="settings.html" class="settings-btn"><i class="fas fa-cog"></i></a>
         </header>
@@ -488,6 +520,22 @@
                     <label class="toggle"><input type="checkbox" id="powerToggle"><span class="slider"></span></label>
                 </div>
 
+                <div class="control-row">
+                    <div>
+                        <div class="control-label">Power Consumption</div>
+                        <div class="control-sub">Real-time usage</div>
+                    </div>
+                    <div id="powerDrawDisplay" style="font-family:monospace; color:var(--success); font-weight:700;">0.0 W</div>
+                </div>
+
+                <div style="margin: 20px 0; padding: 0 10px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <span class="control-label">Master Brightness</span>
+                        <span id="brightnessValue" style="color:var(--primary); font-family:monospace;">100%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value="100" id="brightnessSlider">
+                </div>
+
                 <div id="mirrorControlContainer" class="control-row" style="display: none;">
                     <div>
                         <div class="control-label">Mirror Gateway</div>
@@ -525,24 +573,15 @@
 
                 <div style="margin: 20px 0;">
                     <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-                        <span class="control-label">Master Brightness</span>
-                        <span id="brightnessValue" style="color:var(--primary); font-family:monospace;">255</span>
-                    </div>
-                    <input type="range" min="0" max="255" value="255" id="brightnessSlider">
-                </div>
-
-                <div style="margin: 20px 0;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                         <span class="control-label">Animation Speed</span>
                         <span id="speedValue" style="color:var(--primary); font-family:monospace;">50</span>
                     </div>
                     <input type="range" min="10" max="200" value="50" id="speedSlider">
                 </div>
 
-                <div class="color-controls">
-                    <div class="color-preview" id="colorPreview"></div>
-                    <input type="color" id="colorPicker" value="#FF0000">
-                    <button class="btn-icon" id="randomColorBtn"><i class="fas fa-random"></i></button>
+                <!-- Color Picker Section -->
+                <div style="margin-top: 24px; border-top: 1px solid var(--border-light); padding-top: 20px;">
+                    <div id="pickerContainer" style="display: flex; justify-content: center;"></div>
                 </div>
             </div>
 
@@ -550,22 +589,24 @@
             <div class="card">
                 <div class="card-header">
                     <i class="fas fa-wave-square"></i>
-                    <h2>Sensors & Audio</h2>
+                    <h2>Sensors</h2>
                 </div>
                 
-                <div style="background: var(--bg-input); padding: 20px; border-radius: var(--radius-md); text-align: center; margin-bottom: 20px;">
+                <div style="background: var(--bg-input); padding: 20px; border-radius: var(--radius-md); text-align: center;">
                     <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 5px;">Human Presence</div>
-                    <div id="presenceValue" style="font-size: 1.5rem; font-weight: 700; color: var(--success);">--</div>
-                </div>
+                    <div id="presenceValue" style="font-size: 1.5rem; font-weight: 700; color: var(--success); margin-bottom: 20px;">--</div>
 
-                <button class="btn-primary" id="calibrateMicBtn">
-                    <i class="fas fa-microphone-lines"></i> Calibrate Microphone
-                </button>
+                    <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;">
+                        <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 5px;">Ambient Luminance</div>
+                        <div id="luxValue" style="font-size: 1.5rem; font-weight: 700; color: var(--warning);">--</div>
+                    </div>
+                </div>
             </div>
         </div>
 
         <footer>
-            &copy; 2026 Lumina Inc. All rights reserved.
+            <p>&copy; 2026 Lumina Inc. All rights reserved.</p>
+            <div class="designer-credit">Designed by Majd Shwikani</div>
         </footer>
     </div>
 
@@ -616,9 +657,20 @@
         const powerToggle = document.getElementById('powerToggle');
         const speedSlider = document.getElementById('speedSlider');
         const brightnessSlider = document.getElementById('brightnessSlider');
-        const colorPicker = document.getElementById('colorPicker');
         const dropdownHeader = document.getElementById('dropdownHeader');
         const dropdownList = document.getElementById('dropdownList');
+
+        // Initialize Iro.js Color Picker
+        const colorPicker = new iro.ColorPicker("#pickerContainer", {
+            width: 180,
+            color: "#FF0000",
+            borderWidth: 2,
+            borderColor: "#fff",
+            layout: [
+                { component: iro.ui.Wheel, options: {} },
+                { component: iro.ui.Slider, options: { sliderType: 'hue' } }
+            ]
+        });
 
         function updateFirebaseValue(path, value) {
             if (!currentState.deviceId) return;
@@ -628,10 +680,51 @@
             database.ref(fullPath).set(value);
         }
 
+        // Handle iro.js color changes (sync to Firebase on release)
+        colorPicker.on('input:end', function(color) {
+            const hex = color.hexString.substring(1).toUpperCase();
+            updateFirebaseValue('color', hex);
+            updateFirebaseValue('effect', 21); // Switch to Solid Color
+        });
+
         let firebaseListeners = [];
+        let heartbeatInterval = null;
+        let lastHeartbeatTime = 0;
+        let connectionStartTime = 0;
+        let lastLoopCounter = null;
+
+        function updateConnectionUI() {
+            const dot = document.getElementById('connectionStatus');
+            const text = document.getElementById('statusText');
+            const now = Date.now();
+
+            // Show Loading for the first 5 seconds
+            if (now - connectionStartTime < 5000) {
+                text.textContent = 'Loading...';
+                dot.className = 'status-dot';
+                return;
+            }
+
+            // After 5s, check if we've had a fresh update recently
+            if (lastHeartbeatTime !== 0 && now - lastHeartbeatTime < 5000) {
+                dot.className = 'status-dot connected';
+                text.textContent = 'Lumina Connected';
+            } else {
+                dot.className = 'status-dot';
+                text.textContent = 'Lumina Disconnected';
+            }
+        }
+
         function removeListeners() {
             firebaseListeners.forEach(ref => ref.off());
             firebaseListeners = [];
+            lastHeartbeatTime = 0;
+            lastLoopCounter = null;
+            connectionStartTime = Date.now();
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
         }
 
         function initListeners() {
@@ -677,18 +770,33 @@
                 speedSlider.value = data.speed || 50;
                 document.getElementById('speedValue').textContent = data.speed || 50;
 
-                brightnessSlider.value = data.brightness !== undefined ? data.brightness : 255;
-                document.getElementById('brightnessValue').textContent = brightnessSlider.value;
+                const brightness = data.brightness !== undefined ? data.brightness : 255;
+                const brightnessPercent = Math.round(brightness / 2.55);
+                brightnessSlider.value = brightnessPercent;
+                document.getElementById('brightnessValue').textContent = brightnessPercent + '%';
                 
                 const color = data.color || "FF0000";
-                colorPicker.value = '#' + color;
-                document.getElementById('colorPreview').style.backgroundColor = '#' + color;
+                colorPicker.color.set('#' + color);
                 
                 document.getElementById('selectedEffect').textContent = effects[data.effect] || 'Rainbow Cycle';
-                
-                document.getElementById('connectionStatus').className = 'status-dot connected';
-                document.getElementById('statusText').textContent = 'Online';
             });
+
+            // Heartbeat listener (detect changes in loop_counter)
+            const heartbeatRef = database.ref(base + 'local/sensor_stats/stats/loop_counter');
+            firebaseListeners.push(heartbeatRef);
+            heartbeatRef.on('value', snap => {
+                const currentVal = snap.val();
+                if (currentVal !== null) {
+                    if (lastLoopCounter !== null && currentVal !== lastLoopCounter) {
+                        lastHeartbeatTime = Date.now();
+                    }
+                    lastLoopCounter = currentVal;
+                    updateConnectionUI();
+                }
+            });
+
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(updateConnectionUI, 1000);
 
             // Timers & Sensors (Always from Local)
             const localRef = database.ref(base + 'local');
@@ -701,7 +809,16 @@
                 document.getElementById('timerOffTimeInput').value = data.timer_off || "17:00";
                 
                 if (data.sensor_stats && data.sensor_stats.sensors) {
-                    document.getElementById('presenceValue').textContent = data.sensor_stats.sensors.presence ? 'Detected' : 'Clear';
+                    const sensors = data.sensor_stats.sensors;
+                    document.getElementById('presenceValue').textContent = sensors.presence ? 'Detected' : 'Clear';
+                    
+                    // Ambient Luminance
+                    document.getElementById('luxValue').textContent = sensors.lux !== undefined ? sensors.lux.toFixed(1) + ' lx' : '--';
+
+                    // Power Draw logic: mw to W, zero if < 500mw
+                    const powerMw = sensors.power || 0;
+                    const powerW = powerMw < 500 ? 0 : (powerMw / 1000).toFixed(1);
+                    document.getElementById('powerDrawDisplay').textContent = powerW + ' W';
                 }
             });
         }
@@ -720,15 +837,12 @@
         speedSlider.addEventListener('input', () => document.getElementById('speedValue').textContent = speedSlider.value);
         speedSlider.addEventListener('change', () => updateFirebaseValue('speed', parseInt(speedSlider.value)));
         
-        brightnessSlider.addEventListener('input', () => document.getElementById('brightnessValue').textContent = brightnessSlider.value);
-        brightnessSlider.addEventListener('change', () => updateFirebaseValue('brightness', parseInt(brightnessSlider.value)));
-
-        colorPicker.addEventListener('change', () => {
-            const color = colorPicker.value.substring(1).toUpperCase();
-            document.getElementById('colorPreview').style.backgroundColor = '#' + color;
-            updateFirebaseValue('color', color);
+        brightnessSlider.addEventListener('input', () => document.getElementById('brightnessValue').textContent = brightnessSlider.value + '%');
+        brightnessSlider.addEventListener('change', () => {
+            const scaledBrightness = Math.round(parseInt(brightnessSlider.value) * 2.55);
+            updateFirebaseValue('brightness', scaledBrightness);
         });
-        
+
         document.getElementById('timerToggle').addEventListener('change', (e) => updateFirebaseValue('timer_enabled', e.target.checked));
         document.getElementById('timerOnTimeInput').addEventListener('change', (e) => updateFirebaseValue('timer_on', e.target.value));
         document.getElementById('timerOffTimeInput').addEventListener('change', (e) => updateFirebaseValue('timer_off', e.target.value));
@@ -759,12 +873,6 @@
                 };
                 dropdownList.appendChild(item);
             }
-        });
-
-        document.getElementById('calibrateMicBtn').addEventListener('click', () => {
-            const base = `/devices/${currentState.deviceId}/local/`;
-            database.ref(base + 'mic_calibration').set(true);
-            setTimeout(() => database.ref(base + 'mic_calibration').set(false), 5000);
         });
 
         document.getElementById('currentDeviceId').textContent = currentState.deviceId;

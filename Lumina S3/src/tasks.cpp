@@ -252,7 +252,7 @@ void cloudTask(void *parameter) {
       }
 
       if (pendingMQTTConfigUpdate) {
-        updateMQTTConfigFromFirebase();
+        Serial.println("ℹ️ MQTT configuration change from Firebase is now ignored. Use Web Portal.");
         pendingMQTTConfigUpdate = false;
       }
 

@@ -61,110 +61,6 @@ String getCleanMac(String macStr) {
 }
 
 // ============================================================================
-// LOAD/SAVE MQTT CONFIG FROM SPIFFS
-// ============================================================================
-
-bool loadMQTTConfig() {
-  File configFile = SPIFFS.open("/mqtt_config.json", "r");
-  if (!configFile) {
-    Serial.println("No MQTT config file found");
-    return false;
-  }
-
-  size_t size = configFile.size();
-  std::unique_ptr<char[]> buf(new char[size]);
-  configFile.readBytes(buf.get(), size);
-  configFile.close();
-
-  DynamicJsonDocument doc(1024);
-  DeserializationError error = deserializeJson(doc, buf.get());
-  if (error) {
-    Serial.println("Failed to parse MQTT config");
-    return false;
-  }
-
-  strlcpy(mqttConfig.broker_address, doc["broker_address"] | "", sizeof(mqttConfig.broker_address));
-  mqttConfig.broker_port = doc["broker_port"] | 1883;
-  strlcpy(mqttConfig.username, doc["username"] | "", sizeof(mqttConfig.username));
-  strlcpy(mqttConfig.password, doc["password"] | "", sizeof(mqttConfig.password));
-  mqttConfig.enabled = doc["enabled"] | false;
-  strlcpy(mqttConfig.device_name, doc["device_name"] | "Lumina", sizeof(mqttConfig.device_name));
-
-  Serial.printf("   ✅ MQTT config loaded from SPIFFS (broker: %s)\n", mqttConfig.broker_address);
-  return true;
-}
-
-void saveMQTTConfig() {
-  DynamicJsonDocument doc(1024);
-  doc["broker_address"] = mqttConfig.broker_address;
-  doc["broker_port"] = mqttConfig.broker_port;
-  doc["username"] = mqttConfig.username;
-  doc["password"] = mqttConfig.password;
-  doc["enabled"] = mqttConfig.enabled;
-  doc["device_name"] = mqttConfig.device_name;
-
-  File configFile = SPIFFS.open("/mqtt_config.json", "w");
-  if (!configFile) {
-    Serial.println("Failed to open MQTT config file for writing");
-    return;
-  }
-
-  serializeJson(doc, configFile);
-  configFile.close();
-  Serial.println("   ✅ MQTT config saved to SPIFFS");
-}
-
-// ============================================================================
-// UPDATE MQTT CONFIG FROM FIREBASE
-// ============================================================================
-
-void updateMQTTConfigFromFirebase() {
-  String mqttBasePath = basePath + "/local/mqtt";
-
-  String brokerPath = mqttBasePath + "/broker_address";
-  if (Firebase.RTDB.getString(&fbdoSender, brokerPath.c_str())) {
-    String brokerStr = fbdoSender.stringData();
-    strlcpy(mqttConfig.broker_address, brokerStr.c_str(), sizeof(mqttConfig.broker_address));
-  }
-
-  String portPath = mqttBasePath + "/broker_port";
-  if (Firebase.RTDB.getInt(&fbdoSender, portPath.c_str())) {
-    mqttConfig.broker_port = fbdoSender.intData();
-  } else {
-    mqttConfig.broker_port = 1883;
-  }
-
-  String usernamePath = mqttBasePath + "/username";
-  if (Firebase.RTDB.getString(&fbdoSender, usernamePath.c_str())) {
-    strlcpy(mqttConfig.username, fbdoSender.stringData().c_str(), sizeof(mqttConfig.username));
-  }
-
-  String passwordPath = mqttBasePath + "/password";
-  if (Firebase.RTDB.getString(&fbdoSender, passwordPath.c_str())) {
-    strlcpy(mqttConfig.password, fbdoSender.stringData().c_str(), sizeof(mqttConfig.password));
-  }
-
-  String enabledPath = mqttBasePath + "/enabled";
-  if (Firebase.RTDB.getBool(&fbdoSender, enabledPath.c_str())) {
-    mqttConfig.enabled = fbdoSender.boolData();
-  } else {
-    mqttConfig.enabled = false;
-  }
-
-  String deviceNamePath = mqttBasePath + "/device_name";
-  if (Firebase.RTDB.getString(&fbdoSender, deviceNamePath.c_str())) {
-    strlcpy(mqttConfig.device_name, fbdoSender.stringData().c_str(), sizeof(mqttConfig.device_name));
-  } else {
-    strlcpy(mqttConfig.device_name, "Lumina", sizeof(mqttConfig.device_name));
-  }
-
-  saveMQTTConfig();
-  Serial.printf("   ✅ MQTT config synced (broker: %s:%d, enabled: %s)\n",
-                mqttConfig.broker_address, mqttConfig.broker_port,
-                mqttConfig.enabled ? "yes" : "no");
-}
-
-// ============================================================================
 // MQTT CONNECTION
 // ============================================================================
 
@@ -832,12 +728,10 @@ void mqttConnectAndSubscribe() {
 
 void setupMQTT() {
   vTaskDelay(1000 / portTICK_PERIOD_MS);
-  loadMQTTConfig();
   mqttClient.setBufferSize(2048);
-  if (firebaseConnected) updateMQTTConfigFromFirebase();
   deviceTopic = String("homeassistant/lumina/") + deviceID;
 
-  if (mqttConfig.enabled && firebaseConnected) {
+  if (mqttConfig.enabled && WiFi.status() == WL_CONNECTED) {
     if (connectToMQTT()) {
       mqttConnected = true;
       delay(500);

@@ -118,9 +118,22 @@
 
         .brand {
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            gap: 20px;
             width: 100%;
-            text-align: center;
+        }
+
+        .logo {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+            filter: drop-shadow(0 0 10px var(--primary-glow));
+        }
+
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
         }
 
         h1 {
@@ -137,6 +150,21 @@
             color: var(--text-secondary);
             font-size: 1rem;
             font-weight: 400;
+        }
+
+        .designer-credit {
+            font-size: 0.7rem;
+            font-weight: 500;
+            margin-top: 8px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            opacity: 0.5;
+            transition: var(--transition);
+        }
+
+        .designer-credit:hover {
+            opacity: 1;
+            color: var(--primary);
         }
 
         /* Card System */
@@ -273,7 +301,9 @@
             color: var(--text-secondary);
             display: flex;
             align-items: center;
+            flex-wrap: wrap;
             gap: 10px;
+            line-height: 1.6;
         }
         .info-text i { color: var(--primary); }
         .current-value {
@@ -421,8 +451,11 @@
                 <i class="fas fa-arrow-left"></i>
             </a>
             <div class="brand">
-                <h1>Settings</h1>
-                <p class="subtitle">System Configuration & Diagnostics</p>
+                <img src="image.png" alt="Lumina Logo" class="logo">
+                <div class="brand-text">
+                    <h1>Settings</h1>
+                    <p class="subtitle">System Configuration & Diagnostics</p>
+                </div>
             </div>
         </header>
 
@@ -497,6 +530,10 @@
                 Threshold <span class="current-value" id="currentLuxThreshold">--</span> &bull; 
                 Radar <span class="current-value" id="currentPresenceDetection">--</span>
             </div>
+
+            <button class="btn btn-secondary" id="calibrateMicBtn" style="width: 100%; margin-top: 20px;">
+                <i class="fas fa-microphone-lines"></i> Calibrate Microphone
+            </button>
         </div>
 
         <!-- 3. SYSTEM DIAGNOSTICS -->
@@ -544,7 +581,8 @@
         </div>
 
         <footer>
-            &copy; 2026 Lumina Inc.
+            <p>&copy; 2026 Lumina Inc.</p>
+            <div class="designer-credit">Designed by Majd Shwikani</div>
         </footer>
     </div>
 
@@ -933,7 +971,7 @@
             let lastPresenceDetection = null;
 
             // Listen for device data
-            const deviceRef = database.ref(currentState.basePath);
+            const deviceRef = database.ref(currentState.basePath + 'local');
             firebaseListeners.push(deviceRef);
             
             deviceRef.on("value", (snapshot) => {
@@ -1055,6 +1093,18 @@
                 }
             });
 
+            // Calibrate Mic button
+            const calibrateMicBtn = document.getElementById('calibrateMicBtn');
+            calibrateMicBtn.addEventListener('click', () => {
+                if (!currentState.basePath) {
+                    alert('Please set a device ID first');
+                    return;
+                }
+                updateFirebaseValue('mic_calibration', true);
+                setTimeout(() => updateFirebaseValue('mic_calibration', false), 5000);
+                alert('Microphone calibration started. Please remain quiet for 5 seconds.');
+            });
+
             // Reset device button
             resetDeviceBtn.addEventListener('click', () => {
                 if (!currentState.basePath) {
@@ -1062,20 +1112,16 @@
                     return;
                 }
                 
-                if (confirm('Are you sure you want to reset the device to factory defaults? This action cannot be undone.')) {
-                    // Reset to default values
-                    updateFirebaseValue('enabled', false);
-                    updateFirebaseValue('effect', 0);
-                    updateFirebaseValue('speed', 50);
-                    updateFirebaseValue('color', 'FF0000');
-                    updateFirebaseValue('auto_darkness_control', false);
-                    updateFirebaseValue('lux_threshold', 10.0);
-                    updateFirebaseValue('presence_detection_enabled', false);
-                    updateFirebaseValue('timer_enabled', true);
-                    updateFirebaseValue('timer_on', '09:00');
-                    updateFirebaseValue('timer_off', '17:00');
+                if (confirm('Are you sure you want to reset the device?')) {
+                    // Set reset to true
+                    updateFirebaseValue('reset', true);
                     
-                    alert('Device reset to factory defaults!');
+                    // After 10 seconds, set it back to false
+                    setTimeout(() => {
+                        updateFirebaseValue('reset', false);
+                    }, 10000);
+                    
+                    alert('Reset command sent. The device will reset shortly.');
                 }
             });
         }

@@ -4,13 +4,6 @@
 #include "globals.h"
 #include <FastLED.h>
 
-// Your SinricPro Credentials - placeholders for user
-#define APP_KEY    "8c8a8770-8da2-4b37-921b-647573117fc5"
-#define APP_SECRET "37c469aa-2ff3-4483-af84-6ceab5e2f29f-30508049-c51e-48b3-bcdb-24e0daa399f5"
-#define LIGHT_ID   "69938bb7decdf0b6f1803148"
-
-SinricProLight &lumina = SinricPro[LIGHT_ID];
-
 bool onPowerState(const String &deviceId, bool &state) {
   Serial.printf("🏠 [SinricPro] Power → %s\n", state ? "ON" : "OFF");
   portENTER_CRITICAL(&stripMux);
@@ -39,15 +32,23 @@ bool onColor(const String &deviceId, byte r, byte g, byte b) {
 }
 
 void setupSmartHome() {
+  if (sinricAppKey.length() == 0 || sinricAppSecret.length() == 0 || sinricLightID.length() == 0) {
+    Serial.println("⚠️ SinricPro credentials not set, skipping initialization");
+    return;
+  }
+
+  SinricProLight &lumina = SinricPro[sinricLightID];
   lumina.onPowerState(onPowerState);
   lumina.onBrightness(onBrightness);
   lumina.onColor(onColor);
 
-  SinricPro.begin(APP_KEY, APP_SECRET);
+  SinricPro.begin(sinricAppKey.c_str(), sinricAppSecret.c_str());
   
   Serial.println("✅ SinricPro (Cloud) initialized");
 }
 
 void handleSmartHome() {
-  SinricPro.handle();
+  if (sinricAppKey.length() > 0) {
+    SinricPro.handle();
+  }
 }

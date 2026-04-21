@@ -174,6 +174,11 @@ extern String wifiPassword;
 extern int ledCount;
 extern String basePath;
 
+// Sinric Pro Credentials
+extern String sinricAppKey;
+extern String sinricAppSecret;
+extern String sinricLightID;
+
 // ============================================================================
 // GITHUB OTA UPDATE CONFIGURATION
 // ============================================================================

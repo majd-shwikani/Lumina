@@ -54,9 +54,15 @@ String wifiSSID;
 String wifiPassword;
 int ledCount;
 String basePath;
+
+// Sinric Pro Credentials
+String sinricAppKey;
+String sinricAppSecret;
+String sinricLightID;
+
 const char* GITHUB_FIRMWARE_URL = "https://github.com/majd-shwikani/Lumina-bin/releases/download/Lumina/firmwareS3.bin";
 const char* GITHUB_VERSION_URL = "https://raw.githubusercontent.com/majd-shwikani/Lumina-bin/refs/heads/main/versionS3.txt";
-const char* currentFirmwareVersion = "2.1.3";
+const char* currentFirmwareVersion = "2.1.4";
 const unsigned long UPDATE_CHECK_INTERVAL = 10 * 60 * 1000;
 unsigned long lastUpdateCheck = 0;
 unsigned long buttonPressStart = 0;
@@ -440,6 +446,19 @@ bool loadConfig() {
   deviceID = doc["device_id"].as<String>();
   ledCount = doc["num_leds"];
   basePath = "/devices/" + deviceID;
+
+  // Load Sinric Pro Credentials
+  sinricAppKey = doc["sinric_app_key"] | "";
+  sinricAppSecret = doc["sinric_app_secret"] | "";
+  sinricLightID = doc["sinric_light_id"] | "";
+
+  // Load MQTT Credentials
+  strlcpy(mqttConfig.broker_address, doc["mqtt_broker"] | "", sizeof(mqttConfig.broker_address));
+  mqttConfig.broker_port = doc["mqtt_port"] | 1883;
+  strlcpy(mqttConfig.username, doc["mqtt_user"] | "", sizeof(mqttConfig.username));
+  strlcpy(mqttConfig.password, doc["mqtt_pass"] | "", sizeof(mqttConfig.password));
+  mqttConfig.enabled = doc["mqtt_enabled"] | false;
+  strlcpy(mqttConfig.device_name, doc["mqtt_device_name"] | "Lumina", sizeof(mqttConfig.device_name));
   
   Serial.println("✅ Configuration loaded successfully");
   return true;

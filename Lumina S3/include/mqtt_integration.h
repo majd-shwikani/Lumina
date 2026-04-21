@@ -56,9 +56,6 @@ void mqttPublishState();
 void mqttPublishSensorData();
 void publishHomeAssistantDiscovery();
 void mqttCallback(char* topic, byte* payload, unsigned int length);
-bool loadMQTTConfig();
-void saveMQTTConfig();
-void updateMQTTConfigFromFirebase();
 bool connectToMQTT();
 void mqttTask(void *parameter);
 
