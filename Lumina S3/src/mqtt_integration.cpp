@@ -661,6 +661,35 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 }
 
 // ============================================================================
+// MQTT SUBSCRIPTIONS
+// ============================================================================
+
+void subscribeToTopics() {
+  if (!mqttClient.connected()) return;
+
+  Serial.println("📡 [MQTT] Subscribing to Command Topics");
+  
+  // 1. Gateway Subscriptions
+  mqttClient.subscribe((deviceTopic + "/light/cmd").c_str());
+  mqttClient.subscribe((deviceTopic + "/brightness/cmd").c_str());
+  mqttClient.subscribe((deviceTopic + "/color/cmd").c_str());
+  mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
+  mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
+  
+  // 2. Receiver Subscriptions
+  for (int i = 0; i < receiverCount; i++) {
+    String cleanMac = getCleanMac(receivers[i].macStr);
+    String recTopic = "homeassistant/lumina/" + cleanMac;
+    mqttClient.subscribe((recTopic + "/light/cmd").c_str());
+    mqttClient.subscribe((recTopic + "/brightness/cmd").c_str());
+    mqttClient.subscribe((recTopic + "/color/cmd").c_str());
+    mqttClient.subscribe((recTopic + "/effect/cmd").c_str());
+    mqttClient.subscribe((recTopic + "/speed/cmd").c_str());
+    mqttClient.subscribe((recTopic + "/mirror/cmd").c_str());
+  }
+}
+
+// ============================================================================
 // MQTT CONNECTION
 // ============================================================================
 
@@ -674,26 +703,7 @@ void mqttConnectAndSubscribe() {
       lastAttempt = now;
       if (connectToMQTT()) {
         mqttConnected = true;
-        Serial.println("📡 [MQTT] Connected → Subscribing to Command Topics");
-        
-        // Subscribe ONLY to command topics to avoid loop
-        mqttClient.subscribe((deviceTopic + "/light/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/brightness/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/color/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
-        mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
-        
-        for (int i = 0; i < receiverCount; i++) {
-          String cleanMac = getCleanMac(receivers[i].macStr);
-          String recTopic = "homeassistant/lumina/" + cleanMac;
-          mqttClient.subscribe((recTopic + "/light/cmd").c_str());
-          mqttClient.subscribe((recTopic + "/brightness/cmd").c_str());
-          mqttClient.subscribe((recTopic + "/color/cmd").c_str());
-          mqttClient.subscribe((recTopic + "/effect/cmd").c_str());
-          mqttClient.subscribe((recTopic + "/speed/cmd").c_str());
-          mqttClient.subscribe((recTopic + "/mirror/cmd").c_str());
-        }
-
+        subscribeToTopics();
         publishHomeAssistantDiscovery();
         mqttPublishState();
       } else {
@@ -703,22 +713,7 @@ void mqttConnectAndSubscribe() {
   } else {
     if (!mqttConnected) {
       mqttConnected = true;
-      mqttClient.subscribe((deviceTopic + "/light/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/brightness/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/color/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
-      mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
-
-      for (int i = 0; i < receiverCount; i++) {
-        String cleanMac = getCleanMac(receivers[i].macStr);
-        String recTopic = "homeassistant/lumina/" + cleanMac;
-        mqttClient.subscribe((recTopic + "/light/cmd").c_str());
-        mqttClient.subscribe((recTopic + "/brightness/cmd").c_str());
-        mqttClient.subscribe((recTopic + "/color/cmd").c_str());
-        mqttClient.subscribe((recTopic + "/effect/cmd").c_str());
-        mqttClient.subscribe((recTopic + "/speed/cmd").c_str());
-        mqttClient.subscribe((recTopic + "/mirror/cmd").c_str());
-      }
+      subscribeToTopics();
       publishHomeAssistantDiscovery();
       mqttPublishState();
     }
@@ -734,6 +729,7 @@ void setupMQTT() {
   if (mqttConfig.enabled && WiFi.status() == WL_CONNECTED) {
     if (connectToMQTT()) {
       mqttConnected = true;
+      subscribeToTopics(); // Fix: Actually subscribe so commands work
       delay(500);
       publishHomeAssistantDiscovery();
       mqttPublishState();

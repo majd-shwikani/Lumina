@@ -1,4 +1,5 @@
 #include "web_config_portal.h"
+#include "globals.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
