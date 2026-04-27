@@ -109,12 +109,14 @@ extern TaskHandle_t cloudTaskHandle;
 extern TaskHandle_t ledTaskHandle;
 extern TaskHandle_t ioTaskHandle;
 extern TaskHandle_t systemTaskHandle;
+extern TaskHandle_t screenMirrorTaskHandle;
 
 extern unsigned long lastLoopTime;
 extern unsigned long loopCounter;
 extern bool systemHealthy;
 extern bool systemInitialized;
 extern volatile bool configPortalActive;
+extern volatile bool screenMirrorMode;
 
 // ============================================================================
 // GLOBAL OBJECTS
@@ -225,6 +227,8 @@ void cloudTask(void *parameter);
 void ledTask(void *parameter);
 void systemTask(void *parameter);
 void ioTask(void *parameter);
+void screenMirrorTask(void *parameter);
+void toggleScreenMirror(bool enable);
 String formatUptime(unsigned long milliseconds);
 
 // ESP-NOW Gateway Functions

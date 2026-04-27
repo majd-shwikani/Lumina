@@ -156,6 +156,27 @@ void publishDiscoveryForDevice(String id, String name, String baseTopic, bool is
     mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
   }
 
+  // SCREEN MIRROR SWITCH
+  {
+    String configTopic = discoveryPrefix + "/switch/" + id + "_screen_mirror/config";
+    DynamicJsonDocument doc(1024);
+
+    doc["name"] = name + " Screen Mirror";
+    doc["unique_id"] = id + "_screen_mirror";
+    doc["command_topic"] = baseTopic + "/screen_mirror/cmd";
+    doc["state_topic"] = baseTopic + "/state";
+    doc["value_template"] = "{{ value_json.screen_mirror }}";
+    doc["payload_on"] = "ON";
+    doc["payload_off"] = "OFF";
+    doc["icon"] = "mdi:monitor-screenshot";
+    doc["device"] = device;
+    doc["availability_topic"] = baseTopic + "/status";
+
+    String payload;
+    serializeJson(doc, payload);
+    mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+  }
+
   // MIRROR MODE SWITCH (Only for Mini Receivers)
   if (!isGateway) {
     String configTopic = discoveryPrefix + "/switch/" + id + "_mirror/config";
@@ -468,7 +489,9 @@ void publishDeviceState(String topic, bool enabled, int brightness, int effect, 
   
   stateDoc["speed"] = speed;
   
-  if (!isGateway) {
+  if (isGateway) {
+    stateDoc["screen_mirror"] = screenMirrorMode ? "ON" : "OFF";
+  } else {
     stateDoc["mirror"] = mirror ? "ON" : "OFF";
   }
 
@@ -677,7 +700,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       routeCommandToReceiver(targetReceiverIndex);
     }
   }
-  // 6. Mirror Mode toggle
+  // 6. Screen Mirror toggle (Gateway only)
+  else if (isGatewayTarget && topicStr.endsWith("/screen_mirror/cmd")) {
+    bool newState = (strcmp(message, "ON") == 0);
+    toggleScreenMirror(newState);
+    enqueueFirebaseRequest(FB_SET_BOOL, basePath + "/local/screenMirror", newState ? "true" : "false");
+  }
+  // 7. Mirror Mode toggle (Receivers only)
   else if (!isGatewayTarget && topicStr.endsWith("/mirror/cmd")) {
     bool mirrorState = (strcmp(message, "ON") == 0);
     receivers[targetReceiverIndex].isMirror = mirrorState;
@@ -709,6 +738,7 @@ void subscribeToTopics() {
   mqttClient.subscribe((deviceTopic + "/color/cmd").c_str());
   mqttClient.subscribe((deviceTopic + "/effect/cmd").c_str());
   mqttClient.subscribe((deviceTopic + "/speed/cmd").c_str());
+  mqttClient.subscribe((deviceTopic + "/screen_mirror/cmd").c_str());
   
   // 2. Receiver Subscriptions
   for (int i = 0; i < receiverCount; i++) {

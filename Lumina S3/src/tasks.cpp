@@ -6,6 +6,8 @@
 // Note: statsTaskStack and statsTaskHandle removed - merged into sensor task
 Receiver receivers[10];
 int receiverCount = 0;
+volatile bool screenMirrorMode = false;
+TaskHandle_t screenMirrorTaskHandle = NULL;
 
 // ============================================================================
 // LED UPDATE FUNCTION
@@ -439,7 +441,92 @@ void ledTask(void *parameter) {
   Serial.println("💡 LED Task started on Core " + String(xPortGetCoreID()));
   for(;;) {
     esp_task_wdt_reset();
-    updateLEDs();
+    if (!screenMirrorMode) {
+      updateLEDs();
+    }
     vTaskDelay(effectSpeed / portTICK_PERIOD_MS);
+  }
+}
+
+// ============================================================================
+// SCREEN MIRRORING TASK (Core 0)
+// ============================================================================
+
+void screenMirrorTask(void *parameter) {
+  Serial.println("🖥️  Screen Mirror Task started on Core " + String(xPortGetCoreID()));
+  
+  // High speed serial configuration
+  Serial.setRxBufferSize(2048); // Increase buffer for high-speed data
+  while(Serial.available() > 0) Serial.read();
+
+  const uint8_t magic_lumi[] = {0x4C, 0x55, 0x4D, 0x49}; // "LUMI"
+  const uint8_t cmd_handshake = 0xCC;
+  const uint8_t cmd_data = 0xBB;
+  
+  for(;;) {
+    esp_task_wdt_reset();
+
+    // Look for our 4-byte "LUMI" magic header
+    if (Serial.available() >= 5) { // 4 bytes magic + 1 byte command
+      bool match = true;
+      for(int i = 0; i < 4; i++) {
+        if (Serial.read() != magic_lumi[i]) {
+          match = false;
+          break;
+        }
+      }
+
+      if (match) {
+        uint8_t cmd = Serial.read();
+        
+        if (cmd == cmd_handshake) {
+          uint8_t response[2];
+          response[0] = (ledCount >> 8) & 0xFF;
+          response[1] = ledCount & 0xFF;
+          Serial.write(response, 2);
+          Serial.flush();
+        }
+        else if (cmd == cmd_data) {
+          int bytesToRead = ledCount * 3;
+          uint8_t* rawLeds = (uint8_t*)leds;
+          
+          // Use high-performance block read with a short timeout
+          Serial.setTimeout(50); 
+          size_t bytesRead = Serial.readBytes(rawLeds, bytesToRead);
+
+          if (bytesRead == bytesToRead) {
+            FastLED.show();
+          } else {
+            // Partial frame received, clear buffer to re-sync
+            while(Serial.available() > 0) Serial.read();
+          }
+        }
+      }
+    }
+    // Minimal yield to keep Core 0 responsive
+    vTaskDelay(1);
+  }
+}
+
+void toggleScreenMirror(bool enable) {
+  if (enable && !screenMirrorMode) {
+    screenMirrorMode = true;
+    Serial.println("🖥️  Enabling Screen Mirror Mode...");
+    
+    // Create task on Core 0 with priority 2 (higher than cloud/io)
+    xTaskCreatePinnedToCore(screenMirrorTask, "MirrorTask", 4000, NULL, 2, &screenMirrorTaskHandle, 0);
+  } 
+  else if (!enable && screenMirrorMode) {
+    screenMirrorMode = false;
+    Serial.println("🖥️  Disabling Screen Mirror Mode...");
+    
+    if (screenMirrorTaskHandle != NULL) {
+      vTaskDelete(screenMirrorTaskHandle);
+      screenMirrorTaskHandle = NULL;
+    }
+    
+    // Clear LEDs when exiting mirror mode
+    FastLED.clear();
+    FastLED.show();
   }
 }

@@ -162,6 +162,15 @@ void readInitialFirebaseData() {
     timerEnabled = true;
     Firebase.RTDB.setBool(&fbdoSender, timerEnabledPath.c_str(), timerEnabled);
   }
+
+  String screenMirrorPath = localPath + "/screenMirror";
+  if (Firebase.RTDB.getBool(&fbdoSender, screenMirrorPath.c_str())) {
+    bool mirrorState = fbdoSender.boolData();
+    Serial.printf("      Screen Mirror: %s\n", mirrorState ? "true" : "false");
+    toggleScreenMirror(mirrorState);
+  } else {
+    Firebase.RTDB.setBool(&fbdoSender, screenMirrorPath.c_str(), false);
+  }
   
   String resetPath = localPath + "/reset";
   Firebase.RTDB.setBool(&fbdoSender, resetPath.c_str(), false);
@@ -241,6 +250,11 @@ void streamCallback(FirebaseStream data) {
     else if (subPath == "/timer_off") {
       strncpy(timerOffTime, data.stringData().c_str(), sizeof(timerOffTime));
       Serial.printf("🔥 [Firebase] Timer OFF → %s\n", timerOffTime);
+    }
+    else if (subPath == "/screenMirror") {
+      bool newState = data.boolData();
+      Serial.printf("🔥 [Firebase] Screen Mirror → %s\n", newState ? "ON" : "OFF");
+      toggleScreenMirror(newState);
     }
     else if (subPath.startsWith("/mqtt")) {
       Serial.println("🔥 [Firebase] MQTT config changed → signalling update...");
