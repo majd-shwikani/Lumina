@@ -384,6 +384,38 @@ void publishDiscoveryForDevice(String id, String name, String baseTopic, bool is
       serializeJson(doc, payload);
       mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
     }
+    // LUX SENSOR
+    {
+      String configTopic = discoveryPrefix + "/sensor/" + id + "_lux/config";
+      DynamicJsonDocument doc(1024);
+      doc["name"] = name + " Illuminance";
+      doc["unique_id"] = id + "_lux";
+      doc["state_topic"] = baseTopic + "/sensors/system";
+      doc["value_template"] = "{{ value_json.lux }}";
+      doc["unit_of_measurement"] = "lx";
+      doc["device_class"] = "illuminance";
+      doc["state_class"] = "measurement";
+      doc["device"] = device;
+      doc["availability_topic"] = baseTopic + "/status";
+      String payload;
+      serializeJson(doc, payload);
+      mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    }
+    // VERSION SENSOR
+    {
+      String configTopic = discoveryPrefix + "/sensor/" + id + "_version/config";
+      DynamicJsonDocument doc(1024);
+      doc["name"] = name + " Firmware Version";
+      doc["unique_id"] = id + "_version";
+      doc["state_topic"] = baseTopic + "/sensors/system";
+      doc["value_template"] = "{{ value_json.version }}";
+      doc["icon"] = "mdi:chip";
+      doc["device"] = device;
+      doc["availability_topic"] = baseTopic + "/status";
+      String payload;
+      serializeJson(doc, payload);
+      mqttClient.publish(configTopic.c_str(), payload.c_str(), true);
+    }
   }
 }
 
@@ -499,6 +531,8 @@ void mqttPublishSensorData() {
   sysDoc["uptime"] = formatUptime(millis());
   sysDoc["wifi_rssi"] = WiFi.RSSI();
   sysDoc["cpu_temp"] = String(currentCpuTemp, 1);
+  sysDoc["lux"] = String(currentLux, 1);
+  sysDoc["version"] = currentFirmwareVersion;
   
   float ramUsage = (1.0 - (float)ESP.getFreeHeap() / (float)ESP.getHeapSize()) * 100.0;
   sysDoc["ram_usage"] = String(ramUsage, 1);
