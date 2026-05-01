@@ -106,6 +106,14 @@ void setupINA219() {
   Serial.println("INA219 power monitor initialized successfully");
 }
 
+void setupInternalTempSensor() {
+  temp_sensor_config_t temp_sensor = TSENS_CONFIG_DEFAULT();
+  temp_sensor.dac_offset = TSENS_DAC_L2; // -10℃ ~ 80℃, error < 1℃
+  temp_sensor_set_config(temp_sensor);
+  temp_sensor_start();
+  Serial.println("Internal ESP32-S3 temperature sensor driver initialized");
+}
+
 // Update this section in sensors.cpp
 
 void updateSensorData() {
@@ -132,8 +140,14 @@ void updateSensorData() {
     currentPower = ina219.getPower_mW();
   }
 
-  // Read internal CPU temperature
-  currentCpuTemp = temperatureRead();
+  // Read internal CPU temperature every 2000ms using the ESP-IDF driver
+  static uint32_t lastTempUpdate = 0;
+  if (millis() - lastTempUpdate >= 2000 || lastTempUpdate == 0) {
+    lastTempUpdate = millis();
+    float tsens_out;
+    temp_sensor_read_celsius(&tsens_out);
+    currentCpuTemp = tsens_out;
+  }
 }
 
 // Improved logic to prevent "Optical Feedback" (LEDs turning themselves off)

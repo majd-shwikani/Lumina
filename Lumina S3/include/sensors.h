@@ -6,6 +6,7 @@
 #include <Adafruit_VEML7700.h>
 #include <Adafruit_INA219.h>
 #include <driver/i2s.h>
+#include <driver/temp_sensor.h> // ESP-IDF Temperature Sensor Driver
 #include <arduinoFFT.h>
 #include <FastLED.h>
 #include "config.h"
@@ -102,6 +103,7 @@ extern volatile bool stripEnabled;
 // Light Sensor Functions
 void setupVEML7700();
 void setupINA219();
+void setupInternalTempSensor();
 void updateSensorData();
 bool shouldTurnOffDueToDarkness();
 

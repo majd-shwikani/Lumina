@@ -114,6 +114,8 @@ Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
   } else {
     Serial.println("      ⚠️  INA219 not found");
   }
+
+  setupInternalTempSensor(); // Initialize ESP-IDF temperature driver
   
   Serial.println("🔥 [5/9] Connecting to Firebase...");
   setupFirebase();

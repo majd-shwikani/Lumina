@@ -1,0 +1,16 @@
+Press Ctrl+C to stop
+C:\Users\Majd Shwikani\Documents\PlatformIO\Projects\Lumina\Lumina S3\Tools\lumina_screen_mirror.py:114: DeprecationWarning: mss.mss is deprecated and will be removed in a future release; use mss.MSS instead
+  with mss.mss() as sct:
+Traceback (most recent call last):
+  File "C:\Users\Majd Shwikani\Documents\PlatformIO\Projects\Lumina\Lumina S3\Tools\lumina_screen_mirror.py", line 169, in <module>
+    main()
+  File "C:\Users\Majd Shwikani\Documents\PlatformIO\Projects\Lumina\Lumina S3\Tools\lumina_screen_mirror.py", line 137, in main
+    img = sct.grab(monitor)
+  File "C:\Users\Majd Shwikani\AppData\Local\Programs\Python\Python39\lib\site-packages\mss\base.py", line 312, in grab
+    img_data_and_maybe_size = self._impl.grab(monitor)
+  File "C:\Users\Majd Shwikani\AppData\Local\Programs\Python\Python39\lib\site-packages\mss\windows\gdi.py", line 380, in grab
+    gdi.BitBlt(memdc, 0, 0, width, height, srcdc, monitor["left"], monitor["top"], SRCCOPY | CAPTUREBLT)
+  File "C:\Users\Majd Shwikani\AppData\Local\Programs\Python\Python39\lib\site-packages\mss\windows\gdi.py", line 127, in _errcheck
+    raise ScreenShotError(msg, details=details)
+mss.exception.ScreenShotError: Windows graphics function failed (no error provided): BitBlt
+PS C:\Users\Majd Shwikani\Documents\PlatformIO\Projects\Lumina\Lumina S3\Tools>
