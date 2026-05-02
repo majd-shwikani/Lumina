@@ -1,4 +1,5 @@
 #include "sensors.h"
+#include "globals.h"
 #include <esp_task_wdt.h>
 #include "FS.h"
 #include "SPIFFS.h"
@@ -452,6 +453,12 @@ void checkAndRecalibrate() {
 // ============================================================================
 
 void updateFrequencyDetection() {
+  if (audioMirrorMode) {
+    // Skip hardware sampling if receiving audio via USB
+    normalizeAudioLevels();
+    return;
+  }
+
   if (!calibrationComplete) {
     calibrateMicrophone();
     return;

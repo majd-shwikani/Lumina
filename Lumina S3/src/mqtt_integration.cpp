@@ -490,7 +490,7 @@ void publishDeviceState(String topic, bool enabled, int brightness, int effect, 
   stateDoc["speed"] = speed;
   
   if (isGateway) {
-    stateDoc["screen_mirror"] = screenMirrorMode ? "ON" : "OFF";
+    stateDoc["screen_mirror"] = usbMirrorActive ? "ON" : "OFF";
   } else {
     stateDoc["mirror"] = mirror ? "ON" : "OFF";
   }
@@ -703,7 +703,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // 6. Screen Mirror toggle (Gateway only)
   else if (isGatewayTarget && topicStr.endsWith("/screen_mirror/cmd")) {
     bool newState = (strcmp(message, "ON") == 0);
-    toggleScreenMirror(newState);
+    toggleUsbMirror(newState, false);
     enqueueFirebaseRequest(FB_SET_BOOL, basePath + "/local/screenMirror", newState ? "true" : "false");
   }
   // 7. Mirror Mode toggle (Receivers only)

@@ -15,11 +15,19 @@ TaskHandle_t cloudTaskHandle = NULL;
 TaskHandle_t ledTaskHandle = NULL;
 TaskHandle_t ioTaskHandle = NULL;
 TaskHandle_t systemTaskHandle = NULL;
+TaskHandle_t usbDataTaskHandle = NULL;
+volatile bool usbMirrorActive = false;
+volatile bool usbPixelStreamActive = false;
+volatile bool audioMirrorMode = false;
+volatile uint32_t lastUsbAudioTime = 0;
+volatile uint32_t lastUsbPixelTime = 0;
 unsigned long lastLoopTime = 0;
 unsigned long loopCounter = 0;
 bool systemHealthy = true;
 bool systemInitialized = false;
 volatile bool configPortalActive = false;
+Receiver receivers[10];
+int receiverCount = 0;
 CRGB *leds = nullptr;
 CRGB onboardLed[1];
 FirebaseData fbdoStream;
@@ -311,6 +319,7 @@ void printSystemStats() {
     { "LEDAnim",    ledTaskHandle,     4000 },
     { "IOTask",     ioTaskHandle,      6000 },
     { "SystemTask", systemTaskHandle,  6000 },
+    { "USBTask",    usbDataTaskHandle, 4000 },
   };
   const int taskCount = sizeof(tasks) / sizeof(tasks[0]);
 

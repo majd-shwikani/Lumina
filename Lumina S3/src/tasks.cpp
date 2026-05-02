@@ -4,10 +4,6 @@
 // VARIABLE DEFINITIONS
 // ============================================================================
 // Note: statsTaskStack and statsTaskHandle removed - merged into sensor task
-Receiver receivers[10];
-int receiverCount = 0;
-volatile bool screenMirrorMode = false;
-TaskHandle_t screenMirrorTaskHandle = NULL;
 
 // ============================================================================
 // LED UPDATE FUNCTION
@@ -441,7 +437,8 @@ void ledTask(void *parameter) {
   Serial.println("💡 LED Task started on Core " + String(xPortGetCoreID()));
   for(;;) {
     esp_task_wdt_reset();
-    if (!screenMirrorMode) {
+    // Only update LEDs if not actively receiving a pixel stream
+    if (!usbPixelStreamActive) {
       updateLEDs();
     }
     vTaskDelay(effectSpeed / portTICK_PERIOD_MS);
@@ -449,11 +446,11 @@ void ledTask(void *parameter) {
 }
 
 // ============================================================================
-// SCREEN MIRRORING TASK (Core 0)
+// USB DATA TASK (Core 0)
 // ============================================================================
 
-void screenMirrorTask(void *parameter) {
-  Serial.println("🖥️  Screen Mirror Task started on Core " + String(xPortGetCoreID()));
+void usbDataTask(void *parameter) {
+  Serial.println("🔌 USB Data Task started on Core " + String(xPortGetCoreID()));
   
   // High speed serial configuration
   Serial.setRxBufferSize(2048); // Increase buffer for high-speed data
@@ -462,6 +459,7 @@ void screenMirrorTask(void *parameter) {
   const uint8_t magic_lumi[] = {0x4C, 0x55, 0x4D, 0x49}; // "LUMI"
   const uint8_t cmd_handshake = 0xCC;
   const uint8_t cmd_data = 0xBB;
+  const uint8_t cmd_audio = 0xAA;
   
   for(;;) {
     esp_task_wdt_reset();
@@ -470,9 +468,11 @@ void screenMirrorTask(void *parameter) {
     if (Serial.available() >= 5) { // 4 bytes magic + 1 byte command
       bool match = true;
       for(int i = 0; i < 4; i++) {
-        if (Serial.read() != magic_lumi[i]) {
-          match = false;
-          break;
+        if (Serial.peek() == magic_lumi[i]) {
+            Serial.read();
+        } else {
+            match = false;
+            break;
         }
       }
 
@@ -487,46 +487,79 @@ void screenMirrorTask(void *parameter) {
           Serial.flush();
         }
         else if (cmd == cmd_data) {
+          usbPixelStreamActive = true;
+          lastUsbPixelTime = millis();
+          
           int bytesToRead = ledCount * 3;
           uint8_t* rawLeds = (uint8_t*)leds;
           
-          // Use high-performance block read with a short timeout
           Serial.setTimeout(50); 
           size_t bytesRead = Serial.readBytes(rawLeds, bytesToRead);
 
           if (bytesRead == bytesToRead) {
             FastLED.show();
           } else {
-            // Partial frame received, clear buffer to re-sync
             while(Serial.available() > 0) Serial.read();
           }
         }
+        else if (cmd == cmd_audio) {
+          uint8_t audioData[8];
+          Serial.setTimeout(10);
+          size_t bytesRead = Serial.readBytes(audioData, 8);
+          
+          if (bytesRead == 8) {
+            audioMirrorMode = true;
+            lastUsbAudioTime = millis();
+            
+            // Map the 8 bytes to bandMagnitudes (normalize to 0.0 - 1.0)
+            for (int i = 0; i < 8; i++) {
+              bandMagnitudes[i] = audioData[i] / 255.0;
+            }
+          }
+        }
+      } else {
+          // If no match, discard one byte and try again
+          if (Serial.available() > 0) Serial.read();
       }
     }
-    // Minimal yield to keep Core 0 responsive
-    vTaskDelay(1);
+    
+    // Timeout check for Pixel Stream (2 seconds)
+    if (usbPixelStreamActive && (millis() - lastUsbPixelTime > 2000)) {
+        usbPixelStreamActive = false;
+        Serial.println("🖥️  USB Pixel stream timeout, resuming effects...");
+    }
+
+    // Timeout check for Audio Stream (2 seconds)
+    if (audioMirrorMode && (millis() - lastUsbAudioTime > 2000)) {
+        audioMirrorMode = false;
+        Serial.println("🎵 USB Audio stream timeout, reverting to microphone...");
+    }
+
+    vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
 
-void toggleScreenMirror(bool enable) {
-  if (enable && !screenMirrorMode) {
-    screenMirrorMode = true;
-    Serial.println("🖥️  Enabling Screen Mirror Mode...");
-    
-    // Create task on Core 0 with priority 2 (higher than cloud/io)
-    xTaskCreatePinnedToCore(screenMirrorTask, "MirrorTask", 4000, NULL, 2, &screenMirrorTaskHandle, 0);
-  } 
-  else if (!enable && screenMirrorMode) {
-    screenMirrorMode = false;
-    Serial.println("🖥️  Disabling Screen Mirror Mode...");
-    
-    if (screenMirrorTaskHandle != NULL) {
-      vTaskDelete(screenMirrorTaskHandle);
-      screenMirrorTaskHandle = NULL;
+void toggleUsbMirror(bool enable, bool isAudio) {
+  if (enable) {
+    usbMirrorActive = true;
+    if (usbDataTaskHandle == NULL) {
+        Serial.println("🔌 Enabling USB Data Task...");
+        xTaskCreatePinnedToCore(usbDataTask, "USBTask", 4000, NULL, 2, &usbDataTaskHandle, 0);
     }
+  } 
+  else {
+    usbMirrorActive = false;
+    audioMirrorMode = false;
+    usbPixelStreamActive = false;
     
     // Clear LEDs when exiting mirror mode
     FastLED.clear();
     FastLED.show();
+    
+    if (usbDataTaskHandle != NULL) {
+      Serial.println("🔌 Disabling USB Data Task...");
+      vTaskDelete(usbDataTaskHandle);
+      usbDataTaskHandle = NULL;
+    }
   }
 }
