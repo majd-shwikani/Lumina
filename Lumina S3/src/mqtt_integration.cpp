@@ -33,10 +33,9 @@ const char* EFFECT_NAMES[] = {
     "Quantum Particles", "Neural Network", "Galaxy Spin", "Crystal Growth",
     "Lightning Storm", "Ocean Depth", "Northern Lights", "Time Tunnel",
     "Cyber City", "Solar Flare", "Fire Simulation", "Solid Color",
-    // Sound Reactive (22-32)
-    "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom",
-    "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer",
-    "Cascading Frequency", "Energy Orbits", "Audio Ripples",
+    // Advanced Audio Reactive (22-26)
+    "Spectrum Ripple", "Kinetic Plasma", "Transient Pulse",
+    "Spectrum Bars", "Spectral Verve",
     // Revolutionary (33-42)
     "Plasma Waves", "Confetti Palettes", "Sinelon Dual", "BPM", "Juggle",
     "Glitter Rainbow", "Pacific", "Twinkle Fox", "Color Waves", "Perlin Move",

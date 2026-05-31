@@ -520,6 +520,14 @@
                     <label class="toggle"><input type="checkbox" id="powerToggle"><span class="slider"></span></label>
                 </div>
 
+                <div id="screenMirrorControlContainer" class="control-row">
+                    <div>
+                        <div class="control-label">Screen Mirroring</div>
+                        <div class="control-sub">Follow Windows screen via USB</div>
+                    </div>
+                    <label class="toggle"><input type="checkbox" id="screenMirrorToggle"><span class="slider"></span></label>
+                </div>
+
                 <div class="control-row">
                     <div>
                         <div class="control-label">Power Consumption</div>
@@ -627,22 +635,22 @@
         const effects = [
             // Standard (0-21)
             "Rainbow Cycle", "Meteor Shower", "Digital Rain", "Pulsing Spheres", "Binary Clock", "Vortex", "DNA Helix", "Audio Visualizer", "Lava Lamp", "Radar Sweep", "Quantum Particles", "Neural Network", "Galaxy Spin", "Crystal Growth", "Lightning Storm", "Ocean Depth", "Northern Lights", "Time Tunnel", "Cyber City", "Solar Flare", "Fire Simulation", "Solid Color",
-            // Sound Reactive (22-32)
-            "Frequency Spectrum", "Reactive Waveform", "Beat Pulse", "Frequency Bloom", "Audio Reactive Fire", "Musical Rainbow", "Reactive Strobe", "Guitar Visualizer", "Cascading Frequency", "Energy Orbits", "Audio Ripples",
-            // Revolutionary (33-42)
+            // Advanced Audio Reactive (22-26)
+            "Spectrum Ripple", "Kinetic Plasma", "Transient Pulse", "Spectrum Bars", "Spectral Verve",
+            // Revolutionary (27-36)
             "Plasma Waves", "Confetti Palettes", "Sinelon Dual", "BPM", "Juggle", "Glitter Rainbow", "Pacific", "Twinkle Fox", "Color Waves", "Perlin Move",
-            // Organic Lamps (43-52)
+            // Organic Lamps (37-46)
             "Plasma Lamp", "Bioluminescence", "Deep Sea Volcano", "Magical Aurora", "Solar Winds", "Ethereal Mist", "Bio-Pulse", "Radioactive Glow", "Supernova", "Enchanted Stream",
-            // Fire Simulations (53-62)
+            // Fire Simulations (47-56)
             "Blue Gas Flame", "Wildfire", "Candle Flame", "Campfire", "Plasma Fire", "Inferno", "Smoldering Embers", "Lava Flow", "Ember Storm", "Hearth Fire"
         ];
 
         const effectCategories = [
             { name: "✨ Standard", start: 0, end: 21 },
-            { name: "🎵 Sound Reactive", start: 22, end: 32 },
-            { name: "🚀 Revolutionary", start: 33, end: 42 },
-            { name: "💡 Organic Lamps", start: 43, end: 52 },
-            { name: "🔥 Fire Simulations", start: 53, end: 62 }
+            { name: "🎵 Advanced Audio Reactive", start: 22, end: 26 },
+            { name: "🚀 Revolutionary", start: 27, end: 36 },
+            { name: "💡 Organic Lamps", start: 37, end: 46 },
+            { name: "🔥 Fire Simulations", start: 47, end: 56 }
         ];
 
         let currentState = {
@@ -654,6 +662,8 @@
         const nodeList = document.getElementById('nodeList');
         const mirrorToggle = document.getElementById('mirrorToggle');
         const mirrorControlContainer = document.getElementById('mirrorControlContainer');
+        const screenMirrorToggle = document.getElementById('screenMirrorToggle');
+        const screenMirrorControlContainer = document.getElementById('screenMirrorControlContainer');
         const powerToggle = document.getElementById('powerToggle');
         const speedSlider = document.getElementById('speedSlider');
         const brightnessSlider = document.getElementById('brightnessSlider');
@@ -759,6 +769,7 @@
             firebaseListeners.push(targetRef);
 
             mirrorControlContainer.style.display = (currentState.currentTarget === 'local') ? 'none' : 'flex';
+            screenMirrorControlContainer.style.display = (currentState.currentTarget === 'local') ? 'flex' : 'none';
 
             targetRef.on('value', snap => {
                 const data = snap.val();
@@ -766,6 +777,7 @@
                 
                 powerToggle.checked = !!data.enabled;
                 if (data.isMirror !== undefined) mirrorToggle.checked = !!data.isMirror;
+                if (data.screenMirror !== undefined) screenMirrorToggle.checked = !!data.screenMirror;
                 
                 speedSlider.value = data.speed || 50;
                 document.getElementById('speedValue').textContent = data.speed || 50;
@@ -833,6 +845,7 @@
         });
 
         powerToggle.addEventListener('change', () => updateFirebaseValue('enabled', powerToggle.checked));
+        screenMirrorToggle.addEventListener('change', () => updateFirebaseValue('screenMirror', screenMirrorToggle.checked));
         mirrorToggle.addEventListener('change', () => updateFirebaseValue('isMirror', mirrorToggle.checked));
         speedSlider.addEventListener('input', () => document.getElementById('speedValue').textContent = speedSlider.value);
         speedSlider.addEventListener('change', () => updateFirebaseValue('speed', parseInt(speedSlider.value)));
