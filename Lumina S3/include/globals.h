@@ -16,7 +16,6 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <driver/i2s.h>
-#include <arduinoFFT.h>
 #include <ld2410.h>
 #include <esp_system.h>
 #include <rom/rtc.h>
@@ -110,6 +109,7 @@ extern TaskHandle_t ledTaskHandle;
 extern TaskHandle_t ioTaskHandle;
 extern TaskHandle_t systemTaskHandle;
 extern TaskHandle_t usbDataTaskHandle;
+extern TaskHandle_t audioTaskHandle;
 
 extern unsigned long lastLoopTime;
 extern unsigned long loopCounter;
@@ -233,6 +233,7 @@ void systemTask(void *parameter);
 void ioTask(void *parameter);
 void usbDataTask(void *parameter);
 void toggleUsbMirror(bool enable, bool isAudio);
+void audioProcessingTask(void *parameter);
 String formatUptime(unsigned long milliseconds);
 
 // ESP-NOW Gateway Functions
