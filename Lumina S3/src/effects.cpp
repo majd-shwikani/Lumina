@@ -861,181 +861,190 @@ void effectSolidColor() {
 }
 
 // ============================================================================
-// ADVANCED AUDIO-REACTIVE EFFECTS (22-26)
+// ADVANCED SOUND-REACTIVE EFFECTS (22-26) — ported from Advanced Audio Reactive
 // ============================================================================
 
-// Effect 22: Spectrum Ripple — Bass-driven ripple from center with spectral accents
 void effectSpectrumRipple() {
-  const int TOTAL = ledCount;
-  const int CENTER = TOTAL / 2;
-
-  fadeToBlackBy(leds, TOTAL, 40);
-
-  // Bass (bands 0-3) → warm orange ripple
-  float bassAvg = (bandMagnitudes[0] + bandMagnitudes[1] + bandMagnitudes[2] + bandMagnitudes[3]) * 0.25f;
-  int bassOffset = (int)(bassAvg * (TOTAL / 4));
-  for (int i = 0; i <= bassOffset && i <= CENTER; i++) {
-    leds[constrain(CENTER + i, 0, TOTAL - 1)] += CHSV(16, 255, 200);
-    leds[constrain(CENTER - i, 0, TOTAL - 1)] += CHSV(16, 255, 200);
-  }
-
-  // Mid (bands 4-9) → green accents at ripple edge
-  float midAvg = 0;
-  for (int b = 4; b <= 9; b++) midAvg += bandMagnitudes[b];
-  midAvg /= 6.0f;
-  if (midAvg > 0.25f) {
-    int midPos = bassOffset + (int)(midAvg * (TOTAL / 5));
-    leds[constrain(CENTER + midPos, 0, TOTAL - 1)] = CHSV(130, 220, 255);
-    leds[constrain(CENTER - midPos, 0, TOTAL - 1)] = CHSV(130, 220, 255);
-  }
-
-  // High (bands 10-15) → white sparkles in outer quarter
-  float highAvg = 0;
-  for (int b = 10; b < NUM_FREQ_BANDS; b++) highAvg += bandMagnitudes[b];
-  highAvg /= 6.0f;
-  if (highAvg > 0.4f) {
-    int sparkleCount = (int)(highAvg * 4);
-    for (int s = 0; s < sparkleCount; s++) {
-      int pos = (random(0, 2) == 0) ? random(0, CENTER / 2) : random(CENTER + CENTER / 2, TOTAL);
-      leds[constrain(pos, 0, TOTAL - 1)] = CRGB::White;
+    AudioData frame;
+    if (xSemaphoreTake(i2sMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+        frame = sharedAudio;
+        xSemaphoreGive(i2sMutex);
     }
-  }
 
-  // High flux → center burst with centroid color
-  if (spectralFlux > 0.3f) {
-    leds[CENTER] = CHSV((uint8_t)(spectralCentroid * 200), 200, 255);
-  }
+    fadeToBlackBy(leds, ledCount, 40);
+    int center = ledCount / 2;
+
+    // Bass bands 0-3 → warm orange ripple
+    float bassAvg = (frame.bands[0] + frame.bands[1] + frame.bands[2] + frame.bands[3]) * 0.25f;
+    int bassOffset = (int)(bassAvg * (ledCount / 4));
+    for (int i = 0; i <= bassOffset; i++) {
+        leds[constrain(center + i, 0, ledCount - 1)] += CHSV(16, 255, 200);
+        leds[constrain(center - i, 0, ledCount - 1)] += CHSV(16, 255, 200);
+    }
+
+    // Mid bands 4-9 → green accents at ripple edge
+    float midAvg = 0;
+    for (int b = 4; b <= 9; b++) midAvg += frame.bands[b];
+    midAvg /= 6.0f;
+    if (midAvg > 0.25f) {
+        int midPos = bassOffset + (int)(midAvg * (ledCount / 5));
+        leds[constrain(center + midPos, 0, ledCount - 1)] = CHSV(130, 220, 255);
+        leds[constrain(center - midPos, 0, ledCount - 1)] = CHSV(130, 220, 255);
+    }
+
+    // High bands 10-15 → white/cool sparkles
+    float highAvg = 0;
+    for (int b = 10; b < NUM_BANDS; b++) highAvg += frame.bands[b];
+    highAvg /= 6.0f;
+    if (highAvg > 0.4f) {
+        int sparkleCount = (int)(highAvg * 4);
+        for (int s = 0; s < sparkleCount; s++) {
+            if (random(0, 2) == 0) leds[random(0, center / 2)] = CRGB::White;
+            else leds[random(center + center / 2, ledCount)] = CRGB::White;
+        }
+    }
+
+    // High flux → center burst with centroid colour
+    if (frame.flux > 0.3f) {
+        leds[center] = CHSV((uint8_t)(frame.centroid * 200), 200, 255);
+    }
 }
 
-// Effect 23: Kinetic Plasma — Audio-reactive Perlin noise plasma
 void effectKineticPlasma() {
-  const int TOTAL = ledCount;
-  static uint32_t plasmaIndex = 0;
+    AudioData frame;
+    if (xSemaphoreTake(i2sMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+        frame = sharedAudio;
+        xSemaphoreGive(i2sMutex);
+    }
 
-  plasmaIndex += 2 + (uint32_t)(globalAudioLevel * 35);
+    static uint32_t plasmaIndex = 0;
+    plasmaIndex += 2 + (uint32_t)(frame.volume * 35);
 
-  for (int i = 0; i < TOTAL; i++) {
-    uint8_t noiseValue = inoise8(i * 12, plasmaIndex);
-    uint8_t baseBright = map(noiseValue, 0, 255, 30, 255);
-    float fluxBoost = 1.0f + spectralFlux * 2.0f;
-    int bright = (int)(baseBright * globalAudioLevel * fluxBoost);
-    uint8_t hue = noiseValue + (uint8_t)(spectralCentroid * 100) + (uint8_t)(bandMagnitudes[10] * 40);
-    leds[i] = CHSV(hue, 230, constrain(bright, 0, 255));
-  }
+    for (int i = 0; i < ledCount; i++) {
+        uint8_t noiseValue = inoise8(i * 12, plasmaIndex);
+        uint8_t baseBright = map(noiseValue, 0, 255, 30, 255);
+        float fluxBoost = 1.0f + frame.flux * 2.0f;
+        int bright = (int)(baseBright * frame.volume * fluxBoost);
+        uint8_t hue = noiseValue + (uint8_t)(frame.centroid * 100) + (uint8_t)(frame.bands[10] * 40);
+        leds[i] = CHSV(hue, 230, constrain(bright, 0, 255));
+    }
 }
 
-// Effect 24: Transient Pulse — Multi-band onset-driven pulse
 void effectTransientPulse() {
-  const int TOTAL = ledCount;
-  const int CENTER = TOTAL / 2;
-  static float travelHead = 0.0;
-
-  fadeToBlackBy(leds, TOTAL, 60);
-
-  // Bass onset → traveling pulse from center
-  if (beatDetected) travelHead = CENTER;
-
-  // Mid onset → flash center green
-  if (onsetMid) {
-    leds[CENTER] = CHSV(130, 255, 255);
-    leds[constrain(CENTER - 2, 0, TOTAL - 1)] = CHSV(130, 255, 200);
-    leds[constrain(CENTER + 2, 0, TOTAL - 1)] = CHSV(130, 255, 200);
-  }
-
-  // High onset → random white sparkles
-  if (onsetHigh) {
-    leds[random(0, TOTAL)] = CRGB::White;
-    leds[random(0, TOTAL)] = CRGB::White;
-  }
-
-  if (travelHead > 0) {
-    int leftPos  = CENTER - (int)travelHead;
-    int rightPos = CENTER + (int)travelHead;
-    CRGB beatColor = CHSV((uint8_t)(spectralCentroid * 200), 255, 255);
-    if (leftPos  >= 0) leds[leftPos]  = beatColor;
-    if (rightPos < TOTAL) leds[rightPos] = beatColor;
-    travelHead *= 0.92f;
-    if (travelHead < 1.0f) travelHead = 0;
-  } else {
-    // Idle: breathing blue glow
-    uint8_t idleBright = (uint8_t)(sin8(millis() / 4) * globalAudioLevel);
-    uint8_t idleHue = 160 + (uint8_t)(spectralCentroid * 60);
-    for (int i = 0; i < TOTAL; i++) leds[i] = CHSV(idleHue, 240, idleBright / 2);
-  }
-}
-
-// Effect 25: Spectrum Bars — 16-band equalizer with peak hold
-void effectSpectrumBars() {
-  const int TOTAL = ledCount;
-  const int L_PER_BAND = TOTAL / NUM_FREQ_BANDS;
-
-  fadeToBlackBy(leds, TOTAL, 15);
-
-  static uint8_t peakHold[NUM_FREQ_BANDS] = {0};
-  static uint8_t peakTimer[NUM_FREQ_BANDS] = {0};
-
-  for (int b = 0; b < NUM_FREQ_BANDS; b++) {
-    int start = b * L_PER_BAND;
-    int height = (int)(bandMagnitudes[b] * L_PER_BAND);
-    if (height > L_PER_BAND) height = L_PER_BAND;
-
-    uint8_t hue = (uint8_t)((float)b / NUM_FREQ_BANDS * 160);
-
-    for (int l = 0; l < L_PER_BAND; l++) {
-      int idx = start + l;
-      if (l < height) {
-        uint8_t bright = 80 + (l * 175 / L_PER_BAND);
-        leds[idx] = CHSV(hue, 220, bright);
-      }
+    AudioData frame;
+    if (xSemaphoreTake(i2sMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+        frame = sharedAudio;
+        xSemaphoreGive(i2sMutex);
     }
 
-    // Peak dot — local peak hold with 20-frame decay
-    if (height > peakHold[b]) {
-      peakHold[b] = height;
-      peakTimer[b] = 0;
+    static float travelHead = 0.0;
+    fadeToBlackBy(leds, ledCount, 60);
+    int center = ledCount / 2;
+
+    if (frame.onset.bass) travelHead = center;
+    if (frame.onset.mid) {
+        leds[center] = CHSV(130, 255, 255);
+        leds[constrain(center - 2, 0, ledCount - 1)] = CHSV(130, 255, 200);
+        leds[constrain(center + 2, 0, ledCount - 1)] = CHSV(130, 255, 200);
     }
-    if (peakTimer[b] < 20) {
-      int pIdx = start + peakHold[b];
-      if (pIdx < TOTAL && peakHold[b] > 0)
-        leds[pIdx] = CHSV(hue, 255, 255);
-      peakTimer[b]++;
+    if (frame.onset.high) {
+        leds[random(0, ledCount)] = CRGB::White;
+        leds[random(0, ledCount)] = CRGB::White;
+    }
+
+    if (travelHead > 0) {
+        int leftPos  = center - (int)travelHead;
+        int rightPos = center + (int)travelHead;
+        CRGB beatColor = CHSV((uint8_t)(frame.centroid * 200), 255, 255);
+        if (leftPos  >= 0) leds[leftPos]  = beatColor;
+        if (rightPos < ledCount) leds[rightPos] = beatColor;
+        travelHead *= 0.92f;
+        if (travelHead < 1.0f) travelHead = 0;
     } else {
-      peakHold[b] = 0;
+        uint8_t idleBright = (uint8_t)(sin8(millis() / 4) * frame.volume);
+        uint8_t idleHue = 160 + (uint8_t)(frame.centroid * 60);
+        for (int i = 0; i < ledCount; i++) leds[i] = CHSV(idleHue, 240, idleBright / 2);
     }
-  }
 }
 
-// Effect 26: Spectral Verve — Band-to-position mapping with sine wave scroll
+void effectSpectrumBars() {
+    AudioData frame;
+    if (xSemaphoreTake(i2sMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+        frame = sharedAudio;
+        xSemaphoreGive(i2sMutex);
+    }
+
+    fadeToBlackBy(leds, ledCount, 15);
+    const int ledsPerBand = ledCount / NUM_BANDS;
+
+    static uint8_t peakHold[NUM_BANDS];
+    static uint32_t peakTimer[NUM_BANDS];
+
+    for (int b = 0; b < NUM_BANDS; b++) {
+        int start = b * ledsPerBand;
+        int height = (int)(frame.bands[b] * ledsPerBand);
+        if (height > ledsPerBand) height = ledsPerBand;
+
+        uint8_t hue = (uint8_t)((float)b / NUM_BANDS * 160);
+
+        for (int l = 0; l < ledsPerBand; l++) {
+            int idx = start + l;
+            if (l < height) {
+                uint8_t bright = 80 + (l * 175 / ledsPerBand);
+                leds[idx] = CHSV(hue, 220, bright);
+            }
+        }
+
+        // Peak dot
+        if (height > peakHold[b]) {
+            peakHold[b] = height;
+            peakTimer[b] = 0;
+        }
+        if (peakTimer[b] < 20) {
+            int pIdx = start + peakHold[b];
+            if (pIdx < ledCount && peakHold[b] > 0)
+                leds[pIdx] = CHSV(hue, 255, 255);
+            peakTimer[b]++;
+        } else {
+            peakHold[b] = 0;
+        }
+    }
+}
+
 void effectSpectralVerve() {
-  const int TOTAL = ledCount;
-  static float scrollPhase = 0;
+    AudioData frame;
+    if (xSemaphoreTake(i2sMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+        frame = sharedAudio;
+        xSemaphoreGive(i2sMutex);
+    }
 
-  scrollPhase += 0.3f + spectralFlux * 6.0f;
+    static float scrollPhase = 0;
+    scrollPhase += 0.3f + frame.flux * 6.0f;
 
-  for (int i = 0; i < TOTAL; i++) {
-    float pos = (float)i / TOTAL;
-    int bandIdx = (int)(pos * NUM_FREQ_BANDS);
-    bandIdx = constrain(bandIdx, 0, NUM_FREQ_BANDS - 1);
+    for (int i = 0; i < ledCount; i++) {
+        float pos = (float)i / ledCount;
+        int bandIdx = (int)(pos * NUM_BANDS);
+        bandIdx = constrain(bandIdx, 0, NUM_BANDS - 1);
 
-    float intensity = (float)bandMagnitudes[bandIdx];
-    int16_t sinVal = sin16((int)(pos * 480 + scrollPhase * 80));
-    float wave = sinVal / 32768.0f;
-    float brightness = (intensity * 0.7f + (wave * 0.5f + 0.5f) * 0.3f) * (float)globalAudioLevel;
-    brightness = constrain(brightness, 0.0f, 1.0f);
+        float intensity = frame.bands[bandIdx];
+        int16_t sinVal = sin16((int)(pos * 480 + scrollPhase * 80));
+        float wave = sinVal / 32768.0f;
+        float brightness = (intensity * 0.7f + (wave * 0.5f + 0.5f) * 0.3f) * frame.volume;
+        brightness = constrain(brightness, 0.0f, 1.0f);
 
-    uint8_t hue = (uint8_t)(pos * 120 + spectralCentroid * 80 + scrollPhase);
+        uint8_t hue = (uint8_t)(pos * 120 + frame.centroid * 80 + scrollPhase);
 
-    // Zone onset overpower
-    if (beatDetected && i < TOTAL / 3) brightness = 1.0f;
-    if (onsetMid && i >= TOTAL / 3 && i < 2 * TOTAL / 3) brightness = 1.0f;
-    if (onsetHigh && i >= 2 * TOTAL / 3) brightness = 1.0f;
+        // Onset zone flashes
+        if (frame.onset.bass && i < ledCount / 3) brightness = 1.0f;
+        if (frame.onset.mid  && i >= ledCount / 3 && i < 2 * ledCount / 3) brightness = 1.0f;
+        if (frame.onset.high && i >= 2 * ledCount / 3) brightness = 1.0f;
 
-    leds[i] = CHSV(hue, 230, (uint8_t)(brightness * 255));
-  }
+        leds[i] = CHSV(hue, 230, (uint8_t)(brightness * 255));
+    }
 }
 
 // ============================================================================
-// NEW EFFECTS (33-42) - REVOLUTIONARY & COOL
+// NEW EFFECTS (27-42) - REVOLUTIONARY & COOL
 // ============================================================================
 
 // Effect 33: Plasma Waves

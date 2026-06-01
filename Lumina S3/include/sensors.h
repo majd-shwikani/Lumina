@@ -5,11 +5,8 @@
 #include <Wire.h>
 #include <Adafruit_VEML7700.h>
 #include <Adafruit_INA219.h>
-#include <driver/i2s.h>
 #include <driver/temp_sensor.h> // ESP-IDF Temperature Sensor Driver
-#include "esp_dsp.h"
 #include <FastLED.h>
-#include "config.h"
 
 // ============================================================================
 // LIGHT SENSOR CONFIGURATION
@@ -29,55 +26,12 @@ extern volatile float currentCurrent;
 extern volatile float currentPower;
 extern volatile bool ina219Available;
 
-// ============================================================================
-// AUDIO SENSOR CONFIGURATION
-// ============================================================================
 
-// Microphone type selection
-#define MIC_I2S_ICS43434 0
-#define MIC_ANALOG_MAX9814 1
-
-// Active microphone selection
-extern volatile int activeMicrophone;
-
-
-// Audio FFT Configuration
-#define SAMPLING_FREQ 44100
-#define FFT_SAMPLES 512
-#define NUM_FREQ_BANDS 16
-#define BIN_WIDTH ((float)SAMPLING_FREQ / FFT_SAMPLES)
-
-// ============================================================================
-// NOISE FLOOR (continuously adaptive, no explicit calibration)
-// ============================================================================
-
-extern volatile float noiseFloor;
-extern float windowCoefficients[FFT_SAMPLES];
-extern float prevFluxMag[FFT_SAMPLES / 2];
-extern int binToBand[FFT_SAMPLES / 2];
-
-// Frequency Band Analysis
-extern double bandMagnitudes[NUM_FREQ_BANDS];
-extern double smoothedBandMagnitudes[NUM_FREQ_BANDS];
-extern double bandPeak[NUM_FREQ_BANDS];
-
-// Audio Analysis Variables
-extern volatile double globalAudioLevel;
-extern volatile double bassLevel;
-extern volatile double midLevel;
-extern volatile double trebleLevel;
-extern volatile bool beatDetected;
-extern volatile float beatEnergy;
-extern volatile float spectralCentroid;
-extern volatile float spectralFlux;
-
-// Multi-band onset detection
-extern volatile bool onsetMid;
-extern volatile bool onsetHigh;
 
 // FastLED reference
 extern CRGB *leds;
 extern volatile bool stripEnabled;
+
 
 // ============================================================================
 // FUNCTION DECLARATIONS
@@ -89,18 +43,5 @@ void setupINA219();
 void setupInternalTempSensor();
 void updateSensorData();
 bool shouldTurnOffDueToDarkness();
-
-// Audio Sensor Setup
-void setupFrequencyDetection();
-void selectMicrophone(int micType);
-
-// Audio Processing Functions
-void initBandMapping();
-
-// Audio DSP Task (runs on Core 0, dynamic lifecycle)
-void audioProcessingTask(void *pvParameters);
-
-// Utility Functions
-uint32_t frequencyToColor(double freq);
 
 #endif

@@ -11,28 +11,6 @@ extern CRGB *leds;
 extern volatile uint32_t effectColor;
 extern volatile uint32_t effectSpeed;
 
-// Audio-related externals
-extern volatile double globalAudioLevel;
-extern volatile double bassLevel;
-extern volatile double midLevel;
-extern volatile double trebleLevel;
-extern volatile bool beatDetected;
-extern volatile float beatEnergy;
-
-// Spectral features
-extern volatile float spectralCentroid;
-extern volatile float spectralFlux;
-
-// Multi-band onset
-extern volatile bool onsetMid;
-extern volatile bool onsetHigh;
-
-// Number of frequency bands
-#define NUM_FREQ_BANDS 16
-
-extern double bandMagnitudes[NUM_FREQ_BANDS];
-extern double bandPeak[NUM_FREQ_BANDS];
-
 // ============================================================================
 // ORIGINAL ANIMATION EFFECTS (0-21)
 // ============================================================================
@@ -61,14 +39,14 @@ void effectFireSimulation();       // 20: Realistic fire simulation
 void effectSolidColor();           // 21: Solid Color
 
 // ============================================================================
-// ADVANCED AUDIO-REACTIVE EFFECTS (22-26)
+// ADVANCED SOUND-REACTIVE EFFECTS (22-26)
 // ============================================================================
 
-void effectSpectrumRipple();       // 22: Bass-driven ripple from center
-void effectKineticPlasma();        // 23: Audio-reactive Perlin plasma
-void effectTransientPulse();       // 24: Multi-band onset pulse
-void effectSpectrumBars();         // 25: 16-band equalizer with peak hold
-void effectSpectralVerve();        // 26: Band-to-position with sine wave
+void effectSpectrumRipple();       // 22: Spectrum Ripple
+void effectKineticPlasma();        // 23: Kinetic Plasma
+void effectTransientPulse();       // 24: Transient Pulse
+void effectSpectrumBars();         // 25: Spectrum Bars
+void effectSpectralVerve();        // 26: Spectral Verve
 
 // ============================================================================
 // NEW REVOLUTIONARY EFFECTS (33-42)
