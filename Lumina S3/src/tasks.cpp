@@ -396,31 +396,7 @@ void audioProcessingTask(void *pvParameters) {
             xSemaphoreGive(i2sMutex);
         }
 
-        // --- Periodic serial status (~every 2 s at 75 fps) ---
         frameCounter++;
-        if (frameCounter % 150 == 0) {
-            Serial.print(F("[AUDIO] vol="));
-            Serial.print(sharedAudio.volume, 2);
-            Serial.print(F("  centroid="));
-            Serial.print(centroidNorm, 2);
-            Serial.print(F("  flux="));
-            Serial.print(fluxNorm, 3);
-            Serial.print(F("  onsets="));
-            Serial.print(bassOnset  ? F("B") : F("-"));
-            Serial.print(midOnset   ? F("M") : F("-"));
-            Serial.println(highOnset ? F("H") : F("-"));
-
-            Serial.print(F("  Bands: "));
-            for (int b = 0; b < NUM_BANDS; b++) {
-                Serial.print((int)(sharedAudio.bands[b] * 100));
-                if (b < NUM_BANDS - 1) Serial.print(F(","));
-            }
-            Serial.println();
-
-            Serial.print(F("  Centroid freq: "));
-            Serial.print(centroidHz, 0);
-            Serial.println(F(" Hz"));
-        }
 
         vTaskDelay(pdMS_TO_TICKS(2));
     }
