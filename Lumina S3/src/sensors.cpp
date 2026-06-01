@@ -1,8 +1,8 @@
 #include "sensors.h"
 #include "globals.h"
 #include <esp_task_wdt.h>
-#include <math.h>
-#include <string.h>
+#include "FS.h"
+#include "SPIFFS.h"
 
 // ============================================================================
 // LIGHT SENSOR OBJECTS AND VARIABLES
@@ -30,39 +30,51 @@ volatile bool ina219Available = false;
 volatile int activeMicrophone = MIC_I2S_ICS43434;
 
 // ============================================================================
-// NOISE FLOOR (continuously adaptive, no explicit calibration)
+// AUTO-CALIBRATION AND GAIN CONTROL VARIABLES
 // ============================================================================
 
-volatile float noiseFloor = 40000.0f;
+volatile bool calibrationComplete = false;
+volatile double noiseFloor = 100.0;
+volatile double gainMultiplier = INITIAL_GAIN_MULTIPLIER;
+unsigned long lastCalibrationTime = 0;
+
+// Manual calibration trigger from Firebase
+volatile bool triggerMicCalibration = false;
+volatile bool isCalibrating = false;
+
+// Calibration buffers
+double calibrationSamples[256] = {0};
+int calibrationSampleCount = 0;
+unsigned long calibrationStartTime = 0;
 
 // ============================================================================
-// FFT OBJECTS AND BUFFERS (esp-dsp)
+// FFT OBJECTS AND BUFFERS
 // ============================================================================
 
-__attribute__((aligned(16))) float fftInput[FFT_SAMPLES * 2];
-__attribute__((aligned(16))) float windowCoefficients[FFT_SAMPLES];
-float prevFluxMag[FFT_SAMPLES / 2];
-int binToBand[FFT_SAMPLES / 2];
+int16_t raw_samples[BUFFER_LEN];
+ArduinoFFT<double> FFT = ArduinoFFT<double>();
+double vReal[N_SAMPLES];
+double vImag[N_SAMPLES];
 
 // Frequency Band Analysis
-volatile float bandMagnitudes[NUM_FREQ_BANDS] = {0};
-volatile float smoothedBandMagnitudes[NUM_FREQ_BANDS] = {0};
-volatile float bandPeak[NUM_FREQ_BANDS] = {0};
+double bandMagnitudes[NUM_FREQ_BANDS] = {0};
+double bandMaxima[NUM_FREQ_BANDS] = {0};
+double frequencyResponse[N_SAMPLES] = {0};
 
 // Audio Analysis Variables
-volatile float globalAudioLevel = 0;
-volatile float bassLevel = 0;
-volatile float midLevel = 0;
-volatile float trebleLevel = 0;
+volatile double detectedFrequency = 0;
+volatile double frequencyMagnitude = 0;
+volatile double globalAudioLevel = 0;
+volatile double bassLevel = 0;
+volatile double midLevel = 0;
+volatile double trebleLevel = 0;
 volatile bool beatDetected = false;
 volatile float beatEnergy = 0;
-volatile float spectralCentroid = 0;
-volatile float spectralFlux = 0;
-volatile float audioVolume = 0;
 
-// Multi-band onset detection
-volatile bool onsetMid = false;
-volatile bool onsetHigh = false;
+// Audio Smoothing
+double smoothedBandMagnitudes[NUM_FREQ_BANDS] = {0};
+unsigned long lastAudioUpdate = 0;
+const unsigned long AUDIO_UPDATE_INTERVAL = 20;
 
 // ============================================================================
 // LIGHT SENSOR INITIALIZATION
@@ -89,23 +101,37 @@ void setupINA219() {
   }
   
   ina219Available = true;
+  // By default the INA219 will be calibrated with a range of 32V, 2A.
+  // However, you can change this with a different calibration code.
+  // ina219.setCalibration_32V_1A();
   Serial.println("INA219 power monitor initialized successfully");
 }
 
 void setupInternalTempSensor() {
   temp_sensor_config_t temp_sensor = TSENS_CONFIG_DEFAULT();
-  temp_sensor.dac_offset = TSENS_DAC_L2;
+  temp_sensor.dac_offset = TSENS_DAC_L2; // -10℃ ~ 80℃, error < 1℃
   temp_sensor_set_config(temp_sensor);
   temp_sensor_start();
   Serial.println("Internal ESP32-S3 temperature sensor driver initialized");
 }
 
+// Update this section in sensors.cpp
+
 void updateSensorData() {
   esp_task_wdt_reset();
   if (sensorAvailable) {
     float newLux = veml.readLux();
+    
+    // SANITY CHECK: The VEML7700 often returns 30,000+ or 65,000+ when it 
+    // encounters an I2C error or sensor saturation from the LEDs.
+    // We only accept values that make sense for an indoor environment.
     if (newLux >= 0 && newLux < 10000.0) {
-      currentLux = (newLux * 0.3f) + (currentLux * 0.7f);
+      // Apply a smoothing filter (Low Pass Filter) 
+      // This makes the transition 30% new data and 70% old data to prevent jumps
+      currentLux = (newLux * 0.3) + (currentLux * 0.7);
+    } else {
+      // If the sensor goes "crazy", we ignore the reading and keep the last good value
+      // Serial.printf("⚠️ Glitch detected (%.2f lux). Ignoring.\n", newLux);
     }
   }
 
@@ -115,6 +141,7 @@ void updateSensorData() {
     currentPower = ina219.getPower_mW();
   }
 
+  // Read internal CPU temperature every 2000ms using the ESP-IDF driver
   static uint32_t lastTempUpdate = 0;
   if (millis() - lastTempUpdate >= 2000 || lastTempUpdate == 0) {
     lastTempUpdate = millis();
@@ -124,11 +151,20 @@ void updateSensorData() {
   }
 }
 
+// Improved logic to prevent "Optical Feedback" (LEDs turning themselves off)
 bool shouldTurnOffDueToDarkness() {
+  // Use a hysteresis buffer:
+  // If LEDs are OFF, they turn ON at 'luxThreshold' (e.g., 1.0)
+  // If LEDs are ON, they only turn OFF if lux is 'luxThreshold + 8.0'
   float effectiveThreshold = luxThreshold;
+
   if (stripEnabled) {
-    effectiveThreshold = luxThreshold + 8.0f;
+    // Adding 8.0 lux allows the LEDs to be bright without the sensor 
+    // thinking the sun came out.
+    effectiveThreshold = luxThreshold + 8.0; 
   }
+
+  // Return true if it is dark enough to warrant LEDs being ON
   return currentLux < effectiveThreshold;
 }
 
@@ -139,23 +175,23 @@ bool shouldTurnOffDueToDarkness() {
 void setupI2SMicrophone() {
   const i2s_config_t i2s_config = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-    .sample_rate = SAMPLING_FREQ,
-    .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
+    .sample_rate = SAMPLE_RATE,
+    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
     .communication_format = I2S_COMM_FORMAT_STAND_I2S,
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-    .dma_buf_count = 8,
-    .dma_buf_len = 64,
+    .dma_buf_count = 4,
+    .dma_buf_len = BUFFER_LEN,
     .use_apll = false,
     .tx_desc_auto_clear = false,
     .fixed_mclk = 0
   };
   
   const i2s_pin_config_t pin_config = {
-    .bck_io_num = I2S_SCK_PIN,
-    .ws_io_num = I2S_WS_PIN,
-    .data_out_num = I2S_PIN_NO_CHANGE,
-    .data_in_num = I2S_SD_PIN
+    .bck_io_num = I2S_SCK_PIN,    // Changed from I2S_SCK to I2S_SCK_PIN
+    .ws_io_num = I2S_WS_PIN,      // Changed from I2S_WS to I2S_WS_PIN
+    .data_out_num = -1,
+    .data_in_num = I2S_SD_PIN     // Changed from I2S_SD to I2S_SD_PIN
   };
   
   esp_err_t err = i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
@@ -170,7 +206,7 @@ void setupI2SMicrophone() {
     return;
   }
   
-  Serial.println("I2S microphone (ICS43434) at 44.1kHz initialized");
+  Serial.println("I2S microphone (ICS43434) initialized successfully");
 }
 
 // ============================================================================
@@ -180,7 +216,7 @@ void setupI2SMicrophone() {
 void setupAnalogMicrophone() {
   analogSetAttenuation(ADC_11db);
   analogSetClockDiv(1);
-  Serial.println("Analog microphone (MAX9814) initialized");
+  Serial.println("Analog microphone (MAX9814) initialized successfully");
 }
 
 // ============================================================================
@@ -189,6 +225,7 @@ void setupAnalogMicrophone() {
 
 void selectMicrophone(int micType) {
   activeMicrophone = micType;
+  
   if (micType == MIC_I2S_ICS43434) {
     Serial.println("Switching to I2S microphone (ICS43434)");
     setupI2SMicrophone();
@@ -199,226 +236,383 @@ void selectMicrophone(int micType) {
 }
 
 void setupFrequencyDetection() {
-  initBandMapping();
+  loadMicCalibration();
   selectMicrophone(MIC_I2S_ICS43434);
 }
 
 // ============================================================================
-// LOG-SPACED BAND MAPPING INITIALIZATION
+// AUDIO DATA ACQUISITION
 // ============================================================================
 
-void initBandMapping() {
-  float minFreq = BIN_WIDTH * 2.0f;
-  float maxFreq = BIN_WIDTH * (FFT_SAMPLES / 2 - 1);
-  float logMin = log10f(minFreq);
-  float logMax = log10f(maxFreq);
-  float logRange = logMax - logMin;
-
-  for (int bin = 0; bin < FFT_SAMPLES / 2; bin++) {
-    if (bin < 2) {
-      binToBand[bin] = 0;
-    } else {
-      float freq = bin * BIN_WIDTH;
-      float norm = (log10f(freq) - logMin) / logRange;
-      int band = (int)(norm * (NUM_FREQ_BANDS - 1) + 0.5f);
-      binToBand[bin] = constrain(band, 0, NUM_FREQ_BANDS - 1);
+void readI2SSamples() {
+  size_t bytes_read = 0;
+  i2s_read(I2S_PORT, raw_samples, sizeof(raw_samples), &bytes_read, 0);
+  
+  if (bytes_read == sizeof(raw_samples)) {
+    for (int i = 0; i < N_SAMPLES; i++) {
+      vReal[i] = (double)raw_samples[i];
+      vImag[i] = 0.0;
     }
   }
-  
-  Serial.printf("Band mapping initialized: %.1fHz - %.1fHz, %.1fHz/bin\n",
-                minFreq, maxFreq, BIN_WIDTH);
+}
+
+void readAnalogSamples() {
+  for (int i = 0; i < N_SAMPLES; i++) {
+    int rawValue = analogRead(ANALOG_MIC_PIN);
+    int16_t sample = (int16_t)((rawValue - 2048) * 16);
+    vReal[i] = (double)sample;
+    vImag[i] = 0.0;
+  }
+}
+
+// ============================================================================
+// MICROPHONE CALIBRATION FUNCTIONS
+// ============================================================================
+
+void saveMicCalibration() {
+  File file = SPIFFS.open("/mic_calibration.dat", "w");
+  if (!file) {
+    Serial.println("Failed to open calibration file for writing.");
+    return;
+  }
+
+  if (file.println(noiseFloor) && file.println(gainMultiplier)) {
+    Serial.println("Microphone calibration data saved to SPIFFS.");
+  } else {
+    Serial.println("Failed to write calibration data to SPIFFS.");
+  }
+  file.close();
+}
+
+bool loadMicCalibration() {
+  if (SPIFFS.exists("/mic_calibration.dat")) {
+    File file = SPIFFS.open("/mic_calibration.dat", "r");
+    if (!file) {
+      Serial.println("Failed to open calibration file for reading.");
+      return false;
+    }
+
+    if (file.available()) {
+      String noiseFloorStr = file.readStringUntil('\n');
+      String gainMultiplierStr = file.readStringUntil('\n');
+      file.close();
+
+      double loadedNoiseFloor = noiseFloorStr.toDouble();
+      double loadedGainMultiplier = gainMultiplierStr.toDouble();
+
+      if (loadedNoiseFloor > 0 && loadedGainMultiplier > 0) {
+        noiseFloor = loadedNoiseFloor;
+        gainMultiplier = loadedGainMultiplier;
+        calibrationComplete = true;
+        Serial.println("Successfully loaded microphone calibration from SPIFFS.");
+        Serial.printf("  - Noise Floor: %.2f\n", noiseFloor);
+        Serial.printf("  - Gain Multiplier: %.2f\n", gainMultiplier);
+        return true;
+      } else {
+        Serial.println("Calibration data from SPIFFS appears invalid. Starting new calibration.");
+        SPIFFS.remove("/mic_calibration.dat"); // Remove bad file
+        return false;
+      }
+    } else {
+      Serial.println("Calibration file is empty. Starting new calibration.");
+      file.close();
+      return false;
+    }
+  }
+
+  Serial.println("No calibration file found. A new calibration will be performed.");
+  return false;
 }
 
 
+void calibrateMicrophone() {
+  if (calibrationStartTime == 0) {
+    calibrationStartTime = millis();
+    isCalibrating = true;
+    Serial.println("\n========== MICROPHONE CALIBRATION STARTED ==========");
+    Serial.println("Keep the environment quiet for the next 3 seconds...");
+  }
+  
+  if (millis() - calibrationStartTime < CALIBRATION_DURATION) {
+    if (activeMicrophone == MIC_I2S_ICS43434) {
+      readI2SSamples();
+    } else {
+      readAnalogSamples();
+    }
+    
+    for (int i = 0; i < N_SAMPLES; i++) {
+      vReal[i] *= gainMultiplier;
+      vImag[i] = 0.0;
+    }
+    
+    FFT.compute(vReal, vImag, N_SAMPLES, FFT_FORWARD);
+    FFT.complexToMagnitude(vReal, vImag, N_SAMPLES);
+    
+    double peakMagnitude = 0;
+    for (int i = 1; i < N_SAMPLES / 2; i++) {
+      if (vReal[i] > peakMagnitude) {
+        peakMagnitude = vReal[i];
+      }
+    }
+    
+    if (calibrationSampleCount < 256) {
+      calibrationSamples[calibrationSampleCount] = peakMagnitude;
+      calibrationSampleCount++;
+    }
+    
+    if (calibrationSampleCount % 32 == 0) {
+      Serial.printf("Calibration: %d/256 samples (Gain: %.2f, Peak: %.0f)\n", 
+                    calibrationSampleCount, gainMultiplier, peakMagnitude);
+    }
+    
+  } else if (!calibrationComplete) {
+    calibrationComplete = true;
+    isCalibrating = false;
+    
+    double sum = 0;
+    double maxSample = 0;
+    double minSample = 999999;
+    
+    for (int i = 0; i < calibrationSampleCount; i++) {
+      sum += calibrationSamples[i];
+      if (calibrationSamples[i] > maxSample) {
+        maxSample = calibrationSamples[i];
+      }
+      if (calibrationSamples[i] < minSample) {
+        minSample = calibrationSamples[i];
+      }
+    }
+    double averageMagnitude = sum / max(calibrationSampleCount, 1);
+    
+    noiseFloor = averageMagnitude;
+    
+    if (averageMagnitude > 0) {
+      double targetGain = (TARGET_PEAK_LEVEL * gainMultiplier) / (averageMagnitude / 1000.0);
+      if (targetGain > INITIAL_GAIN_MULTIPLIER * 10) {
+        targetGain = INITIAL_GAIN_MULTIPLIER * 10;
+      }
+      if (targetGain < 0.5) {
+        targetGain = 0.5;
+      }
+      gainMultiplier = targetGain;
+    }
+    
+    Serial.println("\n========== CALIBRATION COMPLETE ==========");
+    Serial.printf("Noise floor: %.2f\n", noiseFloor);
+    Serial.printf("Average peak: %.2f\n", averageMagnitude);
+    Serial.printf("Max peak: %.2f\n", maxSample);
+    Serial.printf("Min peak: %.2f\n", minSample);
+    Serial.printf("Final gain multiplier: %.2f\n", gainMultiplier);
+    Serial.println("Effects will now respond to audio input!");
+    Serial.println("=========================================\n");
+    
+    lastCalibrationTime = millis();
+    triggerMicCalibration = false;
+    saveMicCalibration();
+  }
+}
 
-// ============================================================================
-// AUDIO PROCESSING PIPELINE (Highly Optimized Single-Pass)
-// ============================================================================
-
-void audioProcessingTask(void *pvParameters) {
-  Serial.println("🎵 Audio DSP Task started on Core " + String(xPortGetCoreID()));
-
-  if (dsps_fft2r_init_fc32(NULL, 1024) != ESP_OK) {
-    Serial.println("FATAL: SIMD FFT init failed!");
-    vTaskDelete(NULL);
+void performAutoGainControl() {
+  if (!calibrationComplete) {
     return;
   }
-  dsps_wind_hann_f32(windowCoefficients, FFT_SAMPLES);
-  initBandMapping();
-  memset(prevFluxMag, 0, sizeof(prevFluxMag));
-
-  // Global AGC & tracking state
-  float agcMax = 500000.0f;
-  float bassBaseline = 0, midBaseline = 0, highBaseline = 0;
-
-  for (;;) {
-    if (audioMirrorMode) {
-      vTaskDelay(pdMS_TO_TICKS(5));
-      continue;
+  
+  double maxBandMagnitude = 0;
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    if (bandMagnitudes[band] > maxBandMagnitude) {
+      maxBandMagnitude = bandMagnitudes[band];
     }
-
-    int32_t dmaBuffer[FFT_SAMPLES];
-    size_t bytesRead;
-    i2s_read(I2S_PORT, dmaBuffer, sizeof(dmaBuffer), &bytesRead, portMAX_DELAY);
-    int samplesRead = bytesRead / sizeof(int32_t);
-    if (samplesRead == 0) continue;
-
-    // --- 1. Pre-processing: DC removal & Windowing ---
-    float mean = 0;
-    for (int i = 0; i < samplesRead; i++) {
-      fftInput[i * 2] = (float)(dmaBuffer[i] >> 8);
-      mean += fftInput[i * 2];
-    }
-    mean /= samplesRead;
-    for (int i = 0; i < samplesRead; i++) {
-      fftInput[i * 2] = (fftInput[i * 2] - mean) * windowCoefficients[i];
-      fftInput[i * 2 + 1] = 0;
-    }
-    for (int i = samplesRead; i < FFT_SAMPLES; i++) {
-      fftInput[i * 2] = 0;
-      fftInput[i * 2 + 1] = 0;
-    }
-
-    // --- 2. SIMD FFT Execution ---
-    dsps_fft2r_fc32(fftInput, FFT_SAMPLES);
-    dsps_bit_rev_fc32(fftInput, FFT_SAMPLES);
-
-    // --- 3. Single-Pass Feature Extraction ---
-    float rawBands[NUM_FREQ_BANDS] = {0};
-    float fluxDelta = 0, fluxTotal = 0.001f;
-    float centroidWeighted = 0, centroidTotal = 0.001f;
-
-    for (int i = 2; i < FFT_SAMPLES / 2; i++) {
-      float real = fftInput[i * 2];
-      float imag = fftInput[i * 2 + 1];
-      float mag = sqrtf(real * real + imag * imag);
-
-      // Accumulate bands
-      rawBands[binToBand[i]] += mag;
-
-      // Spectral Flux
-      float diff = mag - prevFluxMag[i];
-      if (diff > 0) fluxDelta += diff;
-      prevFluxMag[i] = mag;
-      fluxTotal += mag;
-
-      // Spectral Centroid
-      centroidWeighted += mag * (i * BIN_WIDTH);
-      centroidTotal += mag;
-    }
-
-    // --- 4. Spectral Feature Normalization ---
-    float fluxNorm = fluxDelta / fluxTotal;
-    float centroidHz = centroidWeighted / centroidTotal;
-    spectralCentroid = constrain((centroidHz - 200.0f) / (20000.0f - 200.0f), 0.0f, 1.0f);
-    spectralFlux = constrain(fluxNorm * 4.0f, 0.0f, 1.0f);
-
-    // --- 5. Per-Band Envelope Following & Peak Tracking ---
-    float currentPeak = 0;
-    for (int b = 0; b < NUM_FREQ_BANDS; b++) {
-      float attack = 0.35f + (b / (float)(NUM_FREQ_BANDS - 1)) * 0.25f;
-      float release = 0.08f + (1.0f - b / (float)(NUM_FREQ_BANDS - 1)) * 0.12f;
-
-      if (rawBands[b] > smoothedBandMagnitudes[b]) {
-        smoothedBandMagnitudes[b] += (rawBands[b] - smoothedBandMagnitudes[b]) * attack;
-      } else {
-        smoothedBandMagnitudes[b] += (rawBands[b] - smoothedBandMagnitudes[b]) * release;
-      }
-      
-      if (smoothedBandMagnitudes[b] < 0) smoothedBandMagnitudes[b] = 0;
-
-      // Track peaks for normalization
-      if (smoothedBandMagnitudes[b] > bandPeak[b]) bandPeak[b] = smoothedBandMagnitudes[b];
-      else bandPeak[b] *= 0.9993f;
-      
-      if (bandPeak[b] < 10000.0f) bandPeak[b] = 10000.0f;
-      if (smoothedBandMagnitudes[b] > currentPeak) currentPeak = smoothedBandMagnitudes[b];
-    }
-
-    // --- 6. Adaptive Noise Floor & AGC ---
-    if (currentPeak < noiseFloor * 1.6f) {
-      noiseFloor = (noiseFloor * 0.995f) + (currentPeak * 0.005f);
-    }
-    bool environmentIsSilent = (currentPeak < (noiseFloor + 15000.0f));
-
-    if (!environmentIsSilent) {
-      if (currentPeak > agcMax) agcMax = currentPeak;
-      else agcMax = (agcMax * 0.9997f) + (currentPeak * 0.0003f);
-      if (agcMax < 100000.0f) agcMax = 100000.0f;
-    }
-
-    // --- 7. Final Normalization for Effects ---
-    audioVolume = environmentIsSilent ? 0.0f : constrain(currentPeak / agcMax, 0.0f, 1.0f);
-    
-    for (int b = 0; b < NUM_FREQ_BANDS; b++) {
-      if (environmentIsSilent) {
-        bandMagnitudes[b] = 0.0f;
-      } else {
-        bandMagnitudes[b] = constrain(smoothedBandMagnitudes[b] / (bandPeak[b] * 1.2f), 0.0f, 1.0f);
-      }
-    }
-
-    // --- 8. Multi-Band Onset Detection (Using Raw Energy) ---
-    float bassSum = 0, midSum = 0, highSum = 0;
-    for (int b = 0; b < NUM_FREQ_BANDS; b++) {
-      if (b <= 3)      bassSum += smoothedBandMagnitudes[b];
-      else if (b <= 9) midSum  += smoothedBandMagnitudes[b];
-      else             highSum += smoothedBandMagnitudes[b];
-    }
-
-    beatDetected = (bassSum > bassBaseline * 1.35f && bassSum > noiseFloor * 2.0f);
-    onsetMid     = (midSum  > midBaseline  * 1.25f && midSum  > noiseFloor * 1.5f);
-    onsetHigh    = (highSum > highBaseline * 1.25f && highSum > noiseFloor);
-
-    bassBaseline = (bassBaseline * 0.7f) + (bassSum * 0.3f);
-    midBaseline  = (midBaseline  * 0.7f) + (midSum  * 0.3f);
-    highBaseline = (highBaseline * 0.7f) + (highSum * 0.3f);
-
-    // --- 9. Update Reporting Variables ---
-    bassLevel = 0;
-    for (int b = 0; b < 4; b++) bassLevel += bandMagnitudes[b];
-    bassLevel /= 4.0f;
-
-    midLevel = 0;
-    for (int b = 4; b < 10; b++) midLevel += bandMagnitudes[b];
-    midLevel /= 6.0f;
-
-    trebleLevel = 0;
-    for (int b = 10; b < NUM_FREQ_BANDS; b++) trebleLevel += bandMagnitudes[b];
-    trebleLevel /= 6.0f;
-
-    globalAudioLevel = (bassLevel + midLevel + trebleLevel) / 3.0f;
-
-    // --- 10. Human-Readable Periodic Status ---
-    static uint32_t lastPrint = 0;
-    if (millis() - lastPrint > 2000) {
-      lastPrint = millis();
-      Serial.printf("🎵 [Audio] Vol: %.2f | Centroid: %.2f | Flux: %.2f | Onsets: [%s%s%s]\n",
-                    audioVolume, spectralCentroid, spectralFlux,
-                    beatDetected ? "B" : "-",
-                    onsetMid     ? "M" : "-",
-                    onsetHigh    ? "H" : "-");
-      
-      Serial.print("   Bands: ");
-      for (int b = 0; b < NUM_FREQ_BANDS; b++) {
-        Serial.printf("%d ", (int)(bandMagnitudes[b] * 9));
-      }
-      Serial.println();
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(2));
   }
+  
+  if (maxBandMagnitude > 0.01) {
+    double gainAdjustment = 1.0 + (TARGET_PEAK_LEVEL - maxBandMagnitude) * GAIN_ADJUSTMENT_RATE;
+    
+    if (gainAdjustment > 1.05) gainAdjustment = 1.05;
+    if (gainAdjustment < 0.95) gainAdjustment = 0.95;
+    
+    gainMultiplier *= gainAdjustment;
+    
+    if (gainMultiplier > 20.0) gainMultiplier = 20.0;
+    if (gainMultiplier < 0.5) gainMultiplier = 0.5;
+  }
+}
+
+void checkAndRecalibrate() {
+  if (triggerMicCalibration) {
+    if (!isCalibrating) {
+      Serial.println("\n*** MANUAL CALIBRATION TRIGGERED VIA FIREBASE ***");
+      calibrationComplete = false;
+      calibrationSampleCount = 0;
+      calibrationStartTime = 0;
+    }
+  }
+}
+
+// ============================================================================
+// FFT AND FREQUENCY ANALYSIS
+// ============================================================================
+
+void updateFrequencyDetection() {
+  if (audioMirrorMode) {
+    // Skip hardware sampling if receiving audio via USB
+    normalizeAudioLevels();
+    return;
+  }
+
+  if (!calibrationComplete) {
+    calibrateMicrophone();
+    return;
+  }
+  
+  checkAndRecalibrate();
+  
+  if (activeMicrophone == MIC_I2S_ICS43434) {
+    readI2SSamples();
+  } else {
+    readAnalogSamples();
+  }
+  
+  for (int i = 0; i < N_SAMPLES; i++) {
+    vReal[i] *= gainMultiplier;
+    vImag[i] = 0.0;
+  }
+  
+  FFT.compute(vReal, vImag, N_SAMPLES, FFT_FORWARD);
+  FFT.complexToMagnitude(vReal, vImag, N_SAMPLES);
+  
+  for (int i = 0; i < N_SAMPLES / 2; i++) {
+    frequencyResponse[i] = vReal[i];
+  }
+  
+  analyzeAudioBands();
+  performAutoGainControl();
+  detectBeat();
+  normalizeAudioLevels();
+}
+
+// ============================================================================
+// FREQUENCY BAND ANALYSIS WITH NOISE FILTERING
+// ============================================================================
+
+void analyzeAudioBands() {
+  int samplesPerBand = (N_SAMPLES / 2) / NUM_FREQ_BANDS;
+  
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    bandMagnitudes[band] = 0.0;
+    
+    int startBin = band * samplesPerBand;
+    int endBin = startBin + samplesPerBand;
+    
+    for (int bin = startBin; bin < endBin && bin < N_SAMPLES / 2; bin++) {
+      double magnitude = vReal[bin];
+      
+      if (magnitude > noiseFloor * NOISE_FLOOR_MULTIPLIER) {
+        if (magnitude > bandMagnitudes[band]) {
+          bandMagnitudes[band] = magnitude;
+        }
+      }
+    }
+    
+    if (bandMagnitudes[band] > bandMaxima[band]) {
+      bandMaxima[band] = bandMagnitudes[band];
+    } else {
+      bandMaxima[band] *= 0.95;
+    }
+    
+    smoothedBandMagnitudes[band] = smoothedBandMagnitudes[band] * 0.7 + bandMagnitudes[band] * 0.3;
+  }
+  
+  bassLevel = (bandMagnitudes[0] + bandMagnitudes[1]) / 2.0;
+  midLevel = (bandMagnitudes[2] + bandMagnitudes[3] + bandMagnitudes[4]) / 3.0;
+  trebleLevel = (bandMagnitudes[5] + bandMagnitudes[6] + bandMagnitudes[7]) / 3.0;
+  
+  globalAudioLevel = 0;
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    globalAudioLevel += smoothedBandMagnitudes[band];
+  }
+  globalAudioLevel /= NUM_FREQ_BANDS;
+  
+  if (globalAudioLevel < noiseFloor * 0.8) {
+    globalAudioLevel = 0;
+  }
+}
+
+// ============================================================================
+// BEAT DETECTION WITH NOISE FILTERING
+// ============================================================================
+
+void detectBeat() {
+  static double previousBassLevel = 0;
+  static unsigned long lastBeatTime = 0;
+  
+  double bassIncrease = bassLevel - previousBassLevel;
+  previousBassLevel = bassLevel;
+  
+  beatDetected = false;
+  beatEnergy = 0;
+  
+  if (bassLevel > noiseFloor && bassIncrease > (noiseFloor * 0.5) && 
+      (millis() - lastBeatTime) > 100) {
+    beatDetected = true;
+    beatEnergy = bassIncrease / (noiseFloor * 2.0);
+    if (beatEnergy > 1.0) beatEnergy = 1.0;
+    lastBeatTime = millis();
+  }
+}
+
+// ============================================================================
+// AUDIO LEVEL NORMALIZATION
+// ============================================================================
+
+void normalizeAudioLevels() {
+  double normalizeReference = noiseFloor * NOISE_FLOOR_MULTIPLIER;
+  
+  if (normalizeReference < 50.0) {
+    normalizeReference = 50.0;
+  }
+  
+  for (int band = 0; band < NUM_FREQ_BANDS; band++) {
+    double normalized = bandMagnitudes[band] / normalizeReference;
+    if (normalized > 1.0) normalized = 1.0;
+    if (normalized < 0.0) normalized = 0.0;
+    bandMagnitudes[band] = normalized;
+  }
+  
+  bassLevel = bassLevel / normalizeReference;
+  if (bassLevel > 1.0) bassLevel = 1.0;
+  if (bassLevel < 0.0) bassLevel = 0.0;
+  
+  midLevel = midLevel / normalizeReference;
+  if (midLevel > 1.0) midLevel = 1.0;
+  if (midLevel < 0.0) midLevel = 0.0;
+  
+  trebleLevel = trebleLevel / normalizeReference;
+  if (trebleLevel > 1.0) trebleLevel = 1.0;
+  if (trebleLevel < 0.0) trebleLevel = 0.0;
+  
+  globalAudioLevel = globalAudioLevel / normalizeReference;
+  if (globalAudioLevel > 1.0) globalAudioLevel = 1.0;
+  if (globalAudioLevel < 0.0) globalAudioLevel = 0.0;
 }
 
 // ============================================================================
 // COLOR CONVERSION UTILITIES
 // ============================================================================
 
-uint32_t frequencyToColor(float freq) {
-  float normalizedFreq = freq / 8000.0f;
-  if (normalizedFreq > 1.0f) normalizedFreq = 1.0f;
+uint32_t frequencyToColor(double freq) {
+  double normalizedFreq = freq / 8000.0;
+  if (normalizedFreq > 1.0) normalizedFreq = 1.0;
+  
   uint8_t hue = (uint8_t)(normalizedFreq * 255);
   CRGB color = CHSV(hue, 255, 255);
   return ((uint32_t)color.r << 16) | ((uint32_t)color.g << 8) | color.b;
 }
 
+double getAudioLevelSmoothed(int index, double currentValue) {
+  static double smoothed[NUM_FREQ_BANDS] = {0};
+  if (index < NUM_FREQ_BANDS) {
+    smoothed[index] = smoothed[index] * 0.6 + currentValue * 0.4;
+    return smoothed[index];
+  }
+  return currentValue;
+}

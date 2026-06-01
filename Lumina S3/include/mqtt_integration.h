@@ -24,7 +24,7 @@ extern String deviceID;
 extern FirebaseData fbdoUpload;
 extern CRGB *leds;
 extern volatile bool sensorAvailable;
-extern volatile float globalAudioLevel;
+extern volatile double globalAudioLevel;
 extern volatile float currentLux;
 
 // NEW: Timer and automation parameters
@@ -33,6 +33,7 @@ extern char timerOffTime[6];
 extern volatile bool autoDarknessControl;
 extern volatile float luxThreshold;
 extern volatile bool turnedOffByDarkness;
+extern volatile bool triggerMicCalibration;
 
 // NEW: Define Effect Names Array
 extern const char* EFFECT_NAMES[];

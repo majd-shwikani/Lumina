@@ -31,29 +31,6 @@ void updateLEDs() {
   if (currentEnabled && !lastStripEnabled) {
     lastStripEnabled = true;
   }
-
-  // ==========================================================================
-  // Audio DSP Task Lifecycle Management
-  // AudioDSPTask runs ONLY when an audio-reactive effect (22-26) is active.
-  // When switching away, the task is deleted to free ~8KB of RAM.
-  // ==========================================================================
-  {
-    static bool audioTaskRunning = false;
-    bool isAudioEffect = (currentEffect == 7 || (currentEffect >= 22 && currentEffect <= 26));
-
-    if (isAudioEffect && !audioTaskRunning) {
-      xTaskCreatePinnedToCore(audioProcessingTask, "AudioDSP", 8192, NULL, 3, &audioTaskHandle, 0);
-      audioTaskRunning = true;
-      Serial.println("🎵 Audio DSP Task started on Core 0");
-    } else if (!isAudioEffect && audioTaskRunning) {
-      if (audioTaskHandle != NULL) {
-        vTaskDelete(audioTaskHandle);
-        audioTaskHandle = NULL;
-      }
-      audioTaskRunning = false;
-      Serial.println("🎵 Audio DSP Task stopped — RAM freed");
-    }
-  }
   
    switch (currentEffect) {
     // ---- Original Animation Effects (0-21) ----------------------------------
@@ -80,12 +57,18 @@ void updateLEDs() {
     case 20: effectFireSimulation();     break;
     case 21: effectSolidColor();         break;
 
-    // ---- Advanced Audio-Reactive Effects (22-26) -----------------------------
-    case 22: effectSpectrumRipple();    break;
-    case 23: effectKineticPlasma();     break;
-    case 24: effectTransientPulse();    break;
-    case 25: effectSpectrumBars();      break;
-    case 26: effectSpectralVerve();     break;
+    // ---- Sound-Reactive Effects (22-32) -------------------------------------
+    case 22: effectFrequencySpectrum();  break;
+    case 23: effectReactiveWaveform();   break;
+    case 24: effectBeatPulse();          break;
+    case 25: effectFrequencyBloom();     break;
+    case 26: effectAudioReactiveFire();  break;
+    case 27: effectMusicalRainbow();     break;
+    case 28: effectReactiveStrobe();     break;
+    case 29: effectGuitarVisualizer();   break;
+    case 30: effectCascadingFrequency(); break;
+    case 31: effectEnergyOrbits();       break;
+    case 32: effectAudioRipples();       break;
 
     // ---- Revolutionary Effects (33-42) --------------------------------------
     case 33: effectPlasmaWaves();        break;
@@ -454,13 +437,11 @@ void ledTask(void *parameter) {
   Serial.println("💡 LED Task started on Core " + String(xPortGetCoreID()));
   for(;;) {
     esp_task_wdt_reset();
+    // Only update LEDs if not actively receiving a pixel stream
     if (!usbPixelStreamActive) {
       updateLEDs();
     }
-    // Audio-reactive effects (7, 22-26) need fast frame rates for smooth response
-    bool isAudioEffect = (currentEffect == 7 || (currentEffect >= 22 && currentEffect <= 26));
-    uint32_t delayMs = isAudioEffect ? 5 : effectSpeed;
-    vTaskDelay(delayMs / portTICK_PERIOD_MS);
+    vTaskDelay(effectSpeed / portTICK_PERIOD_MS);
   }
 }
 
@@ -522,15 +503,16 @@ void usbDataTask(void *parameter) {
           }
         }
         else if (cmd == cmd_audio) {
-          uint8_t audioData[16];
+          uint8_t audioData[8];
           Serial.setTimeout(10);
-          size_t bytesRead = Serial.readBytes(audioData, 16);
+          size_t bytesRead = Serial.readBytes(audioData, 8);
           
-          if (bytesRead == 16) {
+          if (bytesRead == 8) {
             audioMirrorMode = true;
             lastUsbAudioTime = millis();
             
-            for (int i = 0; i < NUM_FREQ_BANDS; i++) {
+            // Map the 8 bytes to bandMagnitudes (normalize to 0.0 - 1.0)
+            for (int i = 0; i < 8; i++) {
               bandMagnitudes[i] = audioData[i] / 255.0;
             }
           }

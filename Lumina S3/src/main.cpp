@@ -123,7 +123,8 @@ Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
   
   Serial.println("🎤 [6/9] Initializing audio processing...");
   setupFrequencyDetection();
-  Serial.println("      ✅ Audio processing initialized (continuous adaptive noise floor)");
+  Serial.println("      ✅ Frequency detection initialized");
+  Serial.println("      🎵 Starting microphone calibration...");
   
   Serial.println("📨 [7/9] Setting up MQTT...");
   setupMQTT();
