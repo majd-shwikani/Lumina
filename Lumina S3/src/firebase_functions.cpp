@@ -265,10 +265,7 @@ void streamCallback(FirebaseStream data) {
       if (SPIFFS.exists("/config.json")) SPIFFS.remove("/config.json");
       ESP.restart();
     }
-    else if (subPath == "/mic_calibration" && data.boolData() == true) {
-      Serial.println("🔥 [Firebase] Mic calibration triggered");
-      triggerMicCalibration = true;
-    }
+
   }
   
   // 2. HANDLE RECEIVER SETTINGS

@@ -121,10 +121,12 @@ Serial.printf("   ✅ %d LEDs + onboard initialized\n", ledCount);
   setupFirebase();
   Serial.println("      ✅ Firebase initialized");
   
-  Serial.println("🎤 [6/9] Initializing audio processing...");
-  setupFrequencyDetection();
-  Serial.println("      ✅ Frequency detection initialized");
-  Serial.println("      🎵 Starting microphone calibration...");
+  Serial.println("🎤 [6/9] Initializing Advanced DSP Audio...");
+  initBandMapping();
+  
+  // Create DSP task pinned to Core 0 (Priority 3 to ensure audio processing isn't starved)
+  xTaskCreatePinnedToCore(audioProcessingTask, "AudioDSPTask", 8192, NULL, 3, NULL, 0);
+  Serial.println("      ✅ I2S SIMD FFT task started on Core 0");
   
   Serial.println("📨 [7/9] Setting up MQTT...");
   setupMQTT();

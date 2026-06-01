@@ -1,9 +1,18 @@
 #include "globals.h"
 
 // ============================================================================
-// VARIABLE DEFINITIONS
+// ADVANCED AUDIO GLOBAL BUFFERS
 // ============================================================================
-// Note: statsTaskStack and statsTaskHandle removed - merged into sensor task
+__attribute__((aligned(16))) float fft_input_output[FFT_SAMPLES * 2];
+__attribute__((aligned(16))) float window_coefficients[FFT_SAMPLES];
+float prevMagnitudes[FFT_SAMPLES / 2] = {0};
+int binToBand[FFT_SAMPLES / 2];
+
+float bandEnergy[NUM_BANDS] = {0};
+float bandSmoothed[NUM_BANDS] = {0};
+float bandPeak[NUM_BANDS] = {0};
+
+AudioData sharedAudio;
 
 // ============================================================================
 // LED UPDATE FUNCTION
@@ -57,18 +66,12 @@ void updateLEDs() {
     case 20: effectFireSimulation();     break;
     case 21: effectSolidColor();         break;
 
-    // ---- Sound-Reactive Effects (22-32) -------------------------------------
-    case 22: effectFrequencySpectrum();  break;
-    case 23: effectReactiveWaveform();   break;
-    case 24: effectBeatPulse();          break;
-    case 25: effectFrequencyBloom();     break;
-    case 26: effectAudioReactiveFire();  break;
-    case 27: effectMusicalRainbow();     break;
-    case 28: effectReactiveStrobe();     break;
-    case 29: effectGuitarVisualizer();   break;
-    case 30: effectCascadingFrequency(); break;
-    case 31: effectEnergyOrbits();       break;
-    case 32: effectAudioRipples();       break;
+    // ---- Advanced Sound-Reactive Effects (22-26) -----------------------------
+    case 22: effectSpectrumRipple();     break;
+    case 23: effectKineticPlasma();      break;
+    case 24: effectTransientPulse();     break;
+    case 25: effectSpectrumBars();       break;
+    case 26: effectSpectralVerve();      break;
 
     // ---- Revolutionary Effects (33-42) --------------------------------------
     case 33: effectPlasmaWaves();        break;
@@ -153,6 +156,226 @@ String formatUptime(unsigned long milliseconds) {
   } else {
     return String(seconds) + "s";
   }
+}
+
+// ============================================================================
+// ADVANCED DSP AUDIO ENGINE
+// ============================================================================
+
+void initBandMapping() {
+    float minFreq = BIN_WIDTH * 2.0f;
+    float maxFreq = BIN_WIDTH * (FFT_SAMPLES / 2 - 1);
+    float logMin = log10f(minFreq);
+    float logMax = log10f(maxFreq);
+    float logRange = logMax - logMin;
+
+    for (int bin = 0; bin < FFT_SAMPLES / 2; bin++) {
+        if (bin < 2) {
+            binToBand[bin] = 0;
+        } else {
+            float freq = bin * BIN_WIDTH;
+            float norm = (log10f(freq) - logMin) / logRange;
+            int band = (int)(norm * (NUM_BANDS - 1) + 0.5f);
+            binToBand[bin] = constrain(band, 0, NUM_BANDS - 1);
+        }
+    }
+}
+
+void audioProcessingTask(void *pvParameters) {
+    if (dsps_fft2r_init_fc32(NULL, 1024) != ESP_OK) {
+        Serial.println(F("FATAL: SIMD FFT init failed!"));
+        vTaskDelete(NULL);
+    }
+
+    dsps_wind_hann_f32(window_coefficients, FFT_SAMPLES);
+    Serial.println(F("Audio DSP task running on Core 0."));
+
+    i2s_config_t i2s_config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+        .sample_rate = SAMPLING_FREQ,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = 8,
+        .dma_buf_len = 64,
+        .use_apll = false
+    };
+
+    i2s_pin_config_t pin_config = {
+        .bck_io_num = I2S_SCK_PIN,
+        .ws_io_num = I2S_WS_PIN,
+        .data_out_num = I2S_PIN_NO_CHANGE,
+        .data_in_num = I2S_SD_PIN
+    };
+
+    i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
+    i2s_set_pin(I2S_PORT, &pin_config);
+
+    int32_t dmaBuffer[FFT_SAMPLES];
+    size_t bytesRead;
+
+    // Global AGC & squelch state
+    float agcMax = 500000.0f;
+    float noiseFloor = 40000.0f;
+
+    // Multi-band onset baselines
+    float bassBaseline = 0, midBaseline = 0, highBaseline = 0;
+
+    uint32_t frameCounter = 0;
+
+    while (true) {
+        i2s_read(I2S_PORT, &dmaBuffer, sizeof(dmaBuffer), &bytesRead, portMAX_DELAY);
+        int samplesRead = bytesRead / sizeof(int32_t);
+        if (samplesRead == 0) continue;
+
+        // --- Convert to float & remove DC ---
+        float mean = 0;
+        for (int i = 0; i < samplesRead; i++) {
+            fft_input_output[i * 2 + 0] = (float)(dmaBuffer[i] >> 8);
+            mean += fft_input_output[i * 2 + 0];
+        }
+        mean /= samplesRead;
+
+        for (int i = 0; i < samplesRead; i++) {
+            fft_input_output[i * 2 + 0] = (fft_input_output[i * 2 + 0] - mean) * window_coefficients[i];
+            fft_input_output[i * 2 + 1] = 0.0f;
+        }
+
+        // --- SIMD FFT pipeline ---
+        dsps_fft2r_fc32(fft_input_output, FFT_SAMPLES);
+        dsps_bit_rev_fc32(fft_input_output, FFT_SAMPLES);
+
+        // Reset per-band accumulators
+        for (int b = 0; b < NUM_BANDS; b++) bandEnergy[b] = 0;
+
+        // --- Magnitudes, band accumulation, spectral features ---
+        float fluxDelta = 0;
+        float fluxTotal = 0.001f;
+        float centroidWeighted = 0;
+        float centroidTotal = 0.001f;
+
+        for (int i = 2; i < FFT_SAMPLES / 2; i++) {
+            float real = fft_input_output[i * 2 + 0];
+            float imag = fft_input_output[i * 2 + 1];
+            float mag = sqrtf(real * real + imag * imag);
+
+            // Accumulate into log-spaced band
+            bandEnergy[binToBand[i]] += mag;
+
+            // Spectral flux (positive magnitude change)
+            float diff = mag - prevMagnitudes[i];
+            if (diff > 0) fluxDelta += diff;
+            prevMagnitudes[i] = mag;
+            fluxTotal += mag;
+
+            // Spectral centroid (frequency-weighted sum)
+            centroidWeighted += mag * (i * BIN_WIDTH);
+            centroidTotal += mag;
+        }
+
+        float fluxNorm = fluxDelta / fluxTotal;
+        float centroidHz = centroidWeighted / centroidTotal;
+        float centroidNorm = constrain((centroidHz - 200.0f) / (20000.0f - 200.0f), 0.0f, 1.0f);
+
+        // --- Per-band envelope followers & peak tracking ---
+        float currentPeak = 0;
+        for (int b = 0; b < NUM_BANDS; b++) {
+            float attack  = 0.35f + (b / (float)(NUM_BANDS - 1)) * 0.25f;
+            float release = 0.08f + (1.0f - b / (float)(NUM_BANDS - 1)) * 0.12f;
+
+            if (bandEnergy[b] > bandSmoothed[b]) {
+                bandSmoothed[b] += (bandEnergy[b] - bandSmoothed[b]) * attack;
+            } else {
+                bandSmoothed[b] += (bandEnergy[b] - bandSmoothed[b]) * release;
+            }
+            if (bandSmoothed[b] < 0) bandSmoothed[b] = 0;
+
+            if (bandSmoothed[b] > bandPeak[b]) {
+                bandPeak[b] = bandSmoothed[b];
+            } else {
+                bandPeak[b] *= 0.9993f;
+            }
+            if (bandPeak[b] < 10000.0f) bandPeak[b] = 10000.0f;
+
+            if (bandSmoothed[b] > currentPeak) currentPeak = bandSmoothed[b];
+        }
+
+        // --- Noise floor & global AGC ---
+        if (currentPeak < noiseFloor * 1.6f) {
+            noiseFloor = (noiseFloor * 0.995f) + (currentPeak * 0.005f);
+        }
+        bool environmentIsSilent = (currentPeak < (noiseFloor + 15000.0f));
+
+        if (!environmentIsSilent) {
+            if (currentPeak > agcMax) agcMax = currentPeak;
+            else agcMax = (agcMax * 0.9997f) + (currentPeak * 0.0003f);
+            if (agcMax < 100000.0f) agcMax = 100000.0f;
+        }
+
+        // --- Multi-band onset detection ---
+        float bassSum = 0, midSum = 0, highSum = 0;
+        for (int b = 0; b < NUM_BANDS; b++) {
+            if (b <= 3)      bassSum += bandSmoothed[b];
+            else if (b <= 9) midSum  += bandSmoothed[b];
+            else             highSum += bandSmoothed[b];
+        }
+
+        bool bassOnset = (bassSum > bassBaseline * 1.35f && bassSum > noiseFloor * 2.0f);
+        bool midOnset  = (midSum  > midBaseline  * 1.25f && midSum  > noiseFloor * 1.5f);
+        bool highOnset = (highSum > highBaseline * 1.25f && highSum > noiseFloor);
+
+        bassBaseline = (bassBaseline * 0.7f) + (bassSum * 0.3f);
+        midBaseline  = (midBaseline  * 0.7f) + (midSum  * 0.3f);
+        highBaseline = (highBaseline * 0.7f) + (highSum * 0.3f);
+
+        // --- Write to shared audio struct ---
+        if (xSemaphoreTake(i2sMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            sharedAudio.volume = environmentIsSilent ? 0.0f : constrain(currentPeak / agcMax, 0.0f, 1.0f);
+            sharedAudio.onset.bass = bassOnset;
+            sharedAudio.onset.mid  = midOnset;
+            sharedAudio.onset.high = highOnset;
+            sharedAudio.centroid = centroidNorm;
+            sharedAudio.flux = constrain(fluxNorm * 4.0f, 0.0f, 1.0f);
+
+            for (int b = 0; b < NUM_BANDS; b++) {
+                if (environmentIsSilent) {
+                    sharedAudio.bands[b] = 0.0f;
+                } else {
+                    sharedAudio.bands[b] = constrain(bandSmoothed[b] / (bandPeak[b] * 1.2f), 0.0f, 1.0f);
+                }
+            }
+            xSemaphoreGive(i2sMutex);
+        }
+
+        // --- Periodic serial status (~every 2 s at 75 fps) ---
+        frameCounter++;
+        if (frameCounter % 150 == 0) {
+            Serial.print(F("[AUDIO] vol="));
+            Serial.print(sharedAudio.volume, 2);
+            Serial.print(F("  centroid="));
+            Serial.print(centroidNorm, 2);
+            Serial.print(F("  flux="));
+            Serial.print(fluxNorm, 3);
+            Serial.print(F("  onsets="));
+            Serial.print(bassOnset  ? F("B") : F("-"));
+            Serial.print(midOnset   ? F("M") : F("-"));
+            Serial.println(highOnset ? F("H") : F("-"));
+
+            Serial.print(F("  Bands: "));
+            for (int b = 0; b < NUM_BANDS; b++) {
+                Serial.print((int)(sharedAudio.bands[b] * 100));
+                if (b < NUM_BANDS - 1) Serial.print(F(","));
+            }
+            Serial.println();
+
+            Serial.print(F("  Centroid freq: "));
+            Serial.print(centroidHz, 0);
+            Serial.println(F(" Hz"));
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
 }
 
 // ============================================================================
@@ -459,7 +682,6 @@ void usbDataTask(void *parameter) {
   const uint8_t magic_lumi[] = {0x4C, 0x55, 0x4D, 0x49}; // "LUMI"
   const uint8_t cmd_handshake = 0xCC;
   const uint8_t cmd_data = 0xBB;
-  const uint8_t cmd_audio = 0xAA;
   
   for(;;) {
     esp_task_wdt_reset();
@@ -502,21 +724,7 @@ void usbDataTask(void *parameter) {
             while(Serial.available() > 0) Serial.read();
           }
         }
-        else if (cmd == cmd_audio) {
-          uint8_t audioData[8];
-          Serial.setTimeout(10);
-          size_t bytesRead = Serial.readBytes(audioData, 8);
-          
-          if (bytesRead == 8) {
-            audioMirrorMode = true;
-            lastUsbAudioTime = millis();
-            
-            // Map the 8 bytes to bandMagnitudes (normalize to 0.0 - 1.0)
-            for (int i = 0; i < 8; i++) {
-              bandMagnitudes[i] = audioData[i] / 255.0;
-            }
-          }
-        }
+
       } else {
           // If no match, discard one byte and try again
           if (Serial.available() > 0) Serial.read();
@@ -527,12 +735,6 @@ void usbDataTask(void *parameter) {
     if (usbPixelStreamActive && (millis() - lastUsbPixelTime > 2000)) {
         usbPixelStreamActive = false;
         Serial.println("🖥️  USB Pixel stream timeout, resuming effects...");
-    }
-
-    // Timeout check for Audio Stream (2 seconds)
-    if (audioMirrorMode && (millis() - lastUsbAudioTime > 2000)) {
-        audioMirrorMode = false;
-        Serial.println("🎵 USB Audio stream timeout, reverting to microphone...");
     }
 
     vTaskDelay(1 / portTICK_PERIOD_MS);
@@ -549,7 +751,6 @@ void toggleUsbMirror(bool enable, bool isAudio) {
   } 
   else {
     usbMirrorActive = false;
-    audioMirrorMode = false;
     usbPixelStreamActive = false;
     
     // Clear LEDs when exiting mirror mode

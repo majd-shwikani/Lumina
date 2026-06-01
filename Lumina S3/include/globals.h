@@ -16,8 +16,9 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <driver/i2s.h>
-#include <arduinoFFT.h>
+#include <esp_dsp.h>
 #include <ld2410.h>
+#include <math.h>
 #include <esp_system.h>
 #include <rom/rtc.h>
 #include <addons/TokenHelper.h>
@@ -26,6 +27,48 @@
 #include "effects.h"
 #include "sensors.h"
 #include "mqtt_integration.h"
+
+// --- ADVANCED AUDIO HARDWARE DEFINITIONS ---
+#define I2S_WS_PIN       5
+#define I2S_SD_PIN       4
+#define I2S_SCK_PIN      2
+#define I2S_PORT         I2S_NUM_0
+
+#define FFT_SAMPLES      512
+#define SAMPLING_FREQ    44100
+#define NUM_BANDS        16
+#define BIN_WIDTH        ((float)SAMPLING_FREQ / FFT_SAMPLES)
+
+// --- CROSS-CORE AUDIO STRUCTURES ---
+struct OnsetFlags {
+    bool bass;
+    bool mid;
+    bool high;
+};
+
+struct AudioData {
+    float bands[NUM_BANDS];
+    float volume;
+    OnsetFlags onset;
+    float centroid;
+    float flux;
+};
+
+// --- GLOBAL EXPORTS ---
+extern __attribute__((aligned(16))) float fft_input_output[FFT_SAMPLES * 2];
+extern __attribute__((aligned(16))) float window_coefficients[FFT_SAMPLES];
+extern float prevMagnitudes[FFT_SAMPLES / 2];
+extern int binToBand[FFT_SAMPLES / 2];
+
+extern float bandEnergy[NUM_BANDS];
+extern float bandSmoothed[NUM_BANDS];
+extern float bandPeak[NUM_BANDS];
+
+extern AudioData sharedAudio;
+
+// Task declarations
+void audioProcessingTask(void *pvParameters);
+void initBandMapping();
 
 // ============================================================================
 // FIREBASE MESSAGING STRUCTURES
