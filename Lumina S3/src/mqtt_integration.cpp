@@ -603,7 +603,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       stripEnabled = newState;
       portEXIT_CRITICAL(&stripMux);
       manuallyTurnedOff = !newState;
-      if (!newState) { FastLED.clear(); FastLED.show(); }
+      if (!newState) { flag_forceLedClear = true; }
       enqueueFirebaseRequest(FB_SET_BOOL, basePath + "/local/enabled", newState ? "true" : "false");
       syncAllMirrors();
     } else {
@@ -617,7 +617,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     int brightness = atoi(message);
     brightness = constrain(brightness, 0, 255);
     if (isGatewayTarget) {
-      FastLED.setBrightness(brightness);
+      globalBrightness = brightness; flag_forceBrightnessUpdate = true;
       enqueueFirebaseRequest(FB_SET_INT, basePath + "/local/brightness", String(brightness));
       syncAllMirrors();
     } else {
@@ -676,6 +676,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (newEffect >= 0 && newEffect < NUM_EFFECTS) {
       if (isGatewayTarget) {
         currentEffect = newEffect;
+        flag_forceEffectUpdate = true;
         enqueueFirebaseRequest(FB_SET_INT, basePath + "/local/effect", String(currentEffect));
         syncAllMirrors();
       } else {

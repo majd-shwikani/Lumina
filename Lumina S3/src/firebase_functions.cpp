@@ -204,7 +204,7 @@ void streamCallback(FirebaseStream data) {
     }
     else if (subPath == "/brightness") {
       globalBrightness = data.intData();
-      FastLED.setBrightness(globalBrightness);
+      flag_forceBrightnessUpdate = true;
       Serial.printf("🔥 [Firebase] Brightness → %d\n", globalBrightness);
       syncAllMirrors();
     }

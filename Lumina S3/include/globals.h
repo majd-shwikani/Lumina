@@ -245,6 +245,13 @@ extern unsigned long buttonPressStart;
 extern bool buttonActive;
 
 // ============================================================================
+// FASTLED DEFERRED EXECUTION FLAGS
+// ============================================================================
+extern volatile bool flag_forceLedClear;
+extern volatile bool flag_forceBrightnessUpdate;
+extern volatile bool flag_forceEffectUpdate;
+
+// ============================================================================
 // FUNCTION DECLARATIONS
 // ============================================================================
 const char* getResetReason(int cpu);

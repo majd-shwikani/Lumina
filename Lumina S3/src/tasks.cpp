@@ -25,6 +25,26 @@ void updateLEDs() {
   portENTER_CRITICAL(&stripMux);
   currentEnabled = stripEnabled;
   portEXIT_CRITICAL(&stripMux);
+
+  // ==========================================================
+  // DEFERRED HARDWARE EXECUTION BLOCK (Thread-Safe)
+  // ==========================================================
+  if (flag_forceBrightnessUpdate) {
+    FastLED.setBrightness(globalBrightness);
+    flag_forceBrightnessUpdate = false;
+  }
+
+  if (flag_forceLedClear) {
+    FastLED.clear();
+    FastLED.show();
+    flag_forceLedClear = false;
+  }
+  
+  if (flag_forceEffectUpdate) {
+    FastLED.clear(); // Clear trails from previous effects
+    flag_forceEffectUpdate = false;
+  }
+  // ==========================================================
   
   if (!currentEnabled && lastStripEnabled) {
     FastLED.clear();
@@ -56,8 +76,13 @@ void updateLEDs() {
       Serial.println("🎵 Audio DSP Task started on Core 0");
     } else if (!isAudioEffect && audioTaskRunning) {
       if (audioTaskHandle != NULL) {
+        // Wait briefly so the DSP task releases I2S and mutexes safely
+        vTaskDelay(pdMS_TO_TICKS(50)); 
         vTaskDelete(audioTaskHandle);
         audioTaskHandle = NULL;
+
+        // Uninstall the driver so it can be re-installed cleanly later
+        i2s_driver_uninstall(I2S_PORT);
       }
       audioTaskRunning = false;
       Serial.println("🎵 Audio DSP Task stopped — RAM freed");
@@ -775,9 +800,8 @@ void toggleUsbMirror(bool enable, bool isAudio) {
     usbMirrorActive = false;
     usbPixelStreamActive = false;
     
-    // Clear LEDs when exiting mirror mode
-    FastLED.clear();
-    FastLED.show();
+    // Safely signal the LED task to clear the strip
+    flag_forceLedClear = true;
     
     if (usbDataTaskHandle != NULL) {
       Serial.println("🔌 Disabling USB Data Task...");

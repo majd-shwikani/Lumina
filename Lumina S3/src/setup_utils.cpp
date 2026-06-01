@@ -46,6 +46,12 @@ volatile bool autoDarknessControl = false;
 volatile bool turnedOffByDarkness = false;
 bool defaultDataCreated = false;
 volatile bool manuallyTurnedOff = false;
+
+// --- FASTLED DEFERRED EXECUTION FLAGS ---
+volatile bool flag_forceLedClear = false;
+volatile bool flag_forceBrightnessUpdate = false;
+volatile bool flag_forceEffectUpdate = false;
+
 unsigned long lastStateChangeTime = 0;
 const unsigned long STATE_CHANGE_DEBOUNCE = 5000;
 float luxHysteresis = 5.0;

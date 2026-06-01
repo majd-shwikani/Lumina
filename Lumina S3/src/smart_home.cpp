@@ -17,7 +17,7 @@ bool onPowerState(const String &deviceId, bool &state) {
 bool onBrightness(const String &deviceId, int &brightness) {
   uint8_t br = (brightness * 255) / 100;
   Serial.printf("🏠 [SinricPro] Brightness → %d%% (raw: %d)\n", brightness, br);
-  FastLED.setBrightness(br);
+  globalBrightness = br; flag_forceBrightnessUpdate = true;
   syncAllMirrors();
   return true;
 }
