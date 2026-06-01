@@ -33,7 +33,6 @@ extern char timerOffTime[6];
 extern volatile bool autoDarknessControl;
 extern volatile float luxThreshold;
 extern volatile bool turnedOffByDarkness;
-extern volatile bool triggerMicCalibration;
 
 // NEW: Define Effect Names Array
 extern const char* EFFECT_NAMES[];

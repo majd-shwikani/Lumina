@@ -175,8 +175,6 @@ void readInitialFirebaseData() {
   String resetPath = localPath + "/reset";
   Firebase.RTDB.setBool(&fbdoSender, resetPath.c_str(), false);
   
-  String micCalibPath = localPath + "/mic_calibration";
-  Firebase.RTDB.setBool(&fbdoSender, micCalibPath.c_str(), false);
   
   String versionPath = localPath + "/version";
   if (Firebase.RTDB.setString(&fbdoSender, versionPath.c_str(), currentFirmwareVersion)) {
@@ -265,10 +263,7 @@ void streamCallback(FirebaseStream data) {
       if (SPIFFS.exists("/config.json")) SPIFFS.remove("/config.json");
       ESP.restart();
     }
-    else if (subPath == "/mic_calibration" && data.boolData() == true) {
-      Serial.println("🔥 [Firebase] Mic calibration triggered");
-      triggerMicCalibration = true;
-    }
+
   }
   
   // 2. HANDLE RECEIVER SETTINGS
@@ -409,11 +404,6 @@ void createDefaultFirebaseData() {
     allSuccess = false;
   }
   
-  if (Firebase.RTDB.setBool(&fbdoSender, (localPath + "/mic_calibration").c_str(), false)) {
-    Serial.println("Mic calibration flag set to default: false");
-  } else {
-    allSuccess = false;
-  }
   
   defaultDataCreated = allSuccess;
   

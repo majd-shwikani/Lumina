@@ -16,6 +16,7 @@ TaskHandle_t ledTaskHandle = NULL;
 TaskHandle_t ioTaskHandle = NULL;
 TaskHandle_t systemTaskHandle = NULL;
 TaskHandle_t usbDataTaskHandle = NULL;
+TaskHandle_t audioTaskHandle = NULL;
 volatile bool usbMirrorActive = false;
 volatile bool usbPixelStreamActive = false;
 volatile bool audioMirrorMode = false;
@@ -320,6 +321,7 @@ void printSystemStats() {
     { "IOTask",     ioTaskHandle,      6000 },
     { "SystemTask", systemTaskHandle,  6000 },
     { "USBTask",    usbDataTaskHandle, 4000 },
+    { "AudioDSP",   audioTaskHandle,   8192 },
   };
   const int taskCount = sizeof(tasks) / sizeof(tasks[0]);
 
